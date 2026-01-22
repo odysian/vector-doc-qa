@@ -1,7 +1,8 @@
 # backend/app/database.py
-from app.config import settings
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
+from app.config import settings
 
 # Create database engine (connection pool)
 engine = create_engine(
@@ -18,7 +19,15 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 # Base class for models
-Base = declarative_base()
+class Base(DeclarativeBase):
+    """
+    Base class for all SQLAlchemy models.
+
+    SQLAlchemy 2.0+ uses DeclarativeBase instead of declarative_base().
+    Enables proper type checking with Mapped[] annotations.
+    """
+
+    pass
 
 
 def init_db():
