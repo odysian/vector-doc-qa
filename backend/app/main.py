@@ -18,7 +18,7 @@ app = FastAPI(
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Restrict in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -43,7 +43,7 @@ async def startup_event():
 
 # Root Endpoint
 @app.get("/")
-async def root():
+def root():
     """Health check endpoint."""
     return {
         "message": "Document Intelligence API",
@@ -55,7 +55,7 @@ async def root():
 
 # Health Check
 @app.get("/health")
-async def health_check():
+def health_check():
     """Detailed health check."""
     return {
         "status": "healthy",

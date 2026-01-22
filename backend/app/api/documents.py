@@ -1,9 +1,12 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.models import Document, DocumentStatus
 from app.schemas.document import DocumentListResponse, DocumentResponse, UploadResponse
+from app.services.document_service import process_document_text
 from app.utils.file_utils import save_upload_file, validate_file_upload
 
 router = APIRouter()
@@ -35,35 +38,40 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
 
     db.add(document)
     db.commit()
-    db.refresh(document)  # Get the ID that was auto-generated
+    db.refresh(document)  # Get auto-generated ID
 
     return UploadResponse(
-        id=document.id,  # type: ignore
-        filename=document.filename,  # type: ignore
-        file_size=document.file_size,  # type: ignore
-        status=document.status,  # type: ignore
+        id=document.id,
+        filename=document.filename,
+        file_size=document.file_size,
+        status=document.status,
         message="File uploaded successfully. Processing will begin shortly.",
     )
 
 
 # GET ALL DOCUMENTS
 @router.get("/", response_model=DocumentListResponse)
-async def get_documents(db: Session = Depends(get_db)):
+def get_documents(db: Session = Depends(get_db)):
     """
     Get all uploaded documents.
     """
-    documents = db.query(Document).order_by(Document.uploaded_at.desc()).all()
+    stmt = select(Document).order_by(Document.uploaded_at.desc())
+    documents = db.scalars(stmt).all()
 
-    return DocumentListResponse(documents=documents, total=len(documents))  # type: ignore
+    return DocumentListResponse(
+        documents=[DocumentResponse.model_validate(d) for d in documents],
+        total=len(documents),
+    )
 
 
 # GET SINGLE DOCUMENT
 @router.get("/{document_id}", response_model=DocumentResponse)
-async def get_document(document_id: int, db: Session = Depends(get_db)):
+def get_document(document_id: int, db: Session = Depends(get_db)):
     """
     Get a specific document by ID.
     """
-    document = db.query(Document).filter(Document.id == document_id).first()
+    stmt = select(Document).where(Document.id == document_id)
+    document = db.scalar(stmt)
 
     if not document:
         raise HTTPException(
@@ -75,11 +83,12 @@ async def get_document(document_id: int, db: Session = Depends(get_db)):
 
 # DELETE DOCUMENT
 @router.delete("/{document_id}")
-async def delete_document(document_id: int, db: Session = Depends(get_db)):
+def delete_document(document_id: int, db: Session = Depends(get_db)):
     """
     Delete a document and its file.
     """
-    document = db.query(Document).filter(Document.id == document_id).first()
+    stmt = select(Document).where(Document.id == document_id)
+    document = db.scalar(stmt)
 
     if not document:
         raise HTTPException(
@@ -87,17 +96,39 @@ async def delete_document(document_id: int, db: Session = Depends(get_db)):
         )
 
     # Delete file from disk
-    import os
+    full_path = settings.get_upload_path().parent / document.file_path
 
-    from app.config import settings
-
-    file_path = settings.get_upload_path().parent / document.file_path
-
-    if file_path.exists():
-        os.remove(file_path)  # type: ignore
+    full_path.unlink(missing_ok=True)
 
     # Delete from database (cascades to chunks)
     db.delete(document)
     db.commit()
 
     return {"message": f"Document {document_id} deleted successfully"}
+
+
+# PROCESS DOCUMENT
+@router.post("/{document_id}/process")
+def process_document(document_id: int, db: Session = Depends(get_db)):
+    """
+    Process a document: extract text and create chunks.
+
+    Document must be in PENDING status.
+    """
+
+    try:
+        # Call service layer
+        process_document_text(document_id, db)
+
+        return {
+            "message": f"Document {document_id} processed successfully",
+            "document_id": document_id,
+        }
+
+    except ValueError as e:
+        # Business logic errors
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+        # Unexpected errors
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
