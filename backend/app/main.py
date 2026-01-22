@@ -1,8 +1,9 @@
-# backend/app/main.py
-from app.config import settings
-from app.database import init_db
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.api import documents
+from app.config import settings
+from app.database import init_db
 
 # Create FastAPI application
 app = FastAPI(
@@ -64,7 +65,4 @@ async def health_check():
     }
 
 
-# Future API Routes
-# from app.api import documents, search
-# app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
-# app.include_router(search.router, prefix="/api/search", tags=["search"])
+app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
