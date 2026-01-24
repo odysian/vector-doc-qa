@@ -6,7 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Chunk, Document, DocumentStatus
+from app.utils.logging_config import get_logger
 from app.utils.pdf_utils import chunk_text, extract_text_from_pdf
+
+logger = get_logger(__name__)
 
 
 def process_document_text(document_id: int, db: Session) -> None:
@@ -21,11 +24,15 @@ def process_document_text(document_id: int, db: Session) -> None:
         ValueError: If document not found or cannot be processed
         Exception: If processing fails
     """
+
+    logger.info(f"Starting document processing: document_id={document_id}")
+
     # Get document
     stmt = select(Document).where(Document.id == document_id)
     document = db.scalar(stmt)
 
     if not document:
+        logger.error(f"Document not found: document_id={document_id}")
         raise ValueError(f"Document with ID {document_id} not found")
 
     # Validate status
@@ -36,39 +43,36 @@ def process_document_text(document_id: int, db: Session) -> None:
         raise ValueError(f"Document {document_id} is currently being processed")
 
     try:
-        # Update status
         document.status = DocumentStatus.PROCESSING
         db.commit()
 
-        # Build path
         pdf_path = settings.get_upload_path().parent / document.file_path
 
-        # Extract text
+        logger.info(f"Extracting text from {document.filename}")
         text = extract_text_from_pdf(str(pdf_path))
+        logger.info(f"Extracted {len(text)} characters")
 
-        # Validate text
         if not text or not text.strip():
             raise ValueError("No text could be extracted from PDF")
 
-        # Chunk text
+        logger.info(f"Chunking text")
         chunks = chunk_text(text)
+        logger.info(f"Created {len(chunks)} chunks")
 
-        # Save chunks
         for i, chunk_content in enumerate(chunks):
             chunk = Chunk(document_id=document.id, content=chunk_content, chunk_index=i)
             db.add(chunk)
 
-        # Update status
         document.status = DocumentStatus.COMPLETED
         document.processed_at = func.now()
 
         db.commit()
 
+        logger.info(f"Processing complete: {len(chunks)} chunks")
+
     except Exception as e:
-        # Mark as failed
+        logger.error(f"Processing failed: {e}", exc_info=True)
         document.status = DocumentStatus.FAILED
         document.error_message = str(e)
         db.commit()
-
-        # Re-raise
         raise

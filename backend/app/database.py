@@ -3,8 +3,11 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import settings
+from app.utils.logging_config import get_logger
 
-# Create database engine (connection pool)
+logger = get_logger(__name__)
+
+# Create database engine connection pool
 engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,
@@ -32,7 +35,7 @@ class Base(DeclarativeBase):
 
 def init_db():
     """Initialize database: enable pgvector, create tables."""
-    print("🔄 Initializing database...")
+    logger.info("Initializing database...")
 
     # Enable pgvector extension
     with engine.connect() as conn:
@@ -43,16 +46,16 @@ def init_db():
             if result.fetchone() is None:
                 conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
                 conn.commit()
-                print("✅ pgvector extension enabled")
+                logger.info("pgvector extension enabled")
             else:
-                print("✅ pgvector extension already enabled")
+                logger.info("pgvector extension already enabled")
         except Exception as e:
-            print(f"⚠️  Warning: Could not enable pgvector extension: {e}")
-            print("   Make sure you're using the ankane/pgvector Docker image")
+            logger.info(f"Warning: Could not enable pgvector extension: {e}")
+            logger.info("Make sure you're using the ankane/pgvector Docker image")
 
     # Create all tables
     Base.metadata.create_all(bind=engine)
-    print("✅ Database tables created successfully!")
+    logger.info("Database tables created successfully!")
 
 
 def get_db():
