@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import HTTPException, UploadFile
 
 from app.config import settings
+from app.constants import UPLOAD_CHUNK_SIZE_BYTES
 
 
 # File Validation
@@ -96,7 +97,7 @@ async def save_upload_file(file: UploadFile) -> tuple[str, int]:
 
     # Read and write file in chunks (memory efficient)
     file_size = 0
-    chunk_size = 1024 * 1024  # 1MB chunks
+    chunk_size = UPLOAD_CHUNK_SIZE_BYTES  # 1MB chunks
 
     try:
         with open(file_path, "wb") as f:

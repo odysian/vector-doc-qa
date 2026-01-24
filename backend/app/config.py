@@ -2,6 +2,13 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings
 
+from app.constants import (
+    ALLOWED_EXTENSIONS,
+    DEFAULT_CHUNK_OVERLAP,
+    DEFAULT_CHUNK_SIZE,
+    MAX_FILE_SIZE_BYTES,
+)
+
 
 class Settings(BaseSettings):
     """Application settings loaded from env vars."""
@@ -14,12 +21,12 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
 
     upload_dir: str = "uploads"
-    max_file_size: int = 10 * 1024 * 1024  # 10MB in bytes
+    max_file_size: int = MAX_FILE_SIZE_BYTES
 
-    allowed_extensions: set[str] = {".pdf"}
+    allowed_extensions: set[str] = ALLOWED_EXTENSIONS
 
-    chunk_size: int = 500  # characters per chunk
-    chunk_overlap: int = 50  # overlap between chunks
+    chunk_size: int = DEFAULT_CHUNK_SIZE
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP
 
     class Config:
         env_file = ".env"
