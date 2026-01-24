@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Chunk, Document, DocumentStatus
+from app.services.embedding_service import generate_embeddings_batch
 from app.utils.logging_config import get_logger
 from app.utils.pdf_utils import chunk_text, extract_text_from_pdf
 
@@ -48,6 +49,7 @@ def process_document_text(document_id: int, db: Session) -> None:
 
         pdf_path = settings.get_upload_path().parent / document.file_path
 
+        # Extract text from pdf
         logger.info(f"Extracting text from {document.filename}")
         text = extract_text_from_pdf(str(pdf_path))
         logger.info(f"Extracted {len(text)} characters")
@@ -55,20 +57,38 @@ def process_document_text(document_id: int, db: Session) -> None:
         if not text or not text.strip():
             raise ValueError("No text could be extracted from PDF")
 
+        # Break pdf text into chunks
         logger.info(f"Chunking text")
         chunks = chunk_text(text)
         logger.info(f"Created {len(chunks)} chunks")
 
+        # Build chunks and add to db, chunk_objects list preserves order for embeddings
+        chunk_objects = []
         for i, chunk_content in enumerate(chunks):
             chunk = Chunk(document_id=document.id, content=chunk_content, chunk_index=i)
+            chunk_objects.append(chunk)
             db.add(chunk)
+
+        # Flush to get chunk IDs without committing
+        db.flush()
+
+        # Generate embeddings for all chunks
+        logger.info(f"Generating embeddings for {len(chunks)} chunks")
+        chunk_texts = [chunk.content for chunk in chunk_objects]
+        embeddings = generate_embeddings_batch(chunk_texts)
+
+        # Assign embeddings to chunks
+        for chunk, embedding in zip(chunk_objects, embeddings):
+            chunk.embedding = embedding
+
+        logger.info(f"Embeddings generated and assigned successfully")
 
         document.status = DocumentStatus.COMPLETED
         document.processed_at = func.now()
 
         db.commit()
 
-        logger.info(f"Processing complete: {len(chunks)} chunks")
+        logger.info(f"Processing complete: {len(chunks)} chunks with embeddings")
 
     except Exception as e:
         logger.error(f"Processing failed: {e}", exc_info=True)
