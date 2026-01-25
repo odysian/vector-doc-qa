@@ -8,7 +8,7 @@ from app.config import settings
 from app.database import init_db
 from app.utils.logging_config import get_logger, setup_logging
 
-setup_logging(log_level="INFO")
+setup_logging(log_level="DEBUG")
 logger = get_logger(__name__)
 
 

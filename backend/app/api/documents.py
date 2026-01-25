@@ -4,9 +4,11 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import Document, DocumentStatus
+from app.models import Chunk, Document, DocumentStatus
 from app.schemas.document import DocumentListResponse, DocumentResponse, UploadResponse
+from app.schemas.search import SearchRequest, SearchResponse, SearchResult
 from app.services.document_service import process_document_text
+from app.services.search_service import search_chunks
 from app.utils.file_utils import save_upload_file, validate_file_upload
 from app.utils.logging_config import get_logger
 
@@ -137,3 +139,48 @@ def process_document(document_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         # Unexpected errors
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+
+
+@router.post("/{document_id}/search", response_model=SearchResponse)
+def search_document(
+    search: SearchRequest, document_id: int, db: Session = Depends(get_db)
+):
+
+    # Do i need a joined load to get the chunk relationship?
+    stmt = select(Document).where(Document.id == document_id)
+    document = db.scalar(stmt)
+
+    if not document:
+        raise HTTPException(
+            status_code=404, detail=f"Document with ID {document_id} not found"
+        )
+    if document.status != DocumentStatus.COMPLETED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document {document_id} not processed yet",
+        )
+
+    if not document.chunks:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document {document_id} has no chunks",
+        )
+
+    try:
+        results = search_chunks(
+            query=search.query, document_id=document_id, top_k=search.top_k, db=db
+        )
+
+        search_results = [SearchResult(**result) for result in results]
+        return SearchResponse(
+            query=search.query,
+            document_id=document_id,
+            results=search_results,
+            total_results=len(results),
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
