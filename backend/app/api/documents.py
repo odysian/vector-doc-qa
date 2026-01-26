@@ -6,7 +6,9 @@ from app.config import settings
 from app.database import get_db
 from app.models import Chunk, Document, DocumentStatus
 from app.schemas.document import DocumentListResponse, DocumentResponse, UploadResponse
+from app.schemas.query import QueryRequest, QueryResponse
 from app.schemas.search import SearchRequest, SearchResponse, SearchResult
+from app.services.anthropic_service import generate_answer
 from app.services.document_service import process_document_text
 from app.services.search_service import search_chunks
 from app.utils.file_utils import save_upload_file, validate_file_upload
@@ -103,7 +105,6 @@ def delete_document(document_id: int, db: Session = Depends(get_db)):
 
     # Delete file from disk
     full_path = settings.get_upload_path().parent / document.file_path
-
     full_path.unlink(missing_ok=True)
 
     # Delete from database (cascades to chunks)
@@ -133,11 +134,9 @@ def process_document(document_id: int, db: Session = Depends(get_db)):
         }
 
     except ValueError as e:
-        # Business logic errors
         raise HTTPException(status_code=400, detail=str(e))
 
     except Exception as e:
-        # Unexpected errors
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 
@@ -146,7 +145,6 @@ def search_document(
     search: SearchRequest, document_id: int, db: Session = Depends(get_db)
 ):
 
-    # Do i need a joined load to get the chunk relationship?
     stmt = select(Document).where(Document.id == document_id)
     document = db.scalar(stmt)
 
@@ -183,4 +181,55 @@ def search_document(
         raise HTTPException(status_code=400, detail=str(e))
 
     except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+
+@router.post("/{document_id}/query", response_model=QueryResponse)
+def query_document(
+    document_id: int, request: QueryRequest, db: Session = Depends(get_db)
+):
+    """
+    Ask a question about a document and get an AI-generated answer.
+
+    Uses semantic search to find relevant chunks, then sends them to Claude
+    for natural language answer generation.
+    """
+
+    logger.info(f"Query request for document_id={document_id}: '{request.query}'")
+
+    stmt = select(Document).where(Document.id == document_id)
+    document = db.scalar(stmt)
+
+    if not document:
+        raise HTTPException(
+            status_code=404, detail=f"Document with ID {document_id} not found"
+        )
+    if document.status != DocumentStatus.COMPLETED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document {document_id} not processed yet",
+        )
+
+    if not document.chunks:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document {document_id} has no chunks",
+        )
+
+    try:
+        search_results = search_chunks(
+            query=request.query, document_id=document_id, top_k=5, db=db
+        )
+
+        answer = generate_answer(query=request.query, chunks=search_results)
+
+        sources = [SearchResult(**result) for result in search_results]
+
+        return QueryResponse(query=request.query, answer=answer, sources=sources)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+        logger.error(f"Query failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
