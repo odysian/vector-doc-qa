@@ -2,11 +2,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.api import documents
 from app.config import settings
 from app.database import init_db
 from app.utils.logging_config import get_logger, setup_logging
+from app.utils.rate_limit import limiter
 
 setup_logging(log_level="DEBUG")
 logger = get_logger(__name__)
@@ -31,7 +34,8 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
-
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -13,6 +13,7 @@ from app.services.document_service import process_document_text
 from app.services.search_service import search_chunks
 from app.utils.file_utils import save_upload_file, validate_file_upload
 from app.utils.logging_config import get_logger
+from app.utils.rate_limit import limiter
 
 logger = get_logger(__name__)
 
@@ -20,7 +21,10 @@ router = APIRouter()
 
 
 @router.post("/upload", response_model=UploadResponse, status_code=201)
-async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
+@limiter.limit("10/hour")
+async def upload_document(
+    request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)
+):
     """
     Upload a PDF document.
 
@@ -59,7 +63,8 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
 
 
 @router.get("/", response_model=DocumentListResponse)
-def get_documents(db: Session = Depends(get_db)):
+@limiter.limit("10/hour")
+def get_documents(request: Request, db: Session = Depends(get_db)):
     """
     Get all uploaded documents.
     """
@@ -117,13 +122,15 @@ def delete_document(document_id: int, db: Session = Depends(get_db)):
 
 # PROCESS DOCUMENT
 @router.post("/{document_id}/process")
-def process_document(document_id: int, db: Session = Depends(get_db)):
+@limiter.limit("20/hour")
+def process_document(request: Request, document_id: int, db: Session = Depends(get_db)):
     """
     Process a document: extract text and create chunks.
 
     Document must be in PENDING status.
     """
     logger.info(f"Processing document_id={document_id}")
+
     try:
         # Call service layer
         process_document_text(document_id, db)
@@ -141,8 +148,12 @@ def process_document(document_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{document_id}/search", response_model=SearchResponse)
+@limiter.limit("20/hour")
 def search_document(
-    search: SearchRequest, document_id: int, db: Session = Depends(get_db)
+    request: Request,
+    search: SearchRequest,
+    document_id: int,
+    db: Session = Depends(get_db),
 ):
 
     stmt = select(Document).where(Document.id == document_id)
@@ -185,8 +196,12 @@ def search_document(
 
 
 @router.post("/{document_id}/query", response_model=QueryResponse)
+@limiter.limit("20/hour")
 def query_document(
-    document_id: int, request: QueryRequest, db: Session = Depends(get_db)
+    request: Request,
+    document_id: int,
+    body: QueryRequest,
+    db: Session = Depends(get_db),
 ):
     """
     Ask a question about a document and get an AI-generated answer.
@@ -195,7 +210,7 @@ def query_document(
     for natural language answer generation.
     """
 
-    logger.info(f"Query request for document_id={document_id}: '{request.query}'")
+    logger.info(f"Query request for document_id={document_id}: '{body.query}'")
 
     stmt = select(Document).where(Document.id == document_id)
     document = db.scalar(stmt)
@@ -218,14 +233,14 @@ def query_document(
 
     try:
         search_results = search_chunks(
-            query=request.query, document_id=document_id, top_k=5, db=db
+            query=body.query, document_id=document_id, top_k=5, db=db
         )
 
-        answer = generate_answer(query=request.query, chunks=search_results)
+        answer = generate_answer(query=body.query, chunks=search_results)
 
         sources = [SearchResult(**result) for result in search_results]
 
-        return QueryResponse(query=request.query, answer=answer, sources=sources)
+        return QueryResponse(query=body.query, answer=answer, sources=sources)
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

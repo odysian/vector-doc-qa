@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     chunk_size: int = DEFAULT_CHUNK_SIZE
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP
 
+    whitelisted_ips: list[str] = []
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
