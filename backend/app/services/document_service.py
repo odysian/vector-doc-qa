@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Chunk, Document, DocumentStatus
+from app.models.base import Chunk, Document, DocumentStatus
 from app.services.embedding_service import generate_embeddings_batch
 from app.utils.logging_config import get_logger
 from app.utils.pdf_utils import chunk_text, extract_text_from_pdf

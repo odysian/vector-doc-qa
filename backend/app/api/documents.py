@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import Chunk, Document, DocumentStatus
+from app.models.base import Chunk, Document, DocumentStatus
 from app.schemas.document import DocumentListResponse, DocumentResponse, UploadResponse
 from app.schemas.query import QueryRequest, QueryResponse
 from app.schemas.search import SearchRequest, SearchResponse, SearchResult

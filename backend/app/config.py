@@ -17,6 +17,10 @@ class Settings(BaseSettings):
         "postgresql://postgres:postgres@localhost:5434/document_intelligence"
     )
 
+    access_token_expire_minutes: int = 0
+    secret_key: str = "dev-secret-key-change-in-production"
+    algorithm: str = "HS256"
+
     openai_api_key: str = ""
     anthropic_api_key: str = ""
 

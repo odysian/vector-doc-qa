@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from app.models import DocumentStatus
+from app.models.base import DocumentStatus
 
 
 class DocumentResponse(BaseModel):

@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Chunk
+from app.models.base import Chunk
 from app.services.embedding_service import generate_embedding
 from app.utils.logging_config import get_logger
 

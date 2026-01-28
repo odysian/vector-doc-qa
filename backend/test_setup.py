@@ -90,7 +90,7 @@ print("🗄️  Step 3: Initializing database...")
 
 try:
     from app.database import SessionLocal, engine, init_db
-    from app.models import Chunk, Document, DocumentStatus
+    from app.models.base import Chunk, Document, DocumentStatus
 
     # Initialize database (creates tables)
     init_db()

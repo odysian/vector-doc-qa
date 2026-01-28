@@ -1,16 +1,12 @@
-"""
-SQLAlchemy database models with SQLAlchemy 2.0 type annotations.
-
-Uses Mapped[] for proper type checking support.
-"""
+from __future__ import annotations
 
 import enum
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime
+from sqlalchemy import Column, DateTime
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy import ForeignKey, String, Text, func
+from sqlalchemy import ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -45,6 +41,7 @@ class Document(Base):
         SQLEnum(DocumentStatus), default=DocumentStatus.PENDING, index=True
     )
 
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     processed_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
 
@@ -54,6 +51,7 @@ class Document(Base):
     chunks: Mapped[list["Chunk"]] = relationship(
         back_populates="document", cascade="all, delete-orphan", lazy="select"
     )
+    user: Mapped["User"] = relationship(back_populates="documents")  # type: ignore
 
     def __repr__(self) -> str:
         return f"<Document(id={self.id}, filename='{self.filename}', status='{self.status.value}')>"
