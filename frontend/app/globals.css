@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme {
+  /* The Lapis Palette */
+  --color-lapis-50: #f0f4ff;
+  --color-lapis-100: #e0eaff;
+  --color-lapis-200: #c7d9fe;
+  --color-lapis-300: #a3c0fc;
+  --color-lapis-400: #7a9ff8;
+  --color-lapis-500: #547bf3;
+  --color-lapis-600: #395bea;
+  --color-lapis-700: #2d46d3;
+  --color-lapis-800: #2839ad;
+  --color-lapis-900: #24328a;
+  --color-lapis-950: #1a2256;
+
+  /* SIMPLE FONT CONFIG */
+  /* This automatically creates the class .font-cormorant */
+  --font-cormorant: var(--font-cormorant);
+
+  /* Standard overrides */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
