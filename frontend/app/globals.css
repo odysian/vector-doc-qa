@@ -1,7 +1,6 @@
 @import "tailwindcss";
 
 @theme {
-  /* The Lapis Palette */
   --color-lapis-50: #f0f4ff;
   --color-lapis-100: #e0eaff;
   --color-lapis-200: #c7d9fe;
@@ -14,11 +13,8 @@
   --color-lapis-900: #24328a;
   --color-lapis-950: #1a2256;
 
-  /* SIMPLE FONT CONFIG */
-  /* This automatically creates the class .font-cormorant */
   --font-cormorant: var(--font-cormorant);
 
-  /* Standard overrides */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

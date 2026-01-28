@@ -23,6 +23,22 @@ interface User {
   created_at: string;
 }
 
+export interface Document {
+  id: number;
+  user_id: number;
+  filename: string;
+  file_size: number;
+  status: "pending" | "processing" | "completed" | "failed";
+  uploaded_at: string;
+  processed_at: string | null;
+  error_message: string | null;
+}
+
+interface DocumentListResponse {
+  documents: Document[];
+  total: number;
+}
+
 // Helper to get auth token from localStorage
 function getToken(): string | null {
   // Check window to prevent server crash
@@ -55,6 +71,7 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
 
 // Auth API functions
 export const api = {
+  // Register
   register: async (data: RegisterData): Promise<User> => {
     return fetchWithAuth("/api/auth/register", {
       method: "POST",
@@ -62,6 +79,7 @@ export const api = {
     });
   },
 
+  // Login
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
     return fetchWithAuth("/api/auth/login", {
       method: "POST",
@@ -69,7 +87,44 @@ export const api = {
     });
   },
 
+  // Get current user
   getCurrentUser: async (): Promise<User> => {
     return fetchWithAuth("/api/auth/me");
+  },
+
+  // Get documents
+  getDocuments: async (): Promise<DocumentListResponse> => {
+    return fetchWithAuth("/api/documents/");
+  },
+
+  // Upload document
+  uploadDocument: async (file: File): Promise<Document> => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const token = getToken();
+    const response = await fetch(`${API_URL}/api/documents/upload`, {
+      method: "POST",
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response
+        .json()
+        .catch(() => ({ detail: "Upload failed" }));
+      throw new Error(error.detail || "Upload failed");
+    }
+
+    return response.json();
+  },
+
+  // Process document
+  processDocument: async (documentId: number): Promise<{ message: string }> => {
+    return fetchWithAuth(`/api/documents/${documentId}/process`, {
+      method: "POST",
+    });
   },
 };
