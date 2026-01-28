@@ -1,4 +1,4 @@
-// frontend/app/login/page.tsx
+// frontend/app/register/page.tsx
 "use client";
 
 import { useState, type SyntheticEvent } from "react";
@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -19,13 +20,15 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await api.login({ username, password });
+      await api.register({ username, email, password });
 
-      localStorage.setItem("token", response.access_token);
+      // Auto-login after registration
+      const loginResponse = await api.login({ username, password });
+      localStorage.setItem("token", loginResponse.access_token);
 
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
       setLoading(false);
     }
@@ -41,7 +44,7 @@ export default function LoginPage() {
           <h1 className="text-6xl font-bold font-cormorant italic text-lapis-400 mb-2">
             Quaero
           </h1>
-          <p className="text-zinc-400 text-sm mt-3">Document Intelligence</p>
+          <p className="text-zinc-400 text-sm mt-3">Create your account</p>
         </div>
 
         {/* Form Card */}
@@ -64,10 +67,30 @@ export default function LoginPage() {
                 id="username"
                 type="text"
                 required
+                minLength={3}
+                maxLength={50}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full px-4 py-3 bg-zinc-950 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-lapis-500/50 focus:border-lapis-500 transition-all"
-                placeholder="Enter your username"
+                placeholder="Choose a username"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-zinc-300 mb-2"
+              >
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 bg-zinc-950 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-lapis-500/50 focus:border-lapis-500 transition-all"
+                placeholder="your@email.com"
               />
             </div>
 
@@ -82,10 +105,12 @@ export default function LoginPage() {
                 id="password"
                 type="password"
                 required
+                minLength={8}
+                maxLength={100}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-3 bg-zinc-950 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-lapis-500/50 focus:border-lapis-500 transition-all"
-                placeholder="Enter your password"
+                placeholder="At least 8 characters"
               />
             </div>
 
@@ -94,18 +119,18 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full py-3 bg-lapis-600 hover:bg-lapis-500 disabled:bg-lapis-800 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors shadow-lg shadow-lapis-900/20"
             >
-              {loading ? "Accessing..." : "Sign In"}
+              {loading ? "Creating account..." : "Register"}
             </button>
           </form>
 
           <div className="mt-6 text-center">
             <p className="text-zinc-400 text-sm">
-              Don&apos;t have access?{" "}
+              Already have an account?{" "}
               <Link
-                href="/register"
+                href="/login"
                 className="text-lapis-400 hover:text-lapis-300 transition-colors"
               >
-                Register
+                Sign in
               </Link>
             </p>
           </div>
