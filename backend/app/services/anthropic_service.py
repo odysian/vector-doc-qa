@@ -1,4 +1,4 @@
-from anthropic import Anthropic, AnthropicError
+from anthropic import Anthropic, APIStatusError
 
 from app.config import settings
 from app.utils.logging_config import get_logger
@@ -30,7 +30,11 @@ def _build_prompt(query: str, chunks: list[dict]) -> str:
 
 Question: {query}
 
-Please provide a clear, concise answer based on these excerpts. If the excerpts don't contain relevant information to answer the question, say so."""
+You are a helpful assistant. Answer the user's question using only the provided excerpts.
+
+If the specific answer is not explicitly stated, synthesize relevant details from the text that address the core of the user's inquiry.
+
+If the excerpts contain absolutely no relevant information, state that you cannot answer based on the provided text."""
 
     return prompt
 
@@ -66,9 +70,15 @@ def generate_answer(query: str, chunks: list[dict]) -> str:
         logger.info(f"Answer length: {len(answer)} characters")
         return answer
 
-    except AnthropicError as e:
-        logger.error(f"Anthropic API error: {e}")
-        raise
+    except APIStatusError as e:
+        # Check for 529 Overloaded code
+        if e.status_code == 529:
+            logger.warning("Anthropic API is overloaded (HTTP 529).")
+            return "I'm sorry, the AI service is currently overloaded. Please try again in a few minutes."
+
+        # Handle other API errors
+        logger.error(f"Anthropic API returned an error: {e.status_code} - {e.message}")
+        return "I encountered an error communicating with the AI service. Please try again later."
 
     except Exception as e:
         logger.error(f"Unexpected error generating answer: {e}", exc_info=True)

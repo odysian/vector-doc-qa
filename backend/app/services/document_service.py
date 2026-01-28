@@ -29,7 +29,7 @@ def process_document_text(document_id: int, db: Session) -> None:
     logger.info(f"Starting document processing: document_id={document_id}")
 
     # Get document
-    stmt = select(Document).where(Document.id == document_id)
+    stmt = select(Document).where(Document.id == document_id).where()
     document = db.scalar(stmt)
 
     if not document:

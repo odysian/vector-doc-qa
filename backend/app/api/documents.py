@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import get_current_user
 from app.config import settings
 from app.database import get_db
 from app.models.base import Chunk, Document, DocumentStatus
+from app.models.user import User
 from app.schemas.document import DocumentListResponse, DocumentResponse, UploadResponse
 from app.schemas.query import QueryRequest, QueryResponse
 from app.schemas.search import SearchRequest, SearchResponse, SearchResult
@@ -23,7 +25,10 @@ router = APIRouter()
 @router.post("/upload", response_model=UploadResponse, status_code=201)
 @limiter.limit("10/hour")
 async def upload_document(
-    request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Upload a PDF document.
@@ -46,6 +51,7 @@ async def upload_document(
         file_path=file_path,
         file_size=file_size,
         status=DocumentStatus.PENDING,
+        user_id=current_user.id,
     )
 
     db.add(document)
@@ -55,6 +61,7 @@ async def upload_document(
 
     return UploadResponse(
         id=document.id,
+        user_id=current_user.id,
         filename=document.filename,
         file_size=document.file_size,
         status=document.status,
@@ -64,11 +71,19 @@ async def upload_document(
 
 @router.get("/", response_model=DocumentListResponse)
 @limiter.limit("10/hour")
-def get_documents(request: Request, db: Session = Depends(get_db)):
+def get_documents(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Get all uploaded documents.
     """
-    stmt = select(Document).order_by(Document.uploaded_at.desc())
+    stmt = (
+        select(Document)
+        .where(Document.user_id == current_user.id)
+        .order_by(Document.uploaded_at.desc())
+    )
     documents = db.scalars(stmt).all()
 
     return DocumentListResponse(
@@ -78,11 +93,19 @@ def get_documents(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
-def get_document(document_id: int, db: Session = Depends(get_db)):
+def get_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Get a specific document by ID.
     """
-    stmt = select(Document).where(Document.id == document_id)
+    stmt = (
+        select(Document)
+        .where(Document.id == document_id)
+        .where(Document.user_id == current_user.id)
+    )
     document = db.scalar(stmt)
 
     if not document:
@@ -94,13 +117,21 @@ def get_document(document_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{document_id}")
-def delete_document(document_id: int, db: Session = Depends(get_db)):
+def delete_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Delete a document and its file.
     """
     logger.info(f"Deleting document_id={document_id}")
 
-    stmt = select(Document).where(Document.id == document_id)
+    stmt = (
+        select(Document)
+        .where(Document.id == document_id)
+        .where(Document.user_id == current_user.id)
+    )
     document = db.scalar(stmt)
 
     if not document:
@@ -123,13 +154,30 @@ def delete_document(document_id: int, db: Session = Depends(get_db)):
 # PROCESS DOCUMENT
 @router.post("/{document_id}/process")
 @limiter.limit("20/hour")
-def process_document(request: Request, document_id: int, db: Session = Depends(get_db)):
+def process_document(
+    request: Request,
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Process a document: extract text and create chunks.
 
     Document must be in PENDING status.
     """
     logger.info(f"Processing document_id={document_id}")
+
+    stmt = (
+        select(Document)
+        .where(Document.id == document_id)
+        .where(Document.user_id == current_user.id)
+    )
+    document = db.scalar(stmt)
+
+    if not document:
+        raise HTTPException(
+            status_code=404, detail=f"Document with ID {document_id} not found"
+        )
 
     try:
         # Call service layer
@@ -154,9 +202,14 @@ def search_document(
     search: SearchRequest,
     document_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
 
-    stmt = select(Document).where(Document.id == document_id)
+    stmt = (
+        select(Document)
+        .where(Document.id == document_id)
+        .where(Document.user_id == current_user.id)
+    )
     document = db.scalar(stmt)
 
     if not document:
@@ -202,6 +255,7 @@ def query_document(
     document_id: int,
     body: QueryRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Ask a question about a document and get an AI-generated answer.
@@ -212,7 +266,11 @@ def query_document(
 
     logger.info(f"Query request for document_id={document_id}: '{body.query}'")
 
-    stmt = select(Document).where(Document.id == document_id)
+    stmt = (
+        select(Document)
+        .where(Document.id == document_id)
+        .where(Document.user_id == current_user.id)
+    )
     document = db.scalar(stmt)
 
     if not document:

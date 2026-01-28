@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from app.api import documents
+from app.api import auth, documents
 from app.config import settings
 from app.database import init_db
 from app.utils.logging_config import get_logger, setup_logging
@@ -33,6 +33,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
+    swagger_ui_parameters={"persistAuthorization": True},
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore
@@ -47,6 +48,7 @@ app.add_middleware(
 
 
 app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 
 
 @app.get("/")
