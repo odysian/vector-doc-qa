@@ -1,5 +1,17 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+export class ApiError extends Error {
+  status: number;
+  detail: string;
+
+  constructor(status: number, detail: string) {
+    super(detail);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 interface LoginCredentials {
   username: string;
   password: string;
@@ -39,6 +51,20 @@ interface DocumentListResponse {
   total: number;
 }
 
+// Search & Query types
+export interface SearchResult {
+  chunk_id: number;
+  content: string;
+  similarity: number;
+  chunk_index: number;
+}
+
+export interface QueryResponse {
+  query: string;
+  answer: string;
+  sources: SearchResult[];
+}
+
 // Helper to get auth token from localStorage
 function getToken(): string | null {
   // Check window to prevent server crash
@@ -64,7 +90,7 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
     const error = await response
       .json()
       .catch(() => ({ detail: "Request failed" }));
-    throw new Error(error.detail || "Request failed");
+    throw new ApiError(response.status, error.detail || "Request failed");
   }
   return response.json();
 }
@@ -115,7 +141,7 @@ export const api = {
       const error = await response
         .json()
         .catch(() => ({ detail: "Upload failed" }));
-      throw new Error(error.detail || "Upload failed");
+      throw new ApiError(response.status, error.detail || "Upload failed");
     }
 
     return response.json();
@@ -125,6 +151,17 @@ export const api = {
   processDocument: async (documentId: number): Promise<{ message: string }> => {
     return fetchWithAuth(`/api/documents/${documentId}/process`, {
       method: "POST",
+    });
+  },
+
+  // Query document (RAG Q&A)
+  queryDocument: async (
+    documentId: number,
+    query: string
+  ): Promise<QueryResponse> => {
+    return fetchWithAuth(`/api/documents/${documentId}/query`, {
+      method: "POST",
+      body: JSON.stringify({ query }),
     });
   },
 };

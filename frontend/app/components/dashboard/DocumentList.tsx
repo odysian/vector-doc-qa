@@ -4,9 +4,10 @@ import { formatFileSize, formatDate } from "@/lib/utils";
 
 interface DocumentListProps {
   documents: Document[];
+  onDocumentClick: (document: Document) => void;
 }
 
-export function DocumentList({ documents }: DocumentListProps) {
+export function DocumentList({ documents, onDocumentClick }: DocumentListProps) {
   const getStatusColor = (status: Document["status"]) => {
     switch (status) {
       case "completed":
@@ -33,7 +34,8 @@ export function DocumentList({ documents }: DocumentListProps) {
       {documents.map((doc) => (
         <div
           key={doc.id}
-          className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors"
+          onClick={() => onDocumentClick(doc)}
+          className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-lapis-500/50 hover:bg-zinc-800/50 transition-colors cursor-pointer"
         >
           <div className="flex justify-between items-start">
             <div className="flex-1">
