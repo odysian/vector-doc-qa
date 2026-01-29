@@ -1,9 +1,8 @@
 # backend/app/database.py
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
-
 from app.config import settings
 from app.utils.logging_config import get_logger
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 logger = get_logger(__name__)
 
@@ -34,7 +33,11 @@ class Base(DeclarativeBase):
 
 
 def init_db():
-    """Initialize database: enable pgvector, create tables."""
+    """Initialize database: enable pgvector extension.
+
+    Note: Table creation is handled by Alembic migrations, not here.
+    Run 'alembic upgrade head' to apply migrations.
+    """
     logger.info("Initializing database...")
 
     # Enable pgvector extension
@@ -53,9 +56,9 @@ def init_db():
             logger.info(f"Warning: Could not enable pgvector extension: {e}")
             logger.info("Make sure you're using the ankane/pgvector Docker image")
 
-    # Create all tables
-    Base.metadata.create_all(bind=engine)
-    logger.info("Database tables created successfully!")
+    logger.info(
+        "Database initialization complete. Use 'alembic upgrade head' to apply migrations."
+    )
 
 
 def get_db():

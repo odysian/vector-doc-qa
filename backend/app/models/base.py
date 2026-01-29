@@ -3,13 +3,12 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
+from app.database import Base
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Column, DateTime
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.database import Base
 
 
 class DocumentStatus(str, enum.Enum):
@@ -52,6 +51,9 @@ class Document(Base):
         back_populates="document", cascade="all, delete-orphan", lazy="select"
     )
     user: Mapped["User"] = relationship(back_populates="documents")  # type: ignore
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="document", cascade="all, delete-orphan", lazy="select"
+    )  # type: ignore
 
     def __repr__(self) -> str:
         return f"<Document(id={self.id}, filename='{self.filename}', status='{self.status.value}')>"

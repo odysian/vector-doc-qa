@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.models.base import Base
 from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
-
-from app.models.base import Base
 
 
 class User(Base):
@@ -27,3 +26,6 @@ class User(Base):
     )
 
     documents: Mapped[list["Document"]] = relationship(back_populates="user")  # type: ignore
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", lazy="select"
+    )  # type: ignore
