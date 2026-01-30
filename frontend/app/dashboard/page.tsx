@@ -1,4 +1,7 @@
-// frontend/app/dashboard/page.tsx
+/**
+ * Dashboard: main app view after login. Lists documents, uploads PDFs, and
+ * opens a document in ChatWindow for RAG Q&A. Redirects to login if not authenticated.
+ */
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
@@ -8,6 +11,10 @@ import { UploadZone } from "../components/dashboard/UploadZone";
 import { DocumentList } from "../components/dashboard/DocumentList";
 import { ChatWindow } from "../components/dashboard/ChatWindow";
 
+/**
+ * Renders header (logo + logout), then either document list + upload zone or
+ * ChatWindow when a document is selected. Loads documents on mount; 401 responses redirect to login.
+ */
 export default function DashboardPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
@@ -15,16 +22,13 @@ export default function DashboardPage() {
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const router = useRouter();
 
-  // Fetch Data
   const loadDocuments = useCallback(async () => {
     try {
       const response = await api.getDocuments();
       setDocuments(response.documents);
     } catch (err) {
-      // Handle API errors with proper status code checking
       if (err instanceof ApiError) {
         if (err.status === 401) {
-          // Unauthorized - redirect to login
           router.push("/login");
           return;
         }
@@ -43,7 +47,6 @@ export default function DashboardPage() {
     loadDocuments();
   }, [router, loadDocuments]);
 
-  // Handle Action
   const handleUpload = async (file: File) => {
     setError("");
     try {
@@ -98,10 +101,8 @@ export default function DashboardPage() {
       {/* Main Content */}
       <div className="max-w-6xl mx-auto px-4 py-8">
         {selectedDocument ? (
-          // Show ChatWindow when a document is selected
           <ChatWindow document={selectedDocument} onBack={handleBackToDocuments} />
         ) : (
-          // Show document list and upload zone when no document is selected
           <>
             <UploadZone onUpload={handleUpload} />
 

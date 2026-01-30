@@ -1,4 +1,6 @@
-// frontend/app/login/page.tsx
+/**
+ * Login page: username/password form. On success, stores token and redirects to dashboard.
+ */
 "use client";
 
 import { useState, type SyntheticEvent } from "react";
@@ -6,6 +8,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
+/**
+ * Renders centered login form. Submits to api.login, saves access_token to
+ * localStorage, then redirects to /dashboard. Link to register for new users.
+ */
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

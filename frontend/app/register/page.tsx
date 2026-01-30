@@ -1,4 +1,7 @@
-// frontend/app/register/page.tsx
+/**
+ * Register page: sign-up form (username, email, password). Creates account then
+ * auto-logs in and redirects to dashboard.
+ */
 "use client";
 
 import { useState, type SyntheticEvent } from "react";
@@ -6,6 +9,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
+/**
+ * Renders centered registration form. On submit: api.register, then api.login
+ * to get token and redirect. Link to login for existing users.
+ */
 export default function RegisterPage() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");

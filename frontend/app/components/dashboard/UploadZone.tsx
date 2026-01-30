@@ -1,4 +1,7 @@
-// frontend/components/dashboard/UploadZone.tsx
+/**
+ * Upload zone: click-to-select area for PDF uploads. Parent handles the actual
+ * API call via onUpload; this component only handles file pick and loading state.
+ */
 "use client";
 
 import { useState } from "react";
@@ -8,6 +11,10 @@ interface UploadZoneProps {
   disabled?: boolean;
 }
 
+/**
+ * Renders a dashed-border area that opens the file picker. Accepts PDF only;
+ * shows "Uploading..." while onUpload is in progress.
+ */
 export function UploadZone({ onUpload, disabled }: UploadZoneProps) {
   const [uploading, setUploading] = useState(false);
 
@@ -20,7 +27,7 @@ export function UploadZone({ onUpload, disabled }: UploadZoneProps) {
       await onUpload(file);
     } finally {
       setUploading(false);
-      e.target.value = ""; // Reset input
+      e.target.value = ""; // Allow selecting the same file again
     }
   };
 

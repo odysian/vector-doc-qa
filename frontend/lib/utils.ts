@@ -1,4 +1,6 @@
-// frontend/lib/utils.ts
+/**
+ * Helper functions for formatting file size and dates
+ */
 
 export function formatFileSize(bytes: number) {
   if (bytes < 1024) return bytes + " B";

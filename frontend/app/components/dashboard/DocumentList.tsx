@@ -1,4 +1,7 @@
-// frontend/components/dashboard/DocumentList.tsx
+/**
+ * Document List: Display area for uploaded documents and their processing
+ * status.
+ */
 import { type Document } from "@/lib/api";
 import { formatFileSize, formatDate } from "@/lib/utils";
 
@@ -7,6 +10,9 @@ interface DocumentListProps {
   onDocumentClick: (document: Document) => void;
 }
 
+/**
+ * Renders list of clickable documents. Clicking opens ChatWindow component.
+ */
 export function DocumentList({ documents, onDocumentClick }: DocumentListProps) {
   const getStatusColor = (status: Document["status"]) => {
     switch (status) {

@@ -1,3 +1,8 @@
+/**
+ * Chat Window: Pop-up window for querying documents using RAG. Displays
+ * conversation and context.
+ */
+
 "use client";
 
 import { useState, useRef, useEffect, SyntheticEvent } from "react";
@@ -14,6 +19,9 @@ interface ChatWindowProps {
   onBack: () => void;
 }
 
+/**
+ * Renders the pop up window with query input and message history.
+ */
 export function ChatWindow({ document, onBack }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -34,15 +42,12 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
     const userMsg = input.trim();
     setInput("");
 
-    // Add user message
     setMessages((prev) => [...prev, { role: "user", content: userMsg }]);
     setLoading(true);
 
     try {
-      // Call the API
       const response = await api.queryDocument(document.id, userMsg);
 
-      // Add AI response with Sources
       setMessages((prev) => [
         ...prev,
         {
