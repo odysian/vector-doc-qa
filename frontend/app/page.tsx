@@ -36,13 +36,13 @@ export default function Home() {
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link
             href="/login"
-            className="inline-flex items-center justify-center py-3 px-8 bg-lapis-600 hover:bg-lapis-500 text-white font-medium rounded-lg transition-colors shadow-lg shadow-lapis-900/20 focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-950"
+            className="inline-flex items-center justify-center py-3 px-8 bg-lapis-600 hover:bg-lapis-500 text-white font-medium rounded-lg transition-colors shadow-lg shadow-lapis-900/20 focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-950 cursor-pointer"
           >
             Sign In
           </Link>
           <Link
             href="/register"
-            className="inline-flex items-center justify-center py-3 px-8 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-lg border border-zinc-700 transition-colors focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-950"
+            className="inline-flex items-center justify-center py-3 px-8 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-lg border border-zinc-700 transition-colors focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-950 cursor-pointer"
           >
             Register
           </Link>

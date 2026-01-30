@@ -6,6 +6,7 @@
 "use client";
 
 import { useState, useRef, useEffect, SyntheticEvent } from "react";
+import { ArrowLeft } from "lucide-react";
 import { type Document, api, type QueryResponse, ApiError } from "@/lib/api";
 
 interface Message {
@@ -137,20 +138,22 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
   };
 
   return (
-    <div className="flex flex-col h-[600px] bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shadow-2xl">
+    <div className="flex flex-col min-h-[320px] h-[calc(100vh-10rem)] bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shadow-2xl">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50 backdrop-blur">
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={onBack}
-            className="text-zinc-400 hover:text-white transition-colors text-sm font-medium"
+            title="Back to Documents"
+            className="text-zinc-400 hover:text-white transition-colors cursor-pointer p-1 -m-1 rounded focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-900"
+            aria-label="Back to Documents"
           >
-            ← Back to Documents
+            <ArrowLeft size={24} strokeWidth={2} className="shrink-0" />
           </button>
           <div className="h-4 w-px bg-zinc-700"></div>
-          <h2 className="font-medium text-zinc-100 flex items-center gap-2">
-            <span className="text-zinc-400">Context:</span>
-            <span className="text-lapis-400 italic">{document.filename}</span>
+          <h2 className="font-medium text-zinc-100 text-lapis-400 italic truncate">
+            {document.filename}
           </h2>
         </div>
       </div>
@@ -225,7 +228,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                 <button
                   type="button"
                   onClick={() => toggleSources(i)}
-                  className="flex items-center gap-2 text-[10px] font-bold text-lapis-400 uppercase tracking-wider hover:text-lapis-300 transition-colors"
+                  className="flex items-center gap-2 text-[10px] font-bold text-lapis-400 uppercase tracking-wider hover:text-lapis-300 transition-colors cursor-pointer"
                 >
                   <svg
                     className={`w-3 h-3 shrink-0 transition-transform ${expandedSourceIndices.has(i) ? "rotate-90" : ""}`}
@@ -280,7 +283,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                             <button
                               type="button"
                               onClick={() => toggleSourceCard(i, idx)}
-                              className="mt-2 text-[10px] text-lapis-400 hover:text-lapis-300 transition-colors"
+                              className="mt-2 text-[10px] text-lapis-400 hover:text-lapis-300 transition-colors cursor-pointer"
                             >
                               {isExpanded ? "Show less ▲" : "Show full context ▼"}
                             </button>
@@ -328,7 +331,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="bg-lapis-600 hover:bg-lapis-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white px-6 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-lapis-900/20 flex items-center"
+            className="bg-lapis-600 hover:bg-lapis-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white px-6 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-lapis-900/20 flex items-center cursor-pointer"
           >
             {loading ? "Sending..." : "Send"}
           </button>

@@ -124,7 +124,7 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-lapis-600 hover:bg-lapis-500 disabled:bg-lapis-800 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors shadow-lg shadow-lapis-900/20"
+              className="w-full py-3 bg-lapis-600 hover:bg-lapis-500 disabled:bg-lapis-800 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors shadow-lg shadow-lapis-900/20 cursor-pointer"
             >
               {loading ? "Creating account..." : "Register"}
             </button>
@@ -135,7 +135,7 @@ export default function RegisterPage() {
               Already have an account?{" "}
               <Link
                 href="/login"
-                className="text-lapis-400 hover:text-lapis-300 transition-colors"
+                className="text-lapis-400 hover:text-lapis-300 transition-colors cursor-pointer"
               >
                 Sign in
               </Link>

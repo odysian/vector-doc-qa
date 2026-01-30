@@ -98,7 +98,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-lapis-600 hover:bg-lapis-500 disabled:bg-lapis-800 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors shadow-lg shadow-lapis-900/20"
+              className="w-full py-3 bg-lapis-600 hover:bg-lapis-500 disabled:bg-lapis-800 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors shadow-lg shadow-lapis-900/20 cursor-pointer"
             >
               {loading ? "Accessing..." : "Sign In"}
             </button>
@@ -109,7 +109,7 @@ export default function LoginPage() {
               Don&apos;t have access?{" "}
               <Link
                 href="/register"
-                className="text-lapis-400 hover:text-lapis-300 transition-colors"
+                className="text-lapis-400 hover:text-lapis-300 transition-colors cursor-pointer"
               >
                 Register
               </Link>

@@ -90,8 +90,9 @@ export default function DashboardPage() {
             Quaero
           </h1>
           <button
+            type="button"
             onClick={handleLogout}
-            className="text-sm text-zinc-400 hover:text-zinc-300"
+            className="text-sm text-zinc-400 hover:text-zinc-300 cursor-pointer"
           >
             Logout
           </button>
