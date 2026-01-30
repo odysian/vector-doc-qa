@@ -26,7 +26,41 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [expandedSourceIndices, setExpandedSourceIndices] = useState<Set<number>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const toggleSources = (index: number) => {
+    setExpandedSourceIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
+
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        setLoadingHistory(true);
+        const response = await api.getMessages(document.id);
+
+        const loadedMessages: Message[] = response.messages.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+          sources: msg.sources as QueryResponse["sources"],
+        }));
+        setMessages(loadedMessages);
+      } catch (err) {
+        console.error("Failed to load message history:", err);
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+
+    loadHistory();
+  }, [document.id]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -34,6 +68,9 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+
+
 
   const handleSubmit = async (e: SyntheticEvent) => {
     e.preventDefault();
@@ -105,12 +142,28 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
       {/* Messages Area */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth"
+        className="messages-scroll flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth"
       >
-        {messages.length === 0 && (
+        {loadingHistory && (
+          <div className="h-full flex items-center justify-center text-zinc-500">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" />
+              <div
+                className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
+                style={{ animationDelay: "150ms" }}
+              />
+              <div
+                className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
+                style={{ animationDelay: "300ms" }}
+              />
+              <span className="ml-2">Loading conversation...</span>
+            </div>
+          </div>
+        )}
+
+        {!loadingHistory && messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-zinc-500 space-y-4">
             <div className="p-4 bg-zinc-800/50 rounded-full">
-              {/* Simple 'Chat' Icon placeholder */}
               <svg
                 className="w-8 h-8 text-lapis-400"
                 fill="none"
@@ -129,7 +182,8 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
           </div>
         )}
 
-        {messages.map((msg, i) => (
+        {!loadingHistory &&
+          messages.map((msg, i) => (
           <div
             key={i}
             className={`flex flex-col ${
@@ -149,38 +203,55 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
               </p>
             </div>
 
-            {/* Citations / Sources (Only for Assistant) */}
+            {/* Citations / Sources (collapsed by default, expand on click) */}
             {msg.sources && msg.sources.length > 0 && (
-              <div className="mt-2 ml-2 max-w-[85%] space-y-2">
-                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-                  <span>Sources</span>
-                  <span className="bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-full text-[9px]">
-                    {msg.sources.length}
-                  </span>
-                </p>
-                <div className="grid gap-2">
-                  {msg.sources.map((source, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-zinc-950/50 border border-zinc-800/50 p-3 rounded-lg hover:border-lapis-500/30 transition-colors group"
-                    >
-                      <p className="text-xs text-zinc-400 italic mb-1 group-hover:text-lapis-300">
-                        &quot;...{source.content.substring(0, 120).trim()}...&quot;
-                      </p>
-                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] text-zinc-600">
-                          Relevance: {(source.similarity * 100).toFixed(0)}%
-                        </span>
+              <div className="mt-2 ml-2 max-w-[85%]">
+                <button
+                  type="button"
+                  onClick={() => toggleSources(i)}
+                  className="flex items-center gap-2 text-[10px] font-bold text-lapis-400 uppercase tracking-wider hover:text-lapis-300 transition-colors"
+                >
+                  <svg
+                    className={`w-3 h-3 shrink-0 transition-transform ${expandedSourceIndices.has(i) ? "rotate-90" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
+                  <span>Sources ({msg.sources.length})</span>
+                </button>
+                {expandedSourceIndices.has(i) && (
+                  <div className="mt-2 grid gap-2">
+                    {msg.sources.map((source, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-zinc-950/50 border border-zinc-800/50 p-3 rounded-lg hover:border-lapis-500/30 transition-colors group"
+                      >
+                        <p className="text-xs text-zinc-400 italic mb-1 group-hover:text-lapis-300">
+                          &quot;...{source.content.substring(0, 120).trim()}...&quot;
+                        </p>
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] text-zinc-600">
+                            Relevance: {(source.similarity * 100).toFixed(0)}%
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
         ))}
 
-        {loading && (
+        {!loadingHistory && loading && (
           <div className="flex justify-start">
             <div className="bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-2xl rounded-tl-none p-4 flex items-center gap-2">
               <div

@@ -37,3 +37,37 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
 }
+
+/* Dark-theme scrollbars: target scrollable areas explicitly so styles apply reliably */
+.messages-scroll,
+.overflow-y-auto,
+.overflow-auto {
+  scrollbar-width: thin;
+  scrollbar-color: #52525b #27272a;
+}
+
+.messages-scroll::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-auto::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.messages-scroll::-webkit-scrollbar-track,
+.overflow-y-auto::-webkit-scrollbar-track,
+.overflow-auto::-webkit-scrollbar-track {
+  background: #27272a !important;
+}
+
+.messages-scroll::-webkit-scrollbar-thumb,
+.overflow-y-auto::-webkit-scrollbar-thumb,
+.overflow-auto::-webkit-scrollbar-thumb {
+  background: #52525b !important;
+  border-radius: 4px;
+}
+
+.messages-scroll::-webkit-scrollbar-thumb:hover,
+.overflow-y-auto::-webkit-scrollbar-thumb:hover,
+.overflow-auto::-webkit-scrollbar-thumb:hover {
+  background: #71717a !important;
+}
