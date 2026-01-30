@@ -28,13 +28,29 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [expandedSourceIndices, setExpandedSourceIndices] = useState<Set<number>>(new Set());
+  const [expandedSourceCards, setExpandedSourceCards] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const toggleSources = (index: number) => {
+  /** Toggle whether the whole "Sources" block for a message is open or collapsed. */
+  const toggleSources = (messageIndex: number) => {
     setExpandedSourceIndices((prev) => {
       const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
+      if (next.has(messageIndex)) next.delete(messageIndex);
+      else next.add(messageIndex);
+      return next;
+    });
+  };
+
+  /**
+   * Toggle whether one source card shows full text or just the preview.
+   * Key is "messageIndex-sourceIndex" so state doesn't clash between messages.
+   */
+  const toggleSourceCard = (messageIndex: number, sourceIndex: number) => {
+    const key = `${messageIndex}-${sourceIndex}`;
+    setExpandedSourceCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -229,21 +245,49 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                 </button>
                 {expandedSourceIndices.has(i) && (
                   <div className="mt-2 grid gap-2">
-                    {msg.sources.map((source, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-zinc-950/50 border border-zinc-800/50 p-3 rounded-lg hover:border-lapis-500/30 transition-colors group"
-                      >
-                        <p className="text-xs text-zinc-400 italic mb-1 group-hover:text-lapis-300">
-                          &quot;...{source.content.substring(0, 120).trim()}...&quot;
-                        </p>
-                        <div className="flex justify-between items-center">
-                          <span className="text-[10px] text-zinc-600">
-                            Relevance: {(source.similarity * 100).toFixed(0)}%
-                          </span>
+                    {msg.sources.map((source, idx) => {
+                      const cardKey = `${i}-${idx}`;
+                      const isExpanded = expandedSourceCards.has(cardKey);
+                      const previewLength = 250;
+                      const preview = source.content.substring(0, previewLength).trim();
+                      const remainder = source.content.substring(previewLength).trim();
+
+                      return (
+                        <div
+                          key={idx}
+                          className="bg-zinc-950/50 border border-zinc-800/50 p-3 rounded-lg hover:border-lapis-500/30 transition-colors"
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="bg-lapis-600 text-white text-[10px] font-bold px-2 py-0.5 rounded">
+                              {idx + 1}
+                            </span>
+                            <span className="text-[10px] text-zinc-500">
+                              Relevance: {(source.similarity * 100).toFixed(0)}%
+                            </span>
+                            <span className="text-[10px] text-zinc-600">
+                              Excerpt {source.chunk_index}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-zinc-400 italic">
+                            &quot;{preview}
+                            {!isExpanded && source.content.length > previewLength ? "..." : ""}
+                            {isExpanded && remainder ? " " : ""}
+                            {isExpanded && remainder ? remainder : ""}&quot;
+                          </p>
+
+                          {source.content.length > previewLength && (
+                            <button
+                              type="button"
+                              onClick={() => toggleSourceCard(i, idx)}
+                              className="mt-2 text-[10px] text-lapis-400 hover:text-lapis-300 transition-colors"
+                            >
+                              {isExpanded ? "Show less ▲" : "Show full context ▼"}
+                            </button>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
