@@ -72,11 +72,50 @@ export default function DashboardPage() {
   };
 
   const handleDocumentClick = (document: Document) => {
+    if (document.status !== "completed") return;
     setSelectedDocument(document);
   };
 
   const handleBackToDocuments = () => {
     setSelectedDocument(null);
+  };
+
+  const handleProcessDocument = async (doc: Document) => {
+    setError("");
+    try {
+      await api.processDocument(doc.id);
+      await loadDocuments();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 401) {
+          router.push("/login");
+          return;
+        }
+        setError(err.detail);
+      } else {
+        setError("Failed to start processing");
+      }
+    }
+  };
+
+  const handleDeleteDocument = async (doc: Document) => {
+    if (!confirm(`Delete "${doc.filename}"? This cannot be undone.`)) return;
+    setError("");
+    try {
+      await api.deleteDocument(doc.id);
+      if (selectedDocument?.id === doc.id) setSelectedDocument(null);
+      await loadDocuments();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 401) {
+          router.push("/login");
+          return;
+        }
+        setError(err.detail);
+      } else {
+        setError("Failed to delete document");
+      }
+    }
   };
 
   return (
@@ -125,7 +164,12 @@ export default function DashboardPage() {
               Your Documents ({documents.length})
             </h2>
 
-            <DocumentList documents={documents} onDocumentClick={handleDocumentClick} />
+            <DocumentList
+              documents={documents}
+              onDocumentClick={handleDocumentClick}
+              onProcessDocument={handleProcessDocument}
+              onDeleteDocument={handleDeleteDocument}
+            />
           </>
         )}
       </div>

@@ -112,6 +112,13 @@ export const api = {
     });
   },
 
+  /** Delete a document and its file. */
+  deleteDocument: async (documentId: number): Promise<{ message: string }> => {
+    return apiRequest(`/api/documents/${documentId}`, {
+      method: "DELETE",
+    });
+  },
+
   /** RAG Q&A: ask a question about a document and get answer + sources. */
   queryDocument: async (
     documentId: number,
