@@ -38,7 +38,17 @@ body {
   font-family: var(--font-sans);
 }
 
-/* Dark-theme scrollbars: target scrollable areas explicitly so styles apply reliably */
+/* Lapis radial gradient overlay*/
+.quaero-gradient-overlay {
+  background-image: radial-gradient(
+    ellipse 100% 60% at 50% 0%,
+    rgba(84, 123, 243, 0.4) 0%,
+    rgba(9, 9, 11, 0.4) 50%,
+    transparent 70%
+  );
+}
+
+/* Dark-theme scrollbars*/
 .messages-scroll,
 .overflow-y-auto,
 .overflow-auto {

@@ -20,7 +20,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-950 p-4">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,var(--tw-gradient-stops))] from-lapis-500/20 via-zinc-950 to-zinc-950" />
+      <div className="absolute inset-0 quaero-gradient-overlay" aria-hidden />
 
       <main className="relative w-full max-w-lg text-center">
         <h1 className="text-6xl sm:text-7xl font-bold font-cormorant italic text-lapis-400 mb-3">
