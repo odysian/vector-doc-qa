@@ -22,6 +22,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
+    # pgvector must exist before creating chunks.embedding column.
+    # Supabase has it available but it must be enabled (run before app/migrations).
+    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
     op.create_table(
         "users",
         sa.Column("id", sa.Integer(), nullable=False),
