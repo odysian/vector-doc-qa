@@ -3,10 +3,9 @@ import secrets
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import HTTPException, UploadFile
-
 from app.config import settings
-from app.constants import UPLOAD_CHUNK_SIZE_BYTES
+from app.constants import PDF_MAGIC_BYTES, UPLOAD_CHUNK_SIZE_BYTES
+from fastapi import HTTPException, UploadFile
 
 
 # File Validation
@@ -19,6 +18,9 @@ def validate_file_upload(file: UploadFile) -> None:
     2. File extension is allowed (.pdf)
     3. File size is within limit
 
+    Note: Content (magic-byte) validation is done in save_upload_file to avoid
+    consuming the stream here. Extension-only checks do not block malware
+    disguised as PDFs; magic bytes do.
     Raises HTTPException if validation fails.
     """
 
@@ -98,10 +100,23 @@ async def save_upload_file(file: UploadFile) -> tuple[str, int]:
     # Read and write file in chunks (memory efficient)
     file_size = 0
     chunk_size = UPLOAD_CHUNK_SIZE_BYTES  # 1MB chunks
+    first_chunk = True
+    is_pdf = unique_filename.lower().endswith(".pdf")
 
     try:
         with open(file_path, "wb") as f:
             while chunk := await file.read(chunk_size):
+                # Reject non-PDF content when extension is .pdf (blocks malware renamed as .pdf)
+                if first_chunk and is_pdf and not chunk.startswith(PDF_MAGIC_BYTES):
+                    f.close()
+                    if file_path.exists():
+                        os.remove(file_path)
+                    raise HTTPException(
+                        status_code=400,
+                        detail="File content does not match PDF format. Only real PDF files are allowed.",
+                    )
+                first_chunk = False
+
                 file_size += len(chunk)
 
                 # Check size during read
