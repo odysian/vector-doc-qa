@@ -1,26 +1,69 @@
 /**
- * Document List: Display area for uploaded documents and their processing
- * status. Only completed documents open the chat; others show disabled state.
- * Process (pending/failed) and Delete actions per row.
+ * Document List: Sidebar list. Row 1: title + buttons. Row 2: status icon + size.
+ * Upload date moved to chat header. Compact spacing.
  */
 "use client";
 
 import { useState } from "react";
-import { Play, Trash2, Loader2 } from "lucide-react";
+import {
+  Play,
+  Trash2,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Clock,
+} from "lucide-react";
 import { type Document } from "@/lib/api";
-import { formatFileSize, formatDate } from "@/lib/utils";
+import { formatFileSize } from "@/lib/utils";
 
 interface DocumentListProps {
   documents: Document[];
   onDocumentClick: (document: Document) => void;
   onProcessDocument: (document: Document) => Promise<void>;
-  onDeleteDocument: (document: Document) => Promise<void>;
+  onDeleteDocument: (document: Document) => void;
 }
 
-/**
- * Renders list of documents. Completed docs open ChatWindow; processing/pending/failed
- * show disabled styling. Process button for pending/failed; Delete for all.
- */
+function StatusIcon({
+  status,
+  processing,
+}: {
+  status: Document["status"];
+  processing: boolean;
+}) {
+  const base = "w-4 h-4 shrink-0";
+  if (processing)
+    return (
+      <Loader2
+        className={`${base} text-yellow-400 animate-spin`}
+        aria-label="Processing"
+      />
+    );
+  switch (status) {
+    case "completed":
+      return (
+        <CheckCircle2
+          className={`${base} text-green-400`}
+          aria-label="Completed"
+        />
+      );
+    case "failed":
+      return (
+        <XCircle className={`${base} text-red-400`} aria-label="Failed" />
+      );
+    case "pending":
+      return (
+        <Clock className={`${base} text-zinc-400`} aria-label="Pending" />
+      );
+    default:
+      return (
+        <Loader2
+          className={`${base} text-yellow-400 animate-spin`}
+          aria-label="Processing"
+        />
+      );
+  }
+}
+
 export function DocumentList({
   documents,
   onDocumentClick,
@@ -28,20 +71,6 @@ export function DocumentList({
   onDeleteDocument,
 }: DocumentListProps) {
   const [processingId, setProcessingId] = useState<number | null>(null);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
-
-  const getStatusColor = (status: Document["status"]) => {
-    switch (status) {
-      case "completed":
-        return "text-green-400 bg-green-900/20";
-      case "processing":
-        return "text-yellow-400 bg-yellow-900/20";
-      case "failed":
-        return "text-red-400 bg-red-900/20";
-      default:
-        return "text-zinc-400 bg-zinc-800/50";
-    }
-  };
 
   const isClickable = (doc: Document) => doc.status === "completed";
   const canProcess = (doc: Document) =>
@@ -58,32 +87,25 @@ export function DocumentList({
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent, doc: Document) => {
+  const handleDelete = (e: React.MouseEvent, doc: Document) => {
     e.stopPropagation();
-    if (deletingId !== null) return;
-    setDeletingId(doc.id);
-    try {
-      await onDeleteDocument(doc);
-    } finally {
-      setDeletingId(null);
-    }
+    onDeleteDocument(doc);
   };
 
   if (documents.length === 0) {
     return (
-      <div className="text-center py-12 text-zinc-500">
-        No documents yet. Upload a PDF to get started.
-      </div>
+      <p className="text-center py-6 text-zinc-500 text-sm">
+        No documents yet. Upload a PDF above.
+      </p>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {documents.map((doc) => {
         const clickable = isClickable(doc);
         const showProcess = canProcess(doc);
         const isProcessing = processingId === doc.id;
-        const isDeleting = deletingId === doc.id;
         return (
           <div
             key={doc.id}
@@ -97,73 +119,63 @@ export function DocumentList({
               }
             }}
             aria-disabled={!clickable}
-            className={`rounded-lg p-4 border transition-colors ${
+            className={`rounded-lg border transition-colors p-3 ${
               clickable
-                ? "bg-zinc-900 border-zinc-800 hover:border-lapis-500/50 hover:bg-zinc-800/50 cursor-pointer"
-                : "bg-zinc-900/70 border-zinc-800 cursor-not-allowed opacity-75"
+                ? "bg-zinc-800/50 border-zinc-700 hover:border-lapis-500/40 hover:bg-zinc-800 cursor-pointer"
+                : "bg-zinc-800/30 border-zinc-800 cursor-not-allowed opacity-80"
             }`}
           >
-            <div className="flex justify-between items-start gap-3">
-              <div className="flex-1 min-w-0">
-                <h3 className="text-zinc-100 font-medium mb-1 truncate">
-                  {doc.filename}
-                </h3>
-                <div className="flex items-center gap-3 text-sm text-zinc-400">
-                  <span>{formatFileSize(doc.file_size)}</span>
-                  <span>•</span>
-                  <span>{formatDate(doc.uploaded_at)}</span>
-                </div>
-                {doc.status === "failed" && doc.error_message && (
-                  <p
-                    className="mt-2 text-xs text-red-400/90 truncate"
-                    title={doc.error_message}
-                  >
-                    {doc.error_message}
-                  </p>
-                )}
-                {doc.status === "processing" && (
-                  <p className="mt-2 text-xs text-zinc-500">
-                    Processing… check back in a moment.
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
+            {/* Row 1: title + buttons */}
+            <div className="flex items-center gap-2 min-w-0">
+              <h3
+                className="text-zinc-100 font-medium text-sm truncate flex-1 min-w-0"
+                title={doc.filename}
+              >
+                {doc.filename}
+              </h3>
+              <div className="flex items-center gap-1 shrink-0">
                 {showProcess && (
                   <button
                     type="button"
                     onClick={(e) => handleProcess(e, doc)}
                     disabled={isProcessing || processingId !== null}
-                    title={doc.status === "failed" ? "Retry processing" : "Process document"}
-                    className="p-2 rounded-lg text-lapis-400 hover:bg-lapis-500/20 hover:text-lapis-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                    aria-label={doc.status === "failed" ? "Retry processing" : "Process document"}
+                    title={doc.status === "failed" ? "Retry" : "Process"}
+                    className="p-1.5 rounded text-lapis-400 hover:bg-lapis-500/20 hover:text-lapis-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    aria-label={doc.status === "failed" ? "Retry" : "Process"}
                   >
                     {isProcessing ? (
-                      <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                      <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      <Play className="w-4 h-4" aria-hidden />
+                      <Play className="w-4 h-4" />
                     )}
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={(e) => handleDelete(e, doc)}
-                  disabled={isDeleting}
-                  title="Delete document"
-                  className="p-2 rounded-lg text-zinc-400 hover:bg-red-500/20 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                  aria-label="Delete document"
+                  title="Delete"
+                  className="p-1.5 rounded text-zinc-400 hover:bg-red-500/20 hover:text-red-400 transition-colors cursor-pointer"
+                  aria-label="Delete"
                 >
-                  {isDeleting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
-                    ) : (
-                      <Trash2 className="w-4 h-4" aria-hidden />
-                    )}
+                  <Trash2 className="w-4 h-4" />
                 </button>
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(doc.status)}`}
-                >
-                  {doc.status}
-                </span>
               </div>
+            </div>
+            {/* Row 2: status icon + file size */}
+            <div className="flex items-center gap-2 mt-1.5 text-xs text-zinc-400">
+              <StatusIcon
+                status={doc.status}
+                processing={doc.status === "processing" || isProcessing}
+              />
+              <span>{formatFileSize(doc.file_size)}</span>
+              {doc.status === "failed" && doc.error_message && (
+                <span
+                  className="truncate text-red-400/90 max-w-[120px]"
+                  title={doc.error_message}
+                >
+                  Failed
+                </span>
+              )}
             </div>
           </div>
         );

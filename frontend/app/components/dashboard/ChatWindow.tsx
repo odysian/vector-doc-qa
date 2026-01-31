@@ -8,6 +8,7 @@
 import { useState, useRef, useEffect, SyntheticEvent } from "react";
 import { ArrowLeft } from "lucide-react";
 import { type Document, api, type QueryResponse, ApiError } from "@/lib/api";
+import { formatDate } from "@/lib/utils";
 
 interface Message {
   role: "user" | "assistant";
@@ -138,23 +139,28 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
   };
 
   return (
-    <div className="flex flex-col min-h-[320px] h-[calc(100vh-10rem)] bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shadow-2xl">
+    <div className="flex flex-col h-full min-h-[280px] bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shadow-xl">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50 backdrop-blur">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <button
             type="button"
             onClick={onBack}
             title="Back to Documents"
-            className="text-zinc-400 hover:text-white transition-colors cursor-pointer p-1 -m-1 rounded focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-900"
+            className="text-zinc-400 hover:text-white transition-colors cursor-pointer p-1 -m-1 rounded focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-900 shrink-0"
             aria-label="Back to Documents"
           >
-            <ArrowLeft size={24} strokeWidth={2} className="shrink-0" />
+            <ArrowLeft size={24} strokeWidth={2} />
           </button>
-          <div className="h-4 w-px bg-zinc-700"></div>
-          <h2 className="font-medium text-zinc-100 text-lapis-400 italic truncate">
-            {document.filename}
-          </h2>
+          <div className="h-4 w-px bg-zinc-700 shrink-0" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <h2 className="font-medium text-lapis-400 italic truncate text-sm sm:text-base">
+              {document.filename}
+            </h2>
+            <p className="text-xs text-zinc-500 truncate mt-0.5">
+              Uploaded {formatDate(document.uploaded_at)}
+            </p>
+          </div>
         </div>
       </div>
 

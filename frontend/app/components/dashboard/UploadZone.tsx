@@ -32,9 +32,9 @@ export function UploadZone({ onUpload, disabled }: UploadZoneProps) {
   };
 
   return (
-    <div className="mb-8">
+    <div className="mb-4">
       <label className="block">
-        <div className="border-2 border-dashed border-zinc-700 rounded-lg p-8 text-center hover:border-lapis-500/50 transition-colors cursor-pointer">
+        <div className="border-2 border-dashed border-zinc-700 rounded-lg p-4 text-center hover:border-lapis-500/50 transition-colors cursor-pointer">
           <input
             type="file"
             accept=".pdf"
@@ -42,10 +42,10 @@ export function UploadZone({ onUpload, disabled }: UploadZoneProps) {
             disabled={disabled || uploading}
             className="hidden"
           />
-          <p className="text-zinc-300 mb-2">
-            {uploading ? "Uploading..." : "Click to upload PDF"}
+          <p className="text-zinc-300 text-sm mb-1">
+            {uploading ? "Uploading..." : "Upload PDF"}
           </p>
-          <p className="text-sm text-zinc-500">Maximum file size: 10MB</p>
+          <p className="text-xs text-zinc-500">Max 10MB</p>
         </div>
       </label>
     </div>
