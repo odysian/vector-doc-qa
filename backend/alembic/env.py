@@ -6,7 +6,7 @@ from app.database import Base
 from app.models.base import Chunk, Document  # noqa
 from app.models.message import Message  # noqa
 from app.models.user import User  # noqa
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -28,6 +28,17 @@ target_metadata = Base.metadata
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
 
+# Schema we own; all other schemas (auth, storage, rostra, etc.) are ignored during autogenerate.
+# Prevents autogenerate from generating DROP TABLE for Supabase/other apps when run against shared DB.
+APP_SCHEMA = target_metadata.schema
+
+
+def include_object(object, name, type_, reflected, compare_to):
+    """Restrict autogenerate to APP_SCHEMA only. Ignores auth, storage, rostra, etc."""
+    if hasattr(object, "schema") and object.schema is not None and object.schema != APP_SCHEMA:
+        return False
+    return True
+
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
@@ -46,6 +57,9 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_table_schema=target_metadata.schema,
+        include_schemas=True,
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -53,7 +67,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
+    """Run migrations in 'online' mode. Creates quaero schema if missing (same pattern as Rostra)."""
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = settings.database_url
 
@@ -64,9 +78,18 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            version_table_schema=target_metadata.schema,
+            include_schemas=True,
+            include_object=include_object,
+        )
 
         with context.begin_transaction():
+            connection.execute(
+                text(f"CREATE SCHEMA IF NOT EXISTS {target_metadata.schema}")
+            )
             context.run_migrations()
 
 

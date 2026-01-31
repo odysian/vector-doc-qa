@@ -1,7 +1,7 @@
 # backend/app/database.py
 from app.config import settings
 from app.utils.logging_config import get_logger
-from sqlalchemy import create_engine, text
+from sqlalchemy import MetaData, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 logger = get_logger(__name__)
@@ -20,16 +20,20 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+# All Quaero tables live in the "quaero" schema (same Supabase DB as other apps, isolated by schema)
+metadata = MetaData(schema="quaero")
+
+
 # Base class for models
 class Base(DeclarativeBase):
     """
     Base class for all SQLAlchemy models.
 
-    SQLAlchemy 2.0+ uses DeclarativeBase instead of declarative_base().
-    Enables proper type checking with Mapped[] annotations.
+    SQLAlchemy 2.0+ uses DeclarativeBase. Metadata uses schema="quaero"
+    for deployment (e.g. Supabase + Render, same DB as other projects).
     """
 
-    pass
+    metadata = metadata
 
 
 def init_db():
