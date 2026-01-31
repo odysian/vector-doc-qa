@@ -35,7 +35,11 @@ APP_SCHEMA = target_metadata.schema
 
 def include_object(object, name, type_, reflected, compare_to):
     """Restrict autogenerate to APP_SCHEMA only. Ignores auth, storage, rostra, etc."""
-    if hasattr(object, "schema") and object.schema is not None and object.schema != APP_SCHEMA:
+    if (
+        hasattr(object, "schema")
+        and object.schema is not None
+        and object.schema != APP_SCHEMA
+    ):
         return False
     return True
 

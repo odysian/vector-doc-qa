@@ -4,7 +4,8 @@ from app.crud.user import create_user, get_user_by_email, get_user_by_username
 from app.database import get_db
 from app.models.user import User
 from app.schemas.user import Token, UserCreate, UserLogin, UserResponse
-from fastapi import APIRouter, Depends, HTTPException, status
+from app.utils.rate_limit import get_ip_key, limiter
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 router = APIRouter()
@@ -13,7 +14,12 @@ router = APIRouter()
 @router.post(
     "/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED
 )
-def register(user: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("3/hour", key_func=get_ip_key)
+def register(
+    request: Request,
+    user: UserCreate,
+    db: Session = Depends(get_db),
+):
     """
     Register a new user.
 
@@ -41,7 +47,12 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=Token)
-def login(user: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit("5/minute", key_func=get_ip_key)
+def login(
+    request: Request,
+    user: UserLogin,
+    db: Session = Depends(get_db),
+):
     """
     Login with username and password.
 

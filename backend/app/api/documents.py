@@ -13,7 +13,7 @@ from app.services.document_service import process_document_text
 from app.services.search_service import search_chunks
 from app.utils.file_utils import save_upload_file, validate_file_upload
 from app.utils.logging_config import get_logger
-from app.utils.rate_limit import limiter
+from app.utils.rate_limit import get_user_or_ip_key, limiter
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -24,7 +24,7 @@ router = APIRouter()
 
 
 @router.post("/upload", response_model=UploadResponse, status_code=201)
-@limiter.limit("10/hour")
+@limiter.limit("5/hour", key_func=get_user_or_ip_key)
 async def upload_document(
     request: Request,
     file: UploadFile = File(...),
@@ -71,7 +71,7 @@ async def upload_document(
 
 
 @router.get("/", response_model=DocumentListResponse)
-@limiter.limit("10/hour")
+@limiter.limit("20/hour", key_func=get_user_or_ip_key)
 def get_documents(
     request: Request,
     db: Session = Depends(get_db),
@@ -94,7 +94,9 @@ def get_documents(
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
+@limiter.limit("30/hour", key_func=get_user_or_ip_key)
 def get_document(
+    request: Request,
     document_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -118,7 +120,9 @@ def get_document(
 
 
 @router.delete("/{document_id}")
+@limiter.limit("10/hour", key_func=get_user_or_ip_key)
 def delete_document(
+    request: Request,
     document_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -154,7 +158,7 @@ def delete_document(
 
 # PROCESS DOCUMENT
 @router.post("/{document_id}/process")
-@limiter.limit("20/hour")
+@limiter.limit("5/hour", key_func=get_user_or_ip_key)
 def process_document(
     request: Request,
     document_id: int,
@@ -197,7 +201,7 @@ def process_document(
 
 
 @router.post("/{document_id}/search", response_model=SearchResponse)
-@limiter.limit("20/hour")
+@limiter.limit("15/hour", key_func=get_user_or_ip_key)
 def search_document(
     request: Request,
     search: SearchRequest,
@@ -250,7 +254,7 @@ def search_document(
 
 
 @router.post("/{document_id}/query", response_model=QueryResponse)
-@limiter.limit("20/hour")
+@limiter.limit("10/hour", key_func=get_user_or_ip_key)
 def query_document(
     request: Request,
     document_id: int,
@@ -344,7 +348,9 @@ def query_document(
 
 
 @router.get("/{document_id}/messages", response_model=MessageListResponse)
+@limiter.limit("30/hour", key_func=get_user_or_ip_key)
 def get_document_messages(
+    request: Request,
     document_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
