@@ -79,8 +79,6 @@ export default function DashboardPage() {
     setSelectedDocument(null);
   };
 
-  if (loading) return <div className="p-8 text-zinc-400">Loading...</div>;
-
   return (
     <div className="min-h-screen bg-zinc-950">
       {/* Header */}
@@ -101,7 +99,17 @@ export default function DashboardPage() {
 
       {/* Main Content */}
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {selectedDocument ? (
+        {loading ? (
+          <div className="flex flex-col items-center justify-center min-h-[40vh] gap-6">
+            <h2
+              className="text-4xl font-bold font-cormorant italic text-lapis-400 quaero-logo-loading"
+              aria-hidden
+            >
+              Quaero
+            </h2>
+            <p className="text-zinc-500 text-sm">Loading your documents...</p>
+          </div>
+        ) : selectedDocument ? (
           <ChatWindow document={selectedDocument} onBack={handleBackToDocuments} />
         ) : (
           <>

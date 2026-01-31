@@ -38,6 +38,23 @@ body {
   font-family: var(--font-sans);
 }
 
+/* Logo pulse for loading state (opacity + scale so it's visible) */
+@keyframes quaero-logo-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.quaero-logo-loading {
+  animation: quaero-logo-pulse 1.6s ease-in-out infinite;
+}
+
 /* Lapis radial gradient overlay*/
 .quaero-gradient-overlay {
   background-image: radial-gradient(
