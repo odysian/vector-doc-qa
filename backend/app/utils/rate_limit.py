@@ -9,20 +9,27 @@ from slowapi import Limiter
 logger = get_logger(__name__)
 
 
+def _is_ip_whitelisted(client_ip: str) -> bool:
+    """Check if the given IP is in the whitelist."""
+    whitelist = [ip.strip() for ip in settings.whitelisted_ips]
+    return client_ip in whitelist
+
+
+def _client_ip(request: Request) -> str:
+    """Get client IP from request."""
+    return request.client.host if request.client else "127.0.0.1"
+
+
 def get_ip_key(request: Request) -> str:
     """
     Rate limit by IP. Used for unauthenticated endpoints (login, register).
 
     Logic:
-    1. If the IP is in the whitelist, return a RANDOM UUID.
+    1. If the IP is in the whitelist, return a RANDOM UUID (bypass).
     2. Otherwise return the client IP.
     """
-    if not request.client:
-        return "127.0.0.1"
-
-    client_ip = request.client.host
-    whitelist = [ip.strip() for ip in settings.whitelisted_ips]
-    if client_ip in whitelist:
+    client_ip = _client_ip(request)
+    if _is_ip_whitelisted(client_ip):
         return str(uuid.uuid4())
     return client_ip
 
@@ -31,17 +38,22 @@ def get_user_or_ip_key(request: Request) -> str:
     """
     Rate limit by user ID when authenticated, else by IP.
 
-    For auth-required endpoints: uses JWT to get user_id, so each user
-    has their own limit regardless of IP. Prevents one account from
-    bypassing limits via IP rotation.
+    Whitelist is checked first: if the client IP is whitelisted, return a
+    random UUID (bypass rate limit) regardless of auth. Otherwise:
+    - Authenticated: rate limit by user_id
+    - Unauthenticated: rate limit by IP
     """
+    client_ip = _client_ip(request)
+    if _is_ip_whitelisted(client_ip):
+        return str(uuid.uuid4())
+
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header[7:]
         user_id = decode_access_token(token)
         if user_id:
             return f"user:{user_id}"
-    return get_ip_key(request)
+    return client_ip
 
 
 limiter = Limiter(key_func=get_ip_key)
