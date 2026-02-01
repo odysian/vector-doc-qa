@@ -42,10 +42,10 @@ export function UploadZone({ onUpload, disabled }: UploadZoneProps) {
             disabled={disabled || uploading}
             className="hidden"
           />
-          <p className="text-zinc-300 text-sm mb-1">
+          <p className="text-zinc-300 text-body-sm mb-1">
             {uploading ? "Uploading..." : "Upload PDF"}
           </p>
-          <p className="text-xs text-zinc-500">Max 10MB</p>
+          <p className="text-helper">Max 10MB</p>
         </div>
       </label>
     </div>

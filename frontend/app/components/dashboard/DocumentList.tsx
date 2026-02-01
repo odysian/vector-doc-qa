@@ -94,7 +94,7 @@ export function DocumentList({
 
   if (documents.length === 0) {
     return (
-      <p className="text-center py-6 text-zinc-500 text-sm">
+      <p className="text-center py-6 text-empty">
         No documents yet. Upload a PDF above.
       </p>
     );
@@ -162,7 +162,7 @@ export function DocumentList({
               </div>
             </div>
             {/* Row 2: status icon + file size */}
-            <div className="flex items-center gap-2 mt-1.5 text-xs text-zinc-400">
+            <div className="flex items-center gap-2 mt-1.5 text-meta-bright">
               <StatusIcon
                 status={doc.status}
                 processing={doc.status === "processing" || isProcessing}
@@ -170,7 +170,7 @@ export function DocumentList({
               <span>{formatFileSize(doc.file_size)}</span>
               {doc.status === "failed" && doc.error_message && (
                 <span
-                  className="truncate text-red-400/90 max-w-[120px]"
+                  className="truncate text-error max-w-[120px]"
                   title={doc.error_message}
                 >
                   Failed

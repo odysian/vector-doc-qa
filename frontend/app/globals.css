@@ -38,6 +38,75 @@ body {
   font-family: var(--font-sans);
 }
 
+/* Typography scale: semantic tokens for consistent readability */
+.text-meta {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: rgb(161 161 170); /* zinc-400 */
+}
+
+.text-meta-bright {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: rgb(212 212 216); /* zinc-300 */
+}
+
+.text-helper {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: rgb(113 113 122); /* zinc-500 */
+}
+
+.text-label-accent {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgb(122 159 248); /* lapis-400 */
+}
+
+.text-link-sm {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: rgb(122 159 248); /* lapis-400 */
+}
+
+.text-caption {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: rgb(212 212 216); /* zinc-300 */
+  font-style: italic;
+}
+
+.text-body-sm {
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+}
+
+.text-empty {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: rgb(113 113 122); /* zinc-500 */
+}
+
+.text-section {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+  color: rgb(244 244 245); /* zinc-100 */
+}
+
+.text-error {
+  color: rgb(248 113 113); /* red-400 */
+}
+
+.badge-sm {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 700;
+}
+
 /* Logo pulse for loading state (opacity + scale so it's visible) */
 @keyframes quaero-logo-pulse {
   0%,

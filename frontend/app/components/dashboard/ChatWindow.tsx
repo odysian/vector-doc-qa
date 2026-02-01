@@ -157,7 +157,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
             <h2 className="font-medium text-lapis-400 italic truncate text-sm sm:text-base">
               {document.filename}
             </h2>
-            <p className="text-xs text-zinc-500 truncate mt-0.5">
+            <p className="text-meta truncate mt-0.5">
               Uploaded {formatDate(document.uploaded_at)}
             </p>
           </div>
@@ -170,7 +170,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
         className="messages-scroll flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth"
       >
         {loadingHistory && (
-          <div className="h-full flex items-center justify-center text-zinc-500">
+          <div className="h-full flex items-center justify-center">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" />
               <div
@@ -181,13 +181,13 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                 className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
                 style={{ animationDelay: "300ms" }}
               />
-              <span className="ml-2">Loading conversation...</span>
+              <span className="ml-2 text-empty">Loading conversation...</span>
             </div>
           </div>
         )}
 
         {!loadingHistory && messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-zinc-500 space-y-4">
+          <div className="h-full flex flex-col items-center justify-center space-y-4">
             <div className="p-4 bg-zinc-800/50 rounded-full">
               <svg
                 className="w-8 h-8 text-lapis-400"
@@ -203,7 +203,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                 />
               </svg>
             </div>
-            <p className="text-sm">Ask a question to analyze this document.</p>
+            <p className="text-body-sm text-zinc-300">Ask a question to analyze this document.</p>
           </div>
         )}
 
@@ -223,7 +223,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                   : "bg-zinc-800 text-zinc-100 rounded-tl-none border border-zinc-700"
               }`}
             >
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">
+              <p className="whitespace-pre-wrap text-body-sm leading-relaxed">
                 {msg.content}
               </p>
             </div>
@@ -234,7 +234,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                 <button
                   type="button"
                   onClick={() => toggleSources(i)}
-                  className="flex items-center gap-2 text-[10px] font-bold text-lapis-400 uppercase tracking-wider hover:text-lapis-300 transition-colors cursor-pointer"
+                  className="flex items-center gap-2 text-label-accent hover:text-lapis-300 transition-colors cursor-pointer"
                 >
                   <svg
                     className={`w-3 h-3 shrink-0 transition-transform ${expandedSourceIndices.has(i) ? "rotate-90" : ""}`}
@@ -267,18 +267,18 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                           className="bg-zinc-950/50 border border-zinc-800/50 p-3 rounded-lg hover:border-lapis-500/30 transition-colors"
                         >
                           <div className="flex items-center gap-2 mb-2">
-                            <span className="bg-lapis-600 text-white text-[10px] font-bold px-2 py-0.5 rounded">
+                            <span className="badge-sm bg-lapis-600 text-white px-2 py-0.5 rounded">
                               {idx + 1}
                             </span>
-                            <span className="text-[10px] text-zinc-500">
+                            <span className="text-meta-bright">
                               Relevance: {(source.similarity * 100).toFixed(0)}%
                             </span>
-                            <span className="text-[10px] text-zinc-600">
+                            <span className="text-meta-bright">
                               Excerpt {source.chunk_index}
                             </span>
                           </div>
 
-                          <p className="text-xs text-zinc-400 italic">
+                          <p className="text-caption">
                             &quot;{preview}
                             {!isExpanded && source.content.length > previewLength ? "..." : ""}
                             {isExpanded && remainder ? " " : ""}
@@ -289,7 +289,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                             <button
                               type="button"
                               onClick={() => toggleSourceCard(i, idx)}
-                              className="mt-2 text-[10px] text-lapis-400 hover:text-lapis-300 transition-colors cursor-pointer"
+                              className="mt-2 text-link-sm hover:text-lapis-300 transition-colors cursor-pointer"
                             >
                               {isExpanded ? "Show less ▲" : "Show full context ▼"}
                             </button>

@@ -135,7 +135,7 @@ export default function DashboardPage() {
   const sidebarContent = (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between p-3 border-b border-zinc-800 lg:border-b-0">
-        <h2 className="text-sm font-semibold text-zinc-100">Documents</h2>
+        <h2 className="text-section">Documents</h2>
         <button
           type="button"
           onClick={() => setSidebarOpen(false)}
@@ -148,12 +148,12 @@ export default function DashboardPage() {
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         <UploadZone onUpload={handleUpload} />
         {error && (
-          <div className="bg-red-900/20 border border-red-900/50 text-red-400 p-3 rounded-lg text-sm">
+          <div className="bg-red-900/20 border border-red-900/50 text-error p-3 rounded-lg text-body-sm">
             {error}
           </div>
         )}
         {loading ? (
-          <p className="text-zinc-500 text-sm">Loading...</p>
+          <p className="text-empty">Loading...</p>
         ) : (
           <DocumentList
             documents={documents}
@@ -238,7 +238,7 @@ export default function DashboardPage() {
               >
                 Quaero
               </h2>
-              <p className="text-zinc-500 text-sm">Loading your documents...</p>
+              <p className="text-empty">Loading your documents...</p>
             </div>
           ) : selectedDocument ? (
             <div className="flex-1 min-h-0 flex flex-col">
@@ -255,7 +255,7 @@ export default function DashboardPage() {
               <h2 className="text-xl font-semibold text-zinc-200 mb-2">
                 Select a document
               </h2>
-              <p className="text-zinc-500 text-sm max-w-sm">
+              <p className="text-empty max-w-sm">
                 Choose a document from the sidebar to start asking questions and
                 get answers from your files.
               </p>
