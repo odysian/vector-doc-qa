@@ -65,7 +65,12 @@ def upgrade() -> None:
         if_not_exists=True,
     )
     op.create_index(
-        op.f("ix_quaero_users_id"), "users", ["id"], unique=False, schema=SCHEMA, if_not_exists=True
+        op.f("ix_quaero_users_id"),
+        "users",
+        ["id"],
+        unique=False,
+        schema=SCHEMA,
+        if_not_exists=True,
     )
     op.create_index(
         op.f("ix_quaero_users_username"),
@@ -149,7 +154,12 @@ def upgrade() -> None:
         if_not_exists=True,
     )
     op.create_index(
-        op.f("ix_quaero_chunks_id"), "chunks", ["id"], unique=False, schema=SCHEMA, if_not_exists=True
+        op.f("ix_quaero_chunks_id"),
+        "chunks",
+        ["id"],
+        unique=False,
+        schema=SCHEMA,
+        if_not_exists=True,
     )
     op.create_table(
         "messages",
