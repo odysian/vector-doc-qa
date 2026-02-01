@@ -1,13 +1,12 @@
 from pathlib import Path
 
-from pydantic_settings import BaseSettings
-
 from app.constants import (
     ALLOWED_EXTENSIONS,
     DEFAULT_CHUNK_OVERLAP,
     DEFAULT_CHUNK_SIZE,
     MAX_FILE_SIZE_BYTES,
 )
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -15,6 +14,7 @@ class Settings(BaseSettings):
 
     database_url: str = (
         "postgresql://postgres:postgres@localhost:5434/document_intelligence"
+        "?options=-c%20search_path=quaero,public"
     )
 
     access_token_expire_minutes: int = 0
