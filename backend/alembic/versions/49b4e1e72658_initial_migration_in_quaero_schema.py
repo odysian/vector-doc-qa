@@ -11,6 +11,7 @@ from typing import Sequence, Union
 import pgvector.sqlalchemy
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy import inspect
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
@@ -19,12 +20,27 @@ down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+SCHEMA = "quaero"
+
+
+def _table_exists(connection, table_name: str) -> bool:
+    """Check if table exists in quaero schema."""
+    # Inspector.from_engine needs an engine; connection.engine works
+    bind = connection.engine if hasattr(connection, "engine") else connection
+    inspector = inspect(bind)
+    return table_name in inspector.get_table_names(schema=SCHEMA)
+
 
 def upgrade() -> None:
-    """Upgrade schema."""
+    """Upgrade schema. Idempotent: safe to run when tables already exist (e.g. Render re-builds)."""
     # pgvector must exist before creating chunks.embedding column.
     # Supabase has it available but it must be enabled (run before app/migrations).
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
+    conn = op.get_bind()
+    if _table_exists(conn, "users"):
+        return  # Migration already applied; skip to avoid DuplicateTable
+
     op.create_table(
         "users",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -41,17 +57,23 @@ def upgrade() -> None:
         schema="quaero",
     )
     op.create_index(
-        op.f("ix_quaero_users_email"), "users", ["email"], unique=True, schema="quaero"
+        op.f("ix_quaero_users_email"),
+        "users",
+        ["email"],
+        unique=True,
+        schema=SCHEMA,
+        if_not_exists=True,
     )
     op.create_index(
-        op.f("ix_quaero_users_id"), "users", ["id"], unique=False, schema="quaero"
+        op.f("ix_quaero_users_id"), "users", ["id"], unique=False, schema=SCHEMA, if_not_exists=True
     )
     op.create_index(
         op.f("ix_quaero_users_username"),
         "users",
         ["username"],
         unique=True,
-        schema="quaero",
+        schema=SCHEMA,
+        if_not_exists=True,
     )
     op.create_table(
         "documents",
@@ -75,28 +97,31 @@ def upgrade() -> None:
             ["quaero.users.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema="quaero",
+        schema=SCHEMA,
     )
     op.create_index(
         op.f("ix_quaero_documents_id"),
         "documents",
         ["id"],
         unique=False,
-        schema="quaero",
+        schema=SCHEMA,
+        if_not_exists=True,
     )
     op.create_index(
         op.f("ix_quaero_documents_status"),
         "documents",
         ["status"],
         unique=False,
-        schema="quaero",
+        schema=SCHEMA,
+        if_not_exists=True,
     )
     op.create_index(
         op.f("ix_quaero_documents_user_id"),
         "documents",
         ["user_id"],
         unique=False,
-        schema="quaero",
+        schema=SCHEMA,
+        if_not_exists=True,
     )
     op.create_table(
         "chunks",
@@ -113,17 +138,18 @@ def upgrade() -> None:
             ["quaero.documents.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema="quaero",
+        schema=SCHEMA,
     )
     op.create_index(
         op.f("ix_quaero_chunks_document_id"),
         "chunks",
         ["document_id"],
         unique=False,
-        schema="quaero",
+        schema=SCHEMA,
+        if_not_exists=True,
     )
     op.create_index(
-        op.f("ix_quaero_chunks_id"), "chunks", ["id"], unique=False, schema="quaero"
+        op.f("ix_quaero_chunks_id"), "chunks", ["id"], unique=False, schema=SCHEMA, if_not_exists=True
     )
     op.create_table(
         "messages",
@@ -142,10 +168,15 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["user_id"], ["quaero.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        schema="quaero",
+        schema=SCHEMA,
     )
     op.create_index(
-        op.f("ix_quaero_messages_id"), "messages", ["id"], unique=False, schema="quaero"
+        op.f("ix_quaero_messages_id"),
+        "messages",
+        ["id"],
+        unique=False,
+        schema=SCHEMA,
+        if_not_exists=True,
     )
 
 
