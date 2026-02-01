@@ -56,5 +56,5 @@ frontend/.next/
 frontend/out/
 frontend/build/
 
-TIPS.md
+docs/
 roadmap.md

@@ -119,9 +119,9 @@ export function DocumentList({
               }
             }}
             aria-disabled={!clickable}
-            className={`rounded-lg border transition-colors p-3 ${
+            className={`rounded-lg border transition-colors p-3 outline-none ${
               clickable
-                ? "bg-zinc-800/50 border-zinc-700 hover:border-lapis-500/40 hover:bg-zinc-800 cursor-pointer"
+                ? "bg-zinc-800/50 border-zinc-700 hover:border-lapis-500/40 hover:bg-zinc-800 cursor-pointer focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
                 : "bg-zinc-800/30 border-zinc-800 cursor-not-allowed opacity-80"
             }`}
           >
@@ -140,7 +140,7 @@ export function DocumentList({
                     onClick={(e) => handleProcess(e, doc)}
                     disabled={isProcessing || processingId !== null}
                     title={doc.status === "failed" ? "Retry" : "Process"}
-                    className="p-1.5 rounded text-lapis-400 hover:bg-lapis-500/20 hover:text-lapis-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    className="p-1.5 rounded text-lapis-400 hover:bg-lapis-500/20 hover:text-lapis-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-800"
                     aria-label={doc.status === "failed" ? "Retry" : "Process"}
                   >
                     {isProcessing ? (
@@ -154,7 +154,7 @@ export function DocumentList({
                   type="button"
                   onClick={(e) => handleDelete(e, doc)}
                   title="Delete"
-                  className="p-1.5 rounded text-zinc-400 hover:bg-red-500/20 hover:text-red-400 transition-colors cursor-pointer"
+                  className="p-1.5 rounded text-zinc-400 hover:bg-red-500/20 hover:text-red-400 transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-800"
                   aria-label="Delete"
                 >
                   <Trash2 className="w-4 h-4" />

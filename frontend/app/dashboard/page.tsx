@@ -6,7 +6,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { PanelLeft, X } from "lucide-react";
+import { PanelLeft, X, FileUp } from "lucide-react";
 import { api, type Document, ApiError } from "@/lib/api";
 import { UploadZone } from "../components/dashboard/UploadZone";
 import { DocumentList } from "../components/dashboard/DocumentList";
@@ -139,7 +139,7 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={() => setSidebarOpen(false)}
-          className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 lg:hidden cursor-pointer"
+          className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 lg:hidden cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
           aria-label="Close sidebar"
         >
           <X className="w-5 h-5" />
@@ -175,7 +175,7 @@ export default function DashboardPage() {
             <button
               type="button"
               onClick={() => setSidebarOpen((o) => !o)}
-              className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 lg:hidden cursor-pointer"
+              className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 lg:hidden cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
               aria-label="Toggle sidebar"
             >
               <PanelLeft className="w-5 h-5" />
@@ -187,7 +187,7 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={handleLogout}
-            className="text-sm text-zinc-400 hover:text-zinc-300 cursor-pointer"
+            className="text-sm text-zinc-400 hover:text-zinc-300 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 rounded"
           >
             Logout
           </button>
@@ -247,6 +247,22 @@ export default function DashboardPage() {
                 onBack={handleBackToDocuments}
               />
             </div>
+          ) : documents.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto">
+              <div className="p-4 rounded-full bg-zinc-800/50 mb-4">
+                <FileUp className="w-12 h-12 text-lapis-400" aria-hidden />
+              </div>
+              <h2 className="text-xl font-semibold text-zinc-200 mb-2">
+                No documents yet
+              </h2>
+              <p className="text-empty mb-8">
+                Upload your first PDF to ask questions and get answers from your
+                files.
+              </p>
+              <div className="w-full">
+                <UploadZone onUpload={handleUpload} />
+              </div>
+            </div>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-center px-4">
               <div className="p-4 rounded-full bg-zinc-800/50 mb-4">
@@ -262,7 +278,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => setSidebarOpen(true)}
-                className="mt-6 lg:hidden px-4 py-2 rounded-lg bg-lapis-600 hover:bg-lapis-500 text-white text-sm font-medium cursor-pointer"
+                className="mt-6 lg:hidden px-4 py-2 rounded-lg bg-lapis-600 hover:bg-lapis-500 text-white text-sm font-medium cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
               >
                 Open documents
               </button>

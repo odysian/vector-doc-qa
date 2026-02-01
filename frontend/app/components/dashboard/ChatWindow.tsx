@@ -21,6 +21,12 @@ interface ChatWindowProps {
   onBack: () => void;
 }
 
+const SUGGESTED_PROMPTS = [
+  "Summarize this document",
+  "What are the main points?",
+  "Find key dates or numbers",
+];
+
 /**
  * Renders the pop up window with query input and message history.
  */
@@ -90,18 +96,16 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
 
 
 
-  const handleSubmit = async (e: SyntheticEvent) => {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
+  const submitQuery = async (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed || loading) return;
 
-    const userMsg = input.trim();
     setInput("");
-
-    setMessages((prev) => [...prev, { role: "user", content: userMsg }]);
+    setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
     setLoading(true);
 
     try {
-      const response = await api.queryDocument(document.id, userMsg);
+      const response = await api.queryDocument(document.id, trimmed);
 
       setMessages((prev) => [
         ...prev,
@@ -136,6 +140,11 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = (e: SyntheticEvent) => {
+    e.preventDefault();
+    submitQuery(input);
   };
 
   return (
@@ -187,7 +196,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
         )}
 
         {!loadingHistory && messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center space-y-4">
+          <div className="h-full flex flex-col items-center justify-center space-y-4 px-4">
             <div className="p-4 bg-zinc-800/50 rounded-full">
               <svg
                 className="w-8 h-8 text-lapis-400"
@@ -203,7 +212,25 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                 />
               </svg>
             </div>
-            <p className="text-body-sm text-zinc-300">Ask a question to analyze this document.</p>
+            <h3 className="text-body-sm font-medium text-zinc-200 text-center">
+              Ask a question about this document
+            </h3>
+            <p className="text-meta text-center">
+              Your questions and answers will appear here.
+            </p>
+            <div className="flex flex-wrap gap-2 justify-center mt-2">
+              {SUGGESTED_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => submitQuery(prompt)}
+                  disabled={loading}
+                  className="px-3 py-2 rounded-lg bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700 text-zinc-300 text-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -213,7 +240,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
             key={i}
             className={`flex flex-col ${
               msg.role === "user" ? "items-end" : "items-start"
-            }`}
+            } ${i < messages.length - 1 ? "pb-6 mb-6 border-b border-zinc-800/60" : ""}`}
           >
             {/* Message Bubble */}
             <div
@@ -230,7 +257,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
 
             {/* Citations / Sources (collapsed by default, expand on click) */}
             {msg.sources && msg.sources.length > 0 && (
-              <div className="mt-2 ml-2 max-w-[85%]">
+              <div className="mt-2 ml-2 max-w-[85%] pt-2 border-t border-zinc-700/50">
                 <button
                   type="button"
                   onClick={() => toggleSources(i)}
@@ -337,7 +364,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="bg-lapis-600 hover:bg-lapis-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white px-6 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-lapis-900/20 flex items-center cursor-pointer"
+            className="bg-lapis-600 hover:bg-lapis-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white px-6 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-lapis-900/20 flex items-center cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
           >
             {loading ? "Sending..." : "Send"}
           </button>

@@ -33,14 +33,15 @@ export function UploadZone({ onUpload, disabled }: UploadZoneProps) {
 
   return (
     <div className="mb-4">
-      <label className="block">
-        <div className="border-2 border-dashed border-zinc-700 rounded-lg p-4 text-center hover:border-lapis-500/50 transition-colors cursor-pointer">
+      <label className="block relative cursor-pointer rounded-lg outline-none focus-within:ring-2 focus-within:ring-lapis-500 focus-within:ring-offset-2 focus-within:ring-offset-zinc-900">
+        <div className="relative border-2 border-dashed border-zinc-700 rounded-lg p-4 text-center hover:border-lapis-500/50 transition-colors">
           <input
             type="file"
             accept=".pdf"
             onChange={handleChange}
             disabled={disabled || uploading}
-            className="hidden"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+            aria-label="Upload PDF"
           />
           <p className="text-zinc-300 text-body-sm mb-1">
             {uploading ? "Uploading..." : "Upload PDF"}
