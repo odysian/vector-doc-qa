@@ -37,7 +37,7 @@ export function UploadZone({ onUpload, disabled }: UploadZoneProps) {
 
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !isPdf(file)) return;
     await uploadFile(file);
     e.target.value = ""; // Allow selecting the same file again
   };
