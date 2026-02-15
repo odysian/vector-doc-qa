@@ -325,7 +325,14 @@ vector-doc-qa/
 │   │   └── versions/
 │   │       └── 49b4e1e72658_*.py  # Initial migration
 │   │
+│   ├── tests/
+│   │   ├── conftest.py            # Test DB, fixtures, mocks
+│   │   ├── test_auth.py           # Auth endpoint tests
+│   │   ├── test_documents.py      # Document CRUD + processing tests
+│   │   └── test_query.py          # Search, RAG query, messages tests
+│   │
 │   ├── alembic.ini
+│   ├── pytest.ini
 │   ├── requirements.txt
 │   ├── .env.example
 │   └── test_setup.py            # Setup verification script

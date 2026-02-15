@@ -2,7 +2,7 @@
 
 Test case definitions for Quaero. Tests are defined here before implementation. Each section maps to a feature domain.
 
-**Status:** This project currently has no pytest test suite. Only `backend/test_setup.py` (a setup verification script) exists. All sections below are pending implementation.
+**Status:** Pytest suite implemented in `backend/tests/`. 37 tests covering auth, documents, search, query, and messages. Uses `quaero_test` schema with transaction rollback per test. External APIs (OpenAI, Anthropic) mocked at the service function level.
 
 ---
 
