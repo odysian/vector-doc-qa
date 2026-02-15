@@ -29,8 +29,8 @@ AI-powered PDF question-answering using Retrieval Augmented Generation (RAG). Up
 - Deployed on Vercel
 
 **Database:**
-- Supabase (PostgreSQL with pgvector)
-- Schema-based isolation for multi-project sharing
+- Render PostgreSQL with pgvector extension
+- Schema-based isolation for multi-project sharing (uses `quaero` schema)
 
 ## What I Learned
 
@@ -51,8 +51,9 @@ AI-powered PDF question-answering using Retrieval Augmented Generation (RAG). Up
 - Interfaces make API integration cleaner
 
 ### Database
-- Schema-based isolation (`quaero` schema) shares Supabase with other projects
-- pgvector is simpler than dedicated vector DB for this scale
+- Schema-based isolation (`quaero` schema) shares PostgreSQL with other portfolio projects
+- pgvector extension adds vector similarity search without a dedicated vector DB
+- Simpler than Pinecone/Weaviate for this scale
 
 ### Key Insights
 - Chunking is critical: too small loses context, too large reduces precision
@@ -63,7 +64,7 @@ AI-powered PDF question-answering using Retrieval Augmented Generation (RAG). Up
 ### Prerequisites
 - Python 3.12+
 - Node.js 18+
-- PostgreSQL with pgvector (or use Supabase)
+- PostgreSQL with pgvector extension
 - OpenAI API key
 - Anthropic API key
 
@@ -117,7 +118,7 @@ Frontend runs at http://localhost:3000
 docker-compose up -d
 ```
 
-Or use Supabase free tier (includes pgvector).
+The Docker setup uses the `ankane/pgvector` image with pgvector pre-installed.
 
 
 ## How It Works
@@ -131,7 +132,9 @@ Or use Supabase free tier (includes pgvector).
 
 - **Frontend:** Vercel (auto-deploy from `main` branch)
 - **Backend:** Render (free tier with cold starts)
-- **Database:** Supabase (free PostgreSQL + pgvector)
+- **Database:** Render PostgreSQL (shared free-tier instance with pgvector extension)
+  - Uses `quaero` schema for table isolation
+  - Shared with 2 other portfolio projects
 
 ## Challenges
 
