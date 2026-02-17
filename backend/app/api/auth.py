@@ -1,11 +1,18 @@
 from app.api.dependencies import get_current_user
-from app.core.security import create_access_token, verify_password
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    validate_refresh_token,
+    verify_password,
+)
 from app.crud.user import create_user, get_user_by_email, get_user_by_username
 from app.database import get_db
+from app.models.refresh_token import RefreshToken
 from app.models.user import User
-from app.schemas.user import Token, UserCreate, UserLogin, UserResponse
+from app.schemas.user import RefreshRequest, Token, UserCreate, UserLogin, UserResponse
 from app.utils.rate_limit import get_ip_key, limiter
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
@@ -56,10 +63,8 @@ async def login(
     """
     Login with username and password.
 
-    - Verifies credentials
-    - Returns JWT access token
+    Returns a short-lived access token JWT and a long-lived refresh token.
     """
-    # Get user by username
     db_user = await get_user_by_username(db, user.username)
     if not db_user:
         raise HTTPException(
@@ -67,17 +72,64 @@ async def login(
             detail="Incorrect username or password",
         )
 
-    # Verify password
     if not verify_password(user.password, db_user.hashed_password):  # type: ignore
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
         )
 
-    # Create JWT token
     access_token = create_access_token(data={"sub": str(db_user.id)})
+    refresh_token = await create_refresh_token(db_user.id, db)  # type: ignore
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+
+
+@router.post("/refresh", response_model=Token)
+@limiter.limit("10/minute", key_func=get_ip_key)
+async def refresh(
+    request: Request,
+    body: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Exchange a valid refresh token for a new access + refresh token pair (rotation).
+
+    Old refresh token is deleted on use — if reused, it will 401.
+    """
+    row = await validate_refresh_token(body.refresh_token, db)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
+    user_id: int = row.user_id  # type: ignore
+
+    # Rotation: delete the consumed token before issuing new ones
+    await db.execute(delete(RefreshToken).where(RefreshToken.id == row.id))
+    await db.commit()
+
+    access_token = create_access_token(data={"sub": str(user_id)})
+    new_refresh_token = await create_refresh_token(user_id, db)
+
+    return {"access_token": access_token, "refresh_token": new_refresh_token, "token_type": "bearer"}
+
+
+@router.post("/logout")
+@limiter.limit("10/minute", key_func=get_ip_key)
+async def logout(
+    request: Request,
+    body: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Invalidate a refresh token. Idempotent — no error if the token doesn't exist.
+    """
+    await db.execute(
+        delete(RefreshToken).where(RefreshToken.token == body.refresh_token)
+    )
+    await db.commit()
+    return {"message": "Logged out"}
 
 
 @router.get("/me", response_model=UserResponse)

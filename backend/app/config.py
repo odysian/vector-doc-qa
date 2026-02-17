@@ -17,7 +17,8 @@ class Settings(BaseSettings):
         "?options=-c%20search_path=quaero,public"
     )
 
-    access_token_expire_minutes: int = 0
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
     secret_key: str = "dev-secret-key-change-in-production"
     algorithm: str = "HS256"
 
