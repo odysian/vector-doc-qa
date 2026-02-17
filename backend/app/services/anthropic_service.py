@@ -1,4 +1,4 @@
-from anthropic import Anthropic, APIStatusError
+from anthropic import APIStatusError, AsyncAnthropic
 
 from app.config import settings
 from app.utils.logging_config import get_logger
@@ -39,7 +39,7 @@ If the excerpts contain absolutely no relevant information, state that you canno
     return prompt
 
 
-def generate_answer(query: str, chunks: list[dict]) -> str:
+async def generate_answer(query: str, chunks: list[dict]) -> str:
     """
     Calls Claude API to generate an answer to user query.
     Args:
@@ -59,8 +59,8 @@ def generate_answer(query: str, chunks: list[dict]) -> str:
     logger.debug(f"Built prompt with {len(chunks)} chunks")
 
     try:
-        client = Anthropic(api_key=settings.anthropic_api_key)
-        response = client.messages.create(
+        client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        response = await client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],

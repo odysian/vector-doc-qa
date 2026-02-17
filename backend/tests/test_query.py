@@ -6,7 +6,7 @@ and "Chat History".
 """
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.message import Message
 from app.models.user import User
@@ -20,10 +20,10 @@ from app.models.user import User
 class TestSearch:
     """POST /api/documents/{id}/search"""
 
-    def test_search_returns_ranked_results(
+    async def test_search_returns_ranked_results(
         self, client, auth_headers, processed_document, mock_embeddings
     ):
-        response = client.post(
+        response = await client.post(
             f"/api/documents/{processed_document.id}/search",
             headers=auth_headers,
             json={"query": "test query", "top_k": 3},
@@ -43,10 +43,10 @@ class TestSearch:
             assert "similarity" in result
             assert "chunk_index" in result
 
-    def test_search_returns_404_for_other_users_document(
+    async def test_search_returns_404_for_other_users_document(
         self, client, second_user_headers, processed_document
     ):
-        response = client.post(
+        response = await client.post(
             f"/api/documents/{processed_document.id}/search",
             headers=second_user_headers,
             json={"query": "test query"},
@@ -62,10 +62,10 @@ class TestSearch:
 class TestQuery:
     """POST /api/documents/{id}/query"""
 
-    def test_query_returns_answer_with_sources(
+    async def test_query_returns_answer_with_sources(
         self, client, auth_headers, processed_document, mock_embeddings, mock_anthropic
     ):
-        response = client.post(
+        response = await client.post(
             f"/api/documents/{processed_document.id}/query",
             headers=auth_headers,
             json={"query": "What is this document about?"},
@@ -78,33 +78,30 @@ class TestQuery:
         assert "sources" in data
         assert isinstance(data["sources"], list)
 
-    def test_query_saves_user_and_assistant_messages(
+    async def test_query_saves_user_and_assistant_messages(
         self,
         client,
         auth_headers,
         processed_document,
         mock_embeddings,
         mock_anthropic,
-        db_session: Session,
+        db_session: AsyncSession,
         test_user: User,
     ):
-        client.post(
+        await client.post(
             f"/api/documents/{processed_document.id}/query",
             headers=auth_headers,
             json={"query": "Tell me about the content"},
         )
 
         # Check that both user and assistant messages were saved
-        messages = (
-            db_session.execute(
-                select(Message)
-                .where(Message.document_id == processed_document.id)
-                .where(Message.user_id == test_user.id)
-                .order_by(Message.created_at)
-            )
-            .scalars()
-            .all()
+        result = await db_session.execute(
+            select(Message)
+            .where(Message.document_id == processed_document.id)
+            .where(Message.user_id == test_user.id)
+            .order_by(Message.created_at)
         )
+        messages = result.scalars().all()
 
         assert len(messages) == 2
         assert messages[0].role == "user"
@@ -114,10 +111,10 @@ class TestQuery:
         # Assistant message should have sources stored as JSONB
         assert messages[1].sources is not None
 
-    def test_query_returns_404_for_other_users_document(
+    async def test_query_returns_404_for_other_users_document(
         self, client, second_user_headers, processed_document, mock_embeddings, mock_anthropic
     ):
-        response = client.post(
+        response = await client.post(
             f"/api/documents/{processed_document.id}/query",
             headers=second_user_headers,
             json={"query": "test"},
@@ -133,12 +130,12 @@ class TestQuery:
 class TestMessages:
     """GET /api/documents/{id}/messages"""
 
-    def test_get_messages_returns_chat_history(
+    async def test_get_messages_returns_chat_history(
         self,
         client,
         auth_headers,
         processed_document,
-        db_session: Session,
+        db_session: AsyncSession,
         test_user: User,
     ):
         # Create some messages directly in the DB
@@ -157,9 +154,9 @@ class TestMessages:
         )
         db_session.add(user_msg)
         db_session.add(asst_msg)
-        db_session.flush()
+        await db_session.flush()
 
-        response = client.get(
+        response = await client.get(
             f"/api/documents/{processed_document.id}/messages",
             headers=auth_headers,
         )
@@ -171,10 +168,10 @@ class TestMessages:
         assert data["messages"][1]["role"] == "assistant"
         assert data["messages"][1]["sources"] is not None
 
-    def test_get_messages_returns_empty_for_no_messages(
+    async def test_get_messages_returns_empty_for_no_messages(
         self, client, auth_headers, processed_document
     ):
-        response = client.get(
+        response = await client.get(
             f"/api/documents/{processed_document.id}/messages",
             headers=auth_headers,
         )
@@ -184,10 +181,10 @@ class TestMessages:
         assert data["total"] == 0
         assert data["messages"] == []
 
-    def test_get_messages_returns_404_for_other_users_document(
+    async def test_get_messages_returns_404_for_other_users_document(
         self, client, second_user_headers, processed_document
     ):
-        response = client.get(
+        response = await client.get(
             f"/api/documents/{processed_document.id}/messages",
             headers=second_user_headers,
         )

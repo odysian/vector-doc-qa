@@ -13,7 +13,7 @@ Quaero is a document intelligence platform that allows users to upload PDF docum
 | Frontend | Next.js 16 + React 19 + TypeScript | App Router, type safety, Vercel deployment |
 | Styling | Tailwind CSS 4 | Utility-first, custom theme tokens |
 | Backend | FastAPI (Python 3.12+) | Auto-docs, Pydantic validation, lightweight |
-| ORM | SQLAlchemy 2.0 (sync) | Type-safe models, mapped_column, select() |
+| ORM | SQLAlchemy 2.0 (async) | Type-safe models, mapped_column, select(), AsyncSession |
 | Database | PostgreSQL + pgvector | Relational + vector similarity search |
 | Embeddings | OpenAI text-embedding-3-small | 1536 dimensions, cost-effective |
 | RAG | Anthropic Claude (claude-3-haiku) | Fast, accurate answers with citations |
@@ -255,7 +255,7 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 | Chunk strategy | 1000 chars / 50 overlap | 500 chars, sentence-based | Balance between context and precision |
 | Schema isolation | quaero schema | Separate database | Shares Render free-tier DB across projects |
 | Auth token storage | localStorage | httpOnly cookies | Simpler implementation for SPA |
-| DB driver | psycopg2 (sync) | asyncpg (async) | Simpler, sufficient for current load |
+| DB driver | asyncpg (async) | psycopg2 (sync) | Non-blocking I/O for concurrent requests; psycopg2 kept for Alembic |
 | Rate limiting | SlowAPI | Custom middleware | Battle-tested, per-endpoint configuration |
 
 ---

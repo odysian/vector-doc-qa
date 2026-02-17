@@ -9,7 +9,7 @@ import io
 from unittest.mock import patch
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import Document, DocumentStatus
 from app.models.user import User
@@ -43,9 +43,9 @@ startxref
 %%EOF"""
 
 
-def _upload_pdf(client, headers, content=MINIMAL_PDF, filename="test.pdf"):
+async def _upload_pdf(client, headers, content=MINIMAL_PDF, filename="test.pdf"):
     """Helper to upload a PDF file."""
-    return client.post(
+    return await client.post(
         "/api/documents/upload",
         headers=headers,
         files={"file": (filename, io.BytesIO(content), "application/pdf")},
@@ -60,8 +60,8 @@ def _upload_pdf(client, headers, content=MINIMAL_PDF, filename="test.pdf"):
 class TestUpload:
     """POST /api/documents/upload"""
 
-    def test_upload_pdf_returns_201_with_pending_status(self, client, auth_headers):
-        response = _upload_pdf(client, auth_headers)
+    async def test_upload_pdf_returns_201_with_pending_status(self, client, auth_headers):
+        response = await _upload_pdf(client, auth_headers)
 
         assert response.status_code == 201
         data = response.json()
@@ -69,27 +69,28 @@ class TestUpload:
         assert data["filename"] == "test.pdf"
         assert "id" in data
 
-    def test_upload_saves_document_record_with_correct_fields(
-        self, client, auth_headers, test_user: User, db_session: Session
+    async def test_upload_saves_document_record_with_correct_fields(
+        self, client, auth_headers, test_user: User, db_session: AsyncSession
     ):
-        response = _upload_pdf(client, auth_headers)
+        response = await _upload_pdf(client, auth_headers)
         doc_id = response.json()["id"]
 
-        doc = db_session.execute(
+        result = await db_session.execute(
             select(Document).where(Document.id == doc_id)
-        ).scalar_one()
+        )
+        doc = result.scalar_one()
 
         assert doc.user_id == test_user.id
         assert doc.filename == "test.pdf"
         assert doc.file_size > 0
         assert doc.status == DocumentStatus.PENDING
 
-    def test_upload_returns_401_without_auth(self, client):
-        response = _upload_pdf(client, headers={})
+    async def test_upload_returns_401_without_auth(self, client):
+        response = await _upload_pdf(client, headers={})
         assert response.status_code == 401
 
-    def test_upload_returns_400_for_non_pdf_extension(self, client, auth_headers):
-        response = client.post(
+    async def test_upload_returns_400_for_non_pdf_extension(self, client, auth_headers):
+        response = await client.post(
             "/api/documents/upload",
             headers=auth_headers,
             files={"file": ("test.txt", io.BytesIO(b"hello"), "text/plain")},
@@ -97,10 +98,10 @@ class TestUpload:
         assert response.status_code == 400
         assert "not allowed" in response.json()["detail"]
 
-    def test_upload_returns_400_for_fake_pdf_wrong_magic_bytes(self, client, auth_headers):
+    async def test_upload_returns_400_for_fake_pdf_wrong_magic_bytes(self, client, auth_headers):
         """A .pdf file with non-PDF content should be rejected by magic byte check."""
         fake_pdf = b"This is not a real PDF file content"
-        response = _upload_pdf(client, auth_headers, content=fake_pdf)
+        response = await _upload_pdf(client, auth_headers, content=fake_pdf)
         assert response.status_code == 400
         assert "does not match PDF format" in response.json()["detail"]
 
@@ -113,7 +114,7 @@ class TestUpload:
 class TestListDocuments:
     """GET /api/documents/"""
 
-    def test_list_documents_returns_only_own_documents(
+    async def test_list_documents_returns_only_own_documents(
         self, client, auth_headers, test_document, second_user, db_session
     ):
         # Create a document for the second user
@@ -125,17 +126,17 @@ class TestListDocuments:
             user_id=second_user.id,
         )
         db_session.add(other_doc)
-        db_session.flush()
+        await db_session.flush()
 
-        response = client.get("/api/documents/", headers=auth_headers)
+        response = await client.get("/api/documents/", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
         assert data["documents"][0]["id"] == test_document.id
 
-    def test_list_documents_returns_empty_for_new_user(self, client, second_user_headers):
-        response = client.get("/api/documents/", headers=second_user_headers)
+    async def test_list_documents_returns_empty_for_new_user(self, client, second_user_headers):
+        response = await client.get("/api/documents/", headers=second_user_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -151,24 +152,24 @@ class TestListDocuments:
 class TestGetDocument:
     """GET /api/documents/{id}"""
 
-    def test_get_document_returns_own_document(self, client, auth_headers, test_document):
-        response = client.get(f"/api/documents/{test_document.id}", headers=auth_headers)
+    async def test_get_document_returns_own_document(self, client, auth_headers, test_document):
+        response = await client.get(f"/api/documents/{test_document.id}", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == test_document.id
         assert data["filename"] == test_document.filename
 
-    def test_get_document_returns_404_for_other_users_document(
+    async def test_get_document_returns_404_for_other_users_document(
         self, client, second_user_headers, test_document
     ):
-        response = client.get(
+        response = await client.get(
             f"/api/documents/{test_document.id}", headers=second_user_headers
         )
         assert response.status_code == 404
 
-    def test_get_document_returns_404_for_nonexistent_id(self, client, auth_headers):
-        response = client.get("/api/documents/99999", headers=auth_headers)
+    async def test_get_document_returns_404_for_nonexistent_id(self, client, auth_headers):
+        response = await client.get("/api/documents/99999", headers=auth_headers)
         assert response.status_code == 404
 
 
@@ -180,7 +181,7 @@ class TestGetDocument:
 class TestDeleteDocument:
     """DELETE /api/documents/{id}"""
 
-    def test_delete_document_returns_200(
+    async def test_delete_document_returns_200(
         self, client, auth_headers, test_document, db_session
     ):
         # Patch the file path resolution so delete doesn't error on missing file
@@ -189,17 +190,17 @@ class TestDeleteDocument:
             "file_path",
             new_callable=lambda: property(lambda self: "uploads/nonexistent.pdf"),
         ):
-            response = client.delete(
+            response = await client.delete(
                 f"/api/documents/{test_document.id}", headers=auth_headers
             )
 
         assert response.status_code == 200
         assert "deleted" in response.json()["message"].lower()
 
-    def test_delete_document_returns_404_for_other_users_document(
+    async def test_delete_document_returns_404_for_other_users_document(
         self, client, second_user_headers, test_document
     ):
-        response = client.delete(
+        response = await client.delete(
             f"/api/documents/{test_document.id}", headers=second_user_headers
         )
         assert response.status_code == 404
@@ -213,7 +214,7 @@ class TestDeleteDocument:
 class TestProcessDocument:
     """POST /api/documents/{id}/process"""
 
-    def test_process_pending_document_sets_status_completed(
+    async def test_process_pending_document_sets_status_completed(
         self, client, auth_headers, db_session, test_user, mock_embeddings
     ):
         """Create a real PDF on disk, upload reference it, then process."""
@@ -268,9 +269,9 @@ startxref
                 user_id=test_user.id,
             )
             db_session.add(doc)
-            db_session.flush()
+            await db_session.flush()
 
-            response = client.post(
+            response = await client.post(
                 f"/api/documents/{doc.id}/process", headers=auth_headers
             )
 
@@ -278,24 +279,24 @@ startxref
             assert "processed successfully" in response.json()["message"]
 
             # Verify document status updated
-            db_session.refresh(doc)
+            await db_session.refresh(doc)
             assert doc.status == DocumentStatus.COMPLETED
         finally:
             pdf_path.unlink(missing_ok=True)
 
-    def test_process_returns_400_for_already_completed_document(
+    async def test_process_returns_400_for_already_completed_document(
         self, client, auth_headers, processed_document
     ):
-        response = client.post(
+        response = await client.post(
             f"/api/documents/{processed_document.id}/process", headers=auth_headers
         )
         assert response.status_code == 400
         assert "already processed" in response.json()["detail"]
 
-    def test_process_returns_404_for_other_users_document(
+    async def test_process_returns_404_for_other_users_document(
         self, client, second_user_headers, test_document
     ):
-        response = client.post(
+        response = await client.post(
             f"/api/documents/{test_document.id}/process", headers=second_user_headers
         )
         assert response.status_code == 404

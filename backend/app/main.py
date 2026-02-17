@@ -2,13 +2,13 @@ from contextlib import asynccontextmanager
 
 from app.api import auth, documents
 from app.config import settings
-from app.database import engine, init_db
+from app.database import async_engine, init_db
 from app.utils.logging_config import get_logger, setup_logging
 from app.utils.rate_limit import limiter
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Lifespan events: startup and shutdown"""
     logger.info("Starting Document Intelligence API")
-    init_db()
+    await init_db()
     logger.info("API ready")
     yield
 
@@ -53,7 +53,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 
 
 @app.get("/")
-def root():
+async def root():
     """Health check endpoint."""
     return {
         "message": "Document Intelligence API",
@@ -64,19 +64,19 @@ def root():
 
 
 @app.get("/health")
-def health_check():
+async def health_check():
     """Detailed health check."""
 
-    def _check_database() -> bool:
+    async def _check_database() -> bool:
         """Return True if database is reachable, False otherwise."""
         try:
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
+            async with async_engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
             return True
         except Exception:
             return False
 
-    if _check_database():
+    if await _check_database():
         return {
             "status": "healthy",
             "database": "connected",
