@@ -6,7 +6,7 @@
 import { useState, type SyntheticEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api, saveTokens } from "@/lib/api";
 
 /**
  * Renders centered login form. Submits to api.login, saves access_token to
@@ -26,9 +26,7 @@ export default function LoginPage() {
 
     try {
       const response = await api.login({ username, password });
-
-      localStorage.setItem("token", response.access_token);
-
+      saveTokens(response);
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
