@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from app.api import auth, documents
 from app.config import settings
-from app.database import async_engine, init_db
+from app.database import async_engine, get_db, init_db
 from app.utils.logging_config import get_logger, setup_logging
 from app.utils.rate_limit import limiter
 from fastapi import FastAPI
@@ -16,11 +16,21 @@ setup_logging(log_level="DEBUG")
 logger = get_logger(__name__)
 
 
+async def _cleanup_expired_refresh_tokens() -> None:
+    """Delete expired refresh token rows on startup to prevent unbounded table growth."""
+    async for db in get_db():
+        await db.execute(
+            text("DELETE FROM quaero.refresh_tokens WHERE expires_at < now()")
+        )
+        await db.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan events: startup and shutdown"""
     logger.info("Starting Document Intelligence API")
     await init_db()
+    await _cleanup_expired_refresh_tokens()
     logger.info("API ready")
     yield
 

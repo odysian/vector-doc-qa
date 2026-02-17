@@ -7,7 +7,7 @@
 import { useState, type SyntheticEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api, saveTokens } from "@/lib/api";
 
 /**
  * Renders centered registration form. On submit: api.register, then api.login
@@ -31,8 +31,7 @@ export default function RegisterPage() {
 
       // Auto-login after registration
       const loginResponse = await api.login({ username, password });
-      localStorage.setItem("token", loginResponse.access_token);
-
+      saveTokens(loginResponse);
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");

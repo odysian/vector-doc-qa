@@ -31,7 +31,14 @@ class UserResponse(BaseModel):
 
 
 class Token(BaseModel):
-    """Schema for JWT token response."""
+    """Token pair returned on login and token refresh."""
 
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
+
+
+class RefreshRequest(BaseModel):
+    """Request body for POST /api/auth/refresh and /api/auth/logout."""
+
+    refresh_token: str

@@ -37,7 +37,7 @@ Quaero is a document intelligence platform that allows users to upload PDF docum
     |
     ├──> [PostgreSQL + pgvector (Render)]
     |         quaero schema
-    |         tables: users, documents, chunks, messages
+    |         tables: users, documents, chunks, messages, refresh_tokens
     |
     ├──> [OpenAI API]
     |         text-embedding-3-small (1536 dims)
@@ -121,12 +121,25 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 | sources | JSONB | nullable (search results for assistant messages) |
 | created_at | TIMESTAMP | DEFAULT now(), NOT NULL |
 
+### refresh_tokens
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| id | INTEGER | PK, auto-increment |
+| user_id | INTEGER | FK → users.id, ON DELETE CASCADE, indexed |
+| token | VARCHAR(255) | UNIQUE, NOT NULL, indexed |
+| expires_at | TIMESTAMPTZ | NOT NULL |
+| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() |
+
+`token` is a `secrets.token_hex(32)` — 64-char hex string (not a JWT). Row presence = valid; deletion = revocation. Expired rows are cleaned up on app startup.
+
 ### Relationships
 
 - users (1) → documents (N): user uploads documents
 - documents (1) → chunks (N): document is split into chunks
 - documents (1) → messages (N): chat history per document (CASCADE delete)
 - users (1) → messages (N): user's chat messages (CASCADE delete)
+- users (1) → refresh_tokens (N): active sessions (CASCADE delete)
 
 ### Indexes
 
@@ -137,6 +150,8 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 | documents | status | BTREE | Filter by processing state |
 | documents | user_id | BTREE | User's document list |
 | chunks | document_id | BTREE | Chunk retrieval for a document |
+| refresh_tokens | token | UNIQUE | Token lookup on every refresh request |
+| refresh_tokens | user_id | BTREE | Cleanup queries / revoke all sessions |
 
 ---
 
@@ -168,9 +183,25 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 - **Auth:** None
 - **Rate Limit:** 5/minute per IP
 - **Request Body:** `{ "username": "string", "password": "string" }`
-- **Success (200):** `{ "access_token": "jwt...", "token_type": "bearer" }`
+- **Success (200):** `{ "access_token": "jwt...", "refresh_token": "hex64...", "token_type": "bearer" }`
 - **Errors:**
   - 401: Invalid username or password
+
+#### POST /api/auth/refresh
+- **Auth:** None (refresh token is the credential)
+- **Rate Limit:** 10/minute per IP
+- **Request Body:** `{ "refresh_token": "string" }`
+- **Success (200):** `{ "access_token": "jwt...", "refresh_token": "new-hex64...", "token_type": "bearer" }`
+- **Notes:** Rotates the token — old token is deleted, new one issued. Reusing a consumed token returns 401.
+- **Errors:**
+  - 401: Invalid or expired refresh token
+
+#### POST /api/auth/logout
+- **Auth:** None
+- **Rate Limit:** 10/minute per IP
+- **Request Body:** `{ "refresh_token": "string" }`
+- **Success (200):** `{ "message": "Logged out" }`
+- **Notes:** Deletes the refresh token row. Idempotent — returns 200 even if token doesn't exist.
 
 #### GET /api/auth/me
 - **Auth:** Required (Bearer token)
@@ -255,6 +286,8 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 | Chunk strategy | 1000 chars / 50 overlap | 500 chars, sentence-based | Balance between context and precision |
 | Schema isolation | quaero schema | Separate database | Shares Render free-tier DB across projects |
 | Auth token storage | localStorage | httpOnly cookies | Simpler implementation for SPA |
+| Refresh token strategy | DB-stored opaque token, rotation | JWT refresh token, Redis | Server-side revocation; rotation detects token theft |
+| Refresh token format | secrets.token_hex(32) (opaque) | JWT | No need to encode claims; lookup is a single indexed SELECT |
 | DB driver | asyncpg (async) | psycopg2 (sync) | Non-blocking I/O for concurrent requests; psycopg2 kept for Alembic |
 | Rate limiting | SlowAPI | Custom middleware | Battle-tested, per-endpoint configuration |
 
@@ -292,12 +325,13 @@ vector-doc-qa/
 │   │   │   ├── __init__.py
 │   │   │   ├── base.py          # Document, Chunk, DocumentStatus (enum)
 │   │   │   ├── user.py          # User model
-│   │   │   └── message.py       # Message model
+│   │   │   ├── message.py       # Message model
+│   │   │   └── refresh_token.py # RefreshToken model
 │   │   │
 │   │   ├── schemas/
 │   │   │   ├── __init__.py
 │   │   │   ├── document.py      # DocumentResponse, SearchRequest, QueryRequest, etc.
-│   │   │   └── auth.py          # UserCreate, UserLogin, UserResponse, Token
+│   │   │   └── user.py          # UserCreate, UserLogin, UserResponse, Token, RefreshRequest
 │   │   │
 │   │   ├── api/
 │   │   │   ├── __init__.py
@@ -313,7 +347,7 @@ vector-doc-qa/
 │   │   │   └── anthropic_service.py  # Claude RAG answer generation
 │   │   │
 │   │   ├── core/
-│   │   │   └── security.py      # JWT create/decode, password hash/verify
+│   │   │   └── security.py      # JWT create/decode, password hash/verify, refresh token helpers
 │   │   │
 │   │   └── utils/
 │   │       ├── file_utils.py    # PDF validation, upload handling
@@ -323,7 +357,8 @@ vector-doc-qa/
 │   ├── alembic/
 │   │   ├── env.py               # Migration environment (quaero schema)
 │   │   └── versions/
-│   │       └── 49b4e1e72658_*.py  # Initial migration
+│   │       ├── 49b4e1e72658_*.py  # Initial migration
+│   │       └── f84628967c60_*.py  # Add refresh_tokens table
 │   │
 │   ├── tests/
 │   │   ├── conftest.py            # Test DB, fixtures, mocks
