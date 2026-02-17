@@ -14,17 +14,17 @@ Quaero is an AI-powered PDF question-answering platform that uses Retrieval Augm
 
 **Stack:**
 
-- Backend: FastAPI (Python 3.12+, Async/Await ONLY)
+- Backend: FastAPI (Python 3.12+, async/await throughout)
 - Frontend: Next.js 16 (App Router) + React 19 + TypeScript
-- Database: PostgreSQL with pgvector extension (Render, `quaero` schema), (AsyncPG driver + SQLAlchemy 2.0 Async)
-- ORM: SQLAlchemy 2.0 (synchronous — not async)
+- Database: PostgreSQL with pgvector extension (Render, `quaero` schema)
+- ORM: SQLAlchemy 2.0 (async with `asyncpg` driver)
 - Auth: JWT (HS256) with Argon2 password hashing
 - AI: OpenAI API (text-embedding-3-small for embeddings), Anthropic API (Claude for RAG answers)
 - Deployment: Vercel (frontend) + Render (backend + PostgreSQL)
 
 **Deviations from WORKFLOW.md defaults:**
 
-- **Synchronous SQLAlchemy.** This project uses `psycopg2-binary` with synchronous sessions, not `asyncpg` with async sessions. All endpoints are `def`, not `async def`. Do not introduce async database patterns without discussion.
+- **Dual DB drivers.** The app uses `asyncpg` for all async database operations. `psycopg2-binary` is kept solely for Alembic migrations (which run synchronously). Both drivers are in requirements.txt.
 - **Next.js, not Vite.** Frontend uses Next.js App Router, but all pages are client components (`"use client"`). No server components or server-side data fetching are used.
 - **Argon2, not bcrypt.** Password hashing uses `argon2-cffi` via passlib, not bcrypt.
 - **Auth tokens in localStorage.** Tokens are stored in `localStorage` and sent via `Authorization: Bearer` header, not httpOnly cookies.

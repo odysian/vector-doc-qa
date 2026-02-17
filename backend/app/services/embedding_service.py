@@ -1,6 +1,4 @@
-from typing import List
-
-from openai import OpenAI, OpenAIError
+from openai import AsyncOpenAI, OpenAIError
 
 from app.config import settings
 from app.constants import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
@@ -9,7 +7,7 @@ from app.utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-def generate_embedding(text: str) -> List[float]:
+async def generate_embedding(text: str) -> list[float]:
     """Generate a vector embedding for a single text string"""
 
     if not text or not text.strip():
@@ -18,9 +16,9 @@ def generate_embedding(text: str) -> List[float]:
     try:
         logger.debug(f"Generating embedding for text (length={len(text)})")
 
-        client = OpenAI(api_key=settings.openai_api_key)
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
 
-        response = client.embeddings.create(
+        response = await client.embeddings.create(
             model=EMBEDDING_MODEL, input=text, encoding_format="float"
         )
 
@@ -43,7 +41,7 @@ def generate_embedding(text: str) -> List[float]:
         raise
 
 
-def generate_embeddings_batch(texts: List[str]) -> List[List[float]]:
+async def generate_embeddings_batch(texts: list[str]) -> list[list[float]]:
     """Generate embeddings for multiple texts in a single API call"""
 
     if not texts:
@@ -57,9 +55,9 @@ def generate_embeddings_batch(texts: List[str]) -> List[List[float]]:
     try:
         logger.info(f"Generating embeddings for {len(valid_texts)} texts")
 
-        client = OpenAI(api_key=settings.openai_api_key)
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
 
-        response = client.embeddings.create(
+        response = await client.embeddings.create(
             model=EMBEDDING_MODEL, input=valid_texts, encoding_format="float"
         )
 

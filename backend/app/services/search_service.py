@@ -1,5 +1,5 @@
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import Chunk
 from app.services.embedding_service import generate_embedding
@@ -8,13 +8,13 @@ from app.utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-def search_chunks(query: str, document_id: int, top_k: int, db: Session) -> list[dict]:
+async def search_chunks(query: str, document_id: int, top_k: int, db: AsyncSession) -> list[dict]:
     """
     Search for chunks semantically similar to the query.
     """
     logger.info(f"Searching for: '{query}' in document_id={document_id}, top_k={top_k}")
 
-    query_embedding = generate_embedding(query)
+    query_embedding = await generate_embedding(query)
     logger.debug(f"Generated query embedding with {len(query_embedding)} dimensions")
 
     # Create distance expression
@@ -28,7 +28,7 @@ def search_chunks(query: str, document_id: int, top_k: int, db: Session) -> list
         .limit(top_k)
     )
 
-    results = db.execute(stmt).all()
+    results = (await db.execute(stmt)).all()
 
     logger.debug(f"Query returned {len(results)} results")
 

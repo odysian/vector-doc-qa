@@ -1,7 +1,7 @@
 from app.api.dependencies import get_current_user
 from app.config import settings
 from app.database import get_db
-from app.models.base import Chunk, Document, DocumentStatus
+from app.models.base import Document, DocumentStatus
 from app.models.message import Message
 from app.models.user import User
 from app.schemas.document import DocumentListResponse, DocumentResponse, UploadResponse
@@ -16,7 +16,8 @@ from app.utils.logging_config import get_logger
 from app.utils.rate_limit import get_user_or_ip_key, limiter
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 logger = get_logger(__name__)
 
@@ -28,7 +29,7 @@ router = APIRouter()
 async def upload_document(
     request: Request,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -56,8 +57,8 @@ async def upload_document(
     )
 
     db.add(document)
-    db.commit()
-    db.refresh(document)  # Get auto-generated ID
+    await db.commit()
+    await db.refresh(document)  # Get auto-generated ID
     logger.info(f"Upload complete: document_id={document.id}")
 
     return UploadResponse(
@@ -72,9 +73,9 @@ async def upload_document(
 
 @router.get("/", response_model=DocumentListResponse)
 @limiter.limit("20/hour", key_func=get_user_or_ip_key)
-def get_documents(
+async def get_documents(
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -85,7 +86,7 @@ def get_documents(
         .where(Document.user_id == current_user.id)
         .order_by(Document.uploaded_at.desc())
     )
-    documents = db.scalars(stmt).all()
+    documents = (await db.scalars(stmt)).all()
 
     return DocumentListResponse(
         documents=[DocumentResponse.model_validate(d) for d in documents],
@@ -95,10 +96,10 @@ def get_documents(
 
 @router.get("/{document_id}", response_model=DocumentResponse)
 @limiter.limit("30/hour", key_func=get_user_or_ip_key)
-def get_document(
+async def get_document(
     request: Request,
     document_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -109,7 +110,7 @@ def get_document(
         .where(Document.id == document_id)
         .where(Document.user_id == current_user.id)
     )
-    document = db.scalar(stmt)
+    document = await db.scalar(stmt)
 
     if not document:
         raise HTTPException(
@@ -121,10 +122,10 @@ def get_document(
 
 @router.delete("/{document_id}")
 @limiter.limit("10/hour", key_func=get_user_or_ip_key)
-def delete_document(
+async def delete_document(
     request: Request,
     document_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -137,7 +138,7 @@ def delete_document(
         .where(Document.id == document_id)
         .where(Document.user_id == current_user.id)
     )
-    document = db.scalar(stmt)
+    document = await db.scalar(stmt)
 
     if not document:
         raise HTTPException(
@@ -149,8 +150,8 @@ def delete_document(
     full_path.unlink(missing_ok=True)
 
     # Delete from database (cascades to chunks)
-    db.delete(document)
-    db.commit()
+    await db.delete(document)
+    await db.commit()
 
     logger.info(f"Successfully deleted document_id={document_id}")
     return {"message": f"Document {document_id} deleted successfully"}
@@ -159,10 +160,10 @@ def delete_document(
 # PROCESS DOCUMENT
 @router.post("/{document_id}/process")
 @limiter.limit("5/hour", key_func=get_user_or_ip_key)
-def process_document(
+async def process_document(
     request: Request,
     document_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -177,7 +178,7 @@ def process_document(
         .where(Document.id == document_id)
         .where(Document.user_id == current_user.id)
     )
-    document = db.scalar(stmt)
+    document = await db.scalar(stmt)
 
     if not document:
         raise HTTPException(
@@ -186,7 +187,7 @@ def process_document(
 
     try:
         # Call service layer
-        process_document_text(document_id, db)
+        await process_document_text(document_id, db)
 
         return {
             "message": f"Document {document_id} processed successfully",
@@ -202,20 +203,22 @@ def process_document(
 
 @router.post("/{document_id}/search", response_model=SearchResponse)
 @limiter.limit("15/hour", key_func=get_user_or_ip_key)
-def search_document(
+async def search_document(
     request: Request,
     search: SearchRequest,
     document_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
 
+    # Eagerly load chunks to avoid lazy-loading MissingGreenlet in async
     stmt = (
         select(Document)
+        .options(selectinload(Document.chunks))
         .where(Document.id == document_id)
         .where(Document.user_id == current_user.id)
     )
-    document = db.scalar(stmt)
+    document = await db.scalar(stmt)
 
     if not document:
         raise HTTPException(
@@ -234,7 +237,7 @@ def search_document(
         )
 
     try:
-        results = search_chunks(
+        results = await search_chunks(
             query=search.query, document_id=document_id, top_k=search.top_k, db=db
         )
 
@@ -255,11 +258,11 @@ def search_document(
 
 @router.post("/{document_id}/query", response_model=QueryResponse)
 @limiter.limit("10/hour", key_func=get_user_or_ip_key)
-def query_document(
+async def query_document(
     request: Request,
     document_id: int,
     body: QueryRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -273,12 +276,14 @@ def query_document(
     logger.info(f"Query request for document_id={document_id}: '{body.query}'")
 
     # Verify document exists and user owns it
+    # Eagerly load chunks to avoid lazy-loading MissingGreenlet in async
     stmt = (
         select(Document)
+        .options(selectinload(Document.chunks))
         .where(Document.id == document_id)
         .where(Document.user_id == current_user.id)
     )
-    document = db.scalar(stmt)
+    document = await db.scalar(stmt)
 
     if not document:
         raise HTTPException(
@@ -306,14 +311,14 @@ def query_document(
             sources=None,
         )
         db.add(user_message)
-        db.flush()
+        await db.flush()
 
         # Perform RAG search and generate answer
-        search_results = search_chunks(
+        search_results = await search_chunks(
             query=body.query, document_id=document_id, top_k=5, db=db
         )
 
-        answer = generate_answer(query=body.query, chunks=search_results)
+        answer = await generate_answer(query=body.query, chunks=search_results)
 
         # Format sources for response
         sources = [SearchResult(**result) for result in search_results]
@@ -329,7 +334,7 @@ def query_document(
             sources=sources_dict,
         )
         db.add(assistant_message)
-        db.commit()
+        await db.commit()
 
         logger.info(
             f"Saved messages for document_id={document_id}: user_msg_id={user_message.id}, assistant_msg_id={assistant_message.id}"
@@ -338,21 +343,21 @@ def query_document(
         return QueryResponse(query=body.query, answer=answer, sources=sources)
 
     except ValueError as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         logger.error(f"Query failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 
 @router.get("/{document_id}/messages", response_model=MessageListResponse)
 @limiter.limit("30/hour", key_func=get_user_or_ip_key)
-def get_document_messages(
+async def get_document_messages(
     request: Request,
     document_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -367,7 +372,7 @@ def get_document_messages(
         .where(Document.id == document_id)
         .where(Document.user_id == current_user.id)
     )
-    document = db.scalar(stmt)
+    document = await db.scalar(stmt)
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -379,7 +384,7 @@ def get_document_messages(
         .where(Message.user_id == current_user.id)
         .order_by(Message.created_at.asc())
     )
-    messages = db.scalars(stmt).all()
+    messages = (await db.scalars(stmt)).all()
 
     return MessageListResponse(
         messages=[MessageResponse.model_validate(msg) for msg in messages],

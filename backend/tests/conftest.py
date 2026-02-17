@@ -6,15 +6,17 @@ Each test runs inside a transaction that rolls back after completion,
 keeping tests isolated without recreating tables per test.
 """
 
+import asyncio
 import uuid
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session, sessionmaker
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.security import create_access_token, get_password_hash
 from app.database import Base, get_db
@@ -26,14 +28,40 @@ from app.models.user import User
 # Test database configuration
 # ---------------------------------------------------------------------------
 
-# Include quaero in search_path so the pgvector VECTOR type (installed in quaero schema) is visible
-TEST_DATABASE_URL = (
-    "postgresql://postgres:postgres@localhost:5434/document_intelligence"
-    "?options=-c%20search_path=quaero_test,quaero,public"
+# NullPool avoids connection-reuse issues across different event loops.
+# asyncpg uses connect_args for search_path instead of URL params.
+test_engine = create_async_engine(
+    "postgresql+asyncpg://postgres:postgres@localhost:5434/document_intelligence",
+    poolclass=NullPool,
+    connect_args={
+        "server_settings": {"search_path": "quaero_test,quaero,public"}
+    },
 )
 
-test_engine = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
-TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+TestAsyncSession = async_sessionmaker(
+    bind=test_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
+
+
+# ---------------------------------------------------------------------------
+# Session-scoped event loop — ensures all async fixtures share one loop
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """Override default event loop to session scope.
+
+    Without this, pytest-asyncio creates a new event loop per test,
+    causing 'Future attached to a different loop' errors when
+    session-scoped fixtures create connections on one loop and
+    function-scoped fixtures try to use them on another.
+    """
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
 
 
 # ---------------------------------------------------------------------------
@@ -42,12 +70,11 @@ TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_eng
 
 
 @pytest.fixture(scope="session", autouse=True)
-def setup_test_database():
+async def setup_test_database():
     """Create the quaero_test schema and all tables before tests, drop after."""
-    with test_engine.connect() as conn:
-        conn.execute(text("CREATE SCHEMA IF NOT EXISTS quaero_test"))
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        conn.commit()
+    async with test_engine.begin() as conn:
+        await conn.execute(text("CREATE SCHEMA IF NOT EXISTS quaero_test"))
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 
     # Temporarily point all models at quaero_test for table creation
     original_schema = Base.metadata.schema
@@ -57,14 +84,14 @@ def setup_test_database():
     for table in Base.metadata.tables.values():
         table.schema = "quaero_test"
 
-    Base.metadata.create_all(bind=test_engine)
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
     yield
 
     # Use CASCADE to handle enum types and other dependencies
-    with test_engine.connect() as conn:
-        conn.execute(text("DROP SCHEMA IF EXISTS quaero_test CASCADE"))
-        conn.commit()
+    async with test_engine.begin() as conn:
+        await conn.execute(text("DROP SCHEMA IF EXISTS quaero_test CASCADE"))
 
     # Restore original schema
     Base.metadata.schema = original_schema
@@ -78,55 +105,50 @@ def setup_test_database():
 
 
 @pytest.fixture()
-def db_session(setup_test_database: None) -> Generator[Session, None, None]:
+async def db_session(setup_test_database) -> AsyncGenerator[AsyncSession, None]:
     """
     Provide a database session that rolls back after each test.
 
     Uses nested transactions (SAVEPOINT) so that code under test can call
     commit() without actually persisting data.
     """
-    connection = test_engine.connect()
-    transaction = connection.begin()
+    connection = await test_engine.connect()
+    transaction = await connection.begin()
 
-    session = TestSessionLocal(bind=connection)
+    session = TestAsyncSession(bind=connection)
 
     # Use begin_nested() so that session.commit() inside the app creates a
     # SAVEPOINT instead of committing the outer transaction
-    nested = connection.begin_nested()
+    nested = await connection.begin_nested()
 
     # After each commit inside the test, restart the nested savepoint
-    @pytest.fixture(autouse=True)
-    def _restart_savepoint():
-        pass
-
-    from sqlalchemy import event
-
-    @event.listens_for(session, "after_transaction_end")
-    def restart_savepoint(session, transaction_inner):  # type: ignore[no-untyped-def]
+    # Event listener goes on sync_session because SQLAlchemy events are sync
+    @event.listens_for(session.sync_session, "after_transaction_end")
+    def restart_savepoint(session_inner, transaction_inner):  # type: ignore[no-untyped-def]
         nonlocal nested
         if transaction_inner.nested and not transaction_inner._parent.nested:
-            nested = connection.begin_nested()
+            nested = connection.sync_connection.begin_nested()
 
     yield session
 
-    session.close()
-    transaction.rollback()
-    connection.close()
+    await session.close()
+    await transaction.rollback()
+    await connection.close()
 
 
 # ---------------------------------------------------------------------------
-# FastAPI TestClient
+# FastAPI AsyncClient
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture()
-def client(db_session: Session) -> Generator[TestClient, None, None]:
+async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """
-    FastAPI TestClient with the test database session injected
+    httpx AsyncClient with the test database session injected
     and rate limiting disabled.
     """
 
-    def _override_get_db():
+    async def _override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
@@ -134,8 +156,9 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     # Disable rate limiting for tests
     app.state.limiter.enabled = False
 
-    with TestClient(app) as tc:
-        yield tc
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
 
     app.dependency_overrides.clear()
     app.state.limiter.enabled = True
@@ -148,7 +171,9 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 TEST_PASSWORD = "testpass123!"
 
 
-def _make_user(db_session: Session, username: str | None = None, email: str | None = None) -> User:
+async def _make_user(
+    db_session: AsyncSession, username: str | None = None, email: str | None = None
+) -> User:
     """Helper to create a user directly in the database."""
     suffix = uuid.uuid4().hex[:8]
     user = User(
@@ -157,7 +182,7 @@ def _make_user(db_session: Session, username: str | None = None, email: str | No
         hashed_password=get_password_hash(TEST_PASSWORD),
     )
     db_session.add(user)
-    db_session.flush()
+    await db_session.flush()
     return user
 
 
@@ -168,9 +193,9 @@ def _make_auth_headers(user: User) -> dict[str, str]:
 
 
 @pytest.fixture()
-def test_user(db_session: Session) -> User:
+async def test_user(db_session: AsyncSession) -> User:
     """A test user already in the database."""
-    return _make_user(db_session)
+    return await _make_user(db_session)
 
 
 @pytest.fixture()
@@ -180,9 +205,9 @@ def auth_headers(test_user: User) -> dict[str, str]:
 
 
 @pytest.fixture()
-def second_user(db_session: Session) -> User:
+async def second_user(db_session: AsyncSession) -> User:
     """A second user for ownership / authorization tests."""
-    return _make_user(db_session)
+    return await _make_user(db_session)
 
 
 @pytest.fixture()
@@ -197,7 +222,7 @@ def second_user_headers(second_user: User) -> dict[str, str]:
 
 
 @pytest.fixture()
-def test_document(db_session: Session, test_user: User) -> Document:
+async def test_document(db_session: AsyncSession, test_user: User) -> Document:
     """A PENDING document owned by test_user (no file on disk)."""
     doc = Document(
         filename="test.pdf",
@@ -207,12 +232,12 @@ def test_document(db_session: Session, test_user: User) -> Document:
         user_id=test_user.id,
     )
     db_session.add(doc)
-    db_session.flush()
+    await db_session.flush()
     return doc
 
 
 @pytest.fixture()
-def processed_document(db_session: Session, test_user: User) -> Document:
+async def processed_document(db_session: AsyncSession, test_user: User) -> Document:
     """
     A COMPLETED document with chunks (fake embeddings) owned by test_user.
 
@@ -227,7 +252,7 @@ def processed_document(db_session: Session, test_user: User) -> Document:
         processed_at=datetime.utcnow(),
     )
     db_session.add(doc)
-    db_session.flush()
+    await db_session.flush()
 
     # Create chunks with fake embeddings (1536 dimensions)
     fake_embedding = [0.1] * 1536
@@ -240,7 +265,7 @@ def processed_document(db_session: Session, test_user: User) -> Document:
         )
         db_session.add(chunk)
 
-    db_session.flush()
+    await db_session.flush()
     return doc
 
 
@@ -253,14 +278,16 @@ FAKE_EMBEDDING = [0.1] * 1536
 
 @pytest.fixture()
 def mock_embeddings():
-    """Mock OpenAI embedding service functions."""
+    """Mock OpenAI embedding service functions (now async)."""
     with (
         patch(
             "app.services.embedding_service.generate_embedding",
+            new_callable=AsyncMock,
             return_value=FAKE_EMBEDDING,
         ) as mock_single,
         patch(
             "app.services.embedding_service.generate_embeddings_batch",
+            new_callable=AsyncMock,
         ) as mock_batch,
     ):
         # Batch returns one embedding per input text
@@ -270,9 +297,10 @@ def mock_embeddings():
 
 @pytest.fixture()
 def mock_anthropic():
-    """Mock Anthropic Claude answer generation."""
+    """Mock Anthropic Claude answer generation (now async)."""
     with patch(
         "app.services.anthropic_service.generate_answer",
+        new_callable=AsyncMock,
         return_value="This is a test answer based on the document.",
     ) as mock:
         yield mock

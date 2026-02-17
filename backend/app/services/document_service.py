@@ -1,8 +1,6 @@
 # backend/app/services/document_service.py
-from datetime import datetime, timezone
-
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.base import Chunk, Document, DocumentStatus
@@ -13,7 +11,7 @@ from app.utils.pdf_utils import chunk_text, extract_text_from_pdf
 logger = get_logger(__name__)
 
 
-def process_document_text(document_id: int, db: Session) -> None:
+async def process_document_text(document_id: int, db: AsyncSession) -> None:
     """
     Process a document: extract text, chunk it, save to database.
 
@@ -30,7 +28,7 @@ def process_document_text(document_id: int, db: Session) -> None:
 
     # Get document
     stmt = select(Document).where(Document.id == document_id).where()
-    document = db.scalar(stmt)
+    document = await db.scalar(stmt)
 
     if not document:
         logger.error(f"Document not found: document_id={document_id}")
@@ -45,11 +43,11 @@ def process_document_text(document_id: int, db: Session) -> None:
 
     try:
         document.status = DocumentStatus.PROCESSING
-        db.commit()
+        await db.commit()
 
         pdf_path = settings.get_upload_path().parent / document.file_path
 
-        # Extract text from pdf
+        # Extract text from pdf (CPU-bound, stays sync)
         logger.info(f"Extracting text from {document.filename}")
         text = extract_text_from_pdf(str(pdf_path))
         logger.info(f"Extracted {len(text)} characters")
@@ -57,8 +55,8 @@ def process_document_text(document_id: int, db: Session) -> None:
         if not text or not text.strip():
             raise ValueError("No text could be extracted from PDF")
 
-        # Break pdf text into chunks
-        logger.info(f"Chunking text")
+        # Break pdf text into chunks (CPU-bound, stays sync)
+        logger.info("Chunking text")
         chunks = chunk_text(text)
         logger.info(f"Created {len(chunks)} chunks")
 
@@ -70,23 +68,23 @@ def process_document_text(document_id: int, db: Session) -> None:
             db.add(chunk)
 
         # Flush to get chunk IDs without committing
-        db.flush()
+        await db.flush()
 
-        # Generate embeddings for all chunks
+        # Generate embeddings for all chunks (async API call)
         logger.info(f"Generating embeddings for {len(chunks)} chunks")
         chunk_texts = [chunk.content for chunk in chunk_objects]
-        embeddings = generate_embeddings_batch(chunk_texts)
+        embeddings = await generate_embeddings_batch(chunk_texts)
 
         # Assign embeddings to chunks
         for chunk, embedding in zip(chunk_objects, embeddings):
             chunk.embedding = embedding
 
-        logger.info(f"Embeddings generated and assigned successfully")
+        logger.info("Embeddings generated and assigned successfully")
 
         document.status = DocumentStatus.COMPLETED
         document.processed_at = func.now()
 
-        db.commit()
+        await db.commit()
 
         logger.info(f"Processing complete: {len(chunks)} chunks with embeddings")
 
@@ -94,5 +92,5 @@ def process_document_text(document_id: int, db: Session) -> None:
         logger.error(f"Processing failed: {e}", exc_info=True)
         document.status = DocumentStatus.FAILED
         document.error_message = str(e)
-        db.commit()
+        await db.commit()
         raise
