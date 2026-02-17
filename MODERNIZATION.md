@@ -6,7 +6,7 @@ Prioritized roughly by impact.
 
 ---
 
-## 1. Add a Test Suite (HIGH)
+## 1. Add a Test Suite (HIGH) -- DONE --
 
 **Current state:** No pytest tests. Only `backend/test_setup.py` (a manual verification script).
 

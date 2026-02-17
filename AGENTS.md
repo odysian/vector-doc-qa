@@ -14,9 +14,9 @@ Quaero is an AI-powered PDF question-answering platform that uses Retrieval Augm
 
 **Stack:**
 
-- Backend: FastAPI (Python 3.12+)
+- Backend: FastAPI (Python 3.12+, Async/Await ONLY)
 - Frontend: Next.js 16 (App Router) + React 19 + TypeScript
-- Database: PostgreSQL with pgvector extension (Render, `quaero` schema)
+- Database: PostgreSQL with pgvector extension (Render, `quaero` schema), (AsyncPG driver + SQLAlchemy 2.0 Async)
 - ORM: SQLAlchemy 2.0 (synchronous — not async)
 - Auth: JWT (HS256) with Argon2 password hashing
 - AI: OpenAI API (text-embedding-3-small for embeddings), Anthropic API (Claude for RAG answers)
