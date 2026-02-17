@@ -6,7 +6,7 @@ from app.models.user import User
 from app.schemas.user import Token, UserCreate, UserLogin, UserResponse
 from app.utils.rate_limit import get_ip_key, limiter
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
@@ -15,10 +15,10 @@ router = APIRouter()
     "/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED
 )
 @limiter.limit("3/hour", key_func=get_ip_key)
-def register(
+async def register(
     request: Request,
     user: UserCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Register a new user.
@@ -28,7 +28,7 @@ def register(
     - Returns created user (without password)
     """
     # Check if username already exists
-    db_user = get_user_by_username(db, user.username)
+    db_user = await get_user_by_username(db, user.username)
     if db_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -36,22 +36,22 @@ def register(
         )
 
     # Check if email already exists
-    db_user = get_user_by_email(db, user.email)
+    db_user = await get_user_by_email(db, user.email)
     if db_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
         )
 
     # Create user (password hashing happens in CRUD)
-    return create_user(db, user)
+    return await create_user(db, user)
 
 
 @router.post("/login", response_model=Token)
 @limiter.limit("5/minute", key_func=get_ip_key)
-def login(
+async def login(
     request: Request,
     user: UserLogin,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Login with username and password.
@@ -60,7 +60,7 @@ def login(
     - Returns JWT access token
     """
     # Get user by username
-    db_user = get_user_by_username(db, user.username)
+    db_user = await get_user_by_username(db, user.username)
     if not db_user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -81,7 +81,7 @@ def login(
 
 
 @router.get("/me", response_model=UserResponse)
-def get_current_user_info(current_user: User = Depends(get_current_user)):
+async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """
     Get current user information.
 
