@@ -45,7 +45,7 @@ export default function DashboardPage() {
   }, [router]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("access_token");
     if (!token) return router.push("/login");
     loadDocuments();
   }, [router, loadDocuments]);
@@ -69,8 +69,8 @@ export default function DashboardPage() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
+  const handleLogout = async () => {
+    await api.logout();
     router.push("/login");
   };
 
