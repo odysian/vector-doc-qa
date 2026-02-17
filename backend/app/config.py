@@ -34,6 +34,21 @@ class Settings(BaseSettings):
 
     whitelisted_ips: list[str] = []
 
+    @property
+    def async_database_url(self) -> str:
+        """Convert sync database URL to asyncpg format.
+
+        Replaces the driver prefix and strips the ?options= query parameter
+        because asyncpg uses connect_args for server settings instead.
+        """
+        url = self.database_url.replace(
+            "postgresql://", "postgresql+asyncpg://", 1
+        )
+        # Strip ?options= param — asyncpg handles search_path via connect_args
+        if "?options=" in url:
+            url = url[: url.index("?options=")]
+        return url
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
