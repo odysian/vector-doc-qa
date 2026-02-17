@@ -24,20 +24,30 @@ class User(Base):
 
 Every model sets `__table_args__ = {"schema": "quaero"}` for schema isolation.
 
-### SQLAlchemy Queries (2.0 style)
+### SQLAlchemy Queries (2.0 async style)
 
-Use `select()` statements, not `db.query()`.
+Use `select()` statements with `await`, not `db.query()`.
 
 ```python
 from sqlalchemy import select
 
 # Single result
 stmt = select(User).where(User.username == username)
-user = db.execute(stmt).scalar_one_or_none()
+user = await db.scalar(stmt)
 
-# Multiple results
+# Multiple results — note the parentheses around await
 stmt = select(Document).where(Document.user_id == user_id)
-documents = db.scalars(stmt).all()
+documents = (await db.scalars(stmt)).all()
+
+# Eager loading to avoid MissingGreenlet on lazy relationships
+from sqlalchemy.orm import selectinload
+
+stmt = (
+    select(Document)
+    .options(selectinload(Document.chunks))
+    .where(Document.id == document_id)
+)
+document = await db.scalar(stmt)
 ```
 
 ### Pydantic Schemas (v2)
@@ -61,9 +71,9 @@ Routers are thin — validate input, call service, return response. Business log
 
 ```python
 @router.post("/upload", status_code=201, response_model=DocumentResponse)
-def upload_document(
+async def upload_document(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     # Validate → delegate to service → return
@@ -71,13 +81,13 @@ def upload_document(
 
 ### Service Layer
 
-Services receive a `Session` and validated data. They perform business logic and return results or raise `HTTPException`.
+Services receive an `AsyncSession` and validated data. They perform business logic and return results or raise `HTTPException`.
 
 ```python
-def process_document_text(document_id: int, db: Session) -> None:
-    document = db.execute(
+async def process_document_text(document_id: int, db: AsyncSession) -> None:
+    document = await db.scalar(
         select(Document).where(Document.id == document_id)
-    ).scalar_one_or_none()
+    )
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
