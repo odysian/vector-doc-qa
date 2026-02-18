@@ -27,7 +27,7 @@ Quaero is an AI-powered PDF question-answering platform that uses Retrieval Augm
 - **Dual DB drivers.** The app uses `asyncpg` for all async database operations. `psycopg2-binary` is kept solely for Alembic migrations (which run synchronously). Both drivers are in requirements.txt.
 - **Next.js, not Vite.** Frontend uses Next.js App Router, but all pages are client components (`"use client"`). No server components or server-side data fetching are used.
 - **Argon2, not bcrypt.** Password hashing uses `argon2-cffi` via passlib, not bcrypt.
-- **Auth tokens in httpOnly cookies.** `access_token` and `refresh_token` are stored in httpOnly cookies (path-scoped: `/api/` and `/api/auth/` respectively). A readable `csrf_token` cookie is set at `/` and echoed as `X-CSRF-Token` on mutating requests (double-submit CSRF pattern). The backend also accepts `Authorization: Bearer` as a fallback (keeps Swagger UI working). `saveTokens()` in `lib/api.ts` is a no-op kept for backward compat.
+- **Auth tokens in httpOnly cookies.** `access_token` and `refresh_token` are stored in httpOnly cookies (path-scoped: `/api/` and `/api/auth/` respectively). A readable `csrf_token` cookie is set at `/` and echoed as `X-CSRF-Token` on mutating requests (double-submit CSRF pattern). The backend also accepts `Authorization: Bearer` as a fallback (keeps Swagger UI working). Because the frontend (Vercel) and backend (Render) are on different domains, the `csrf_token` cookie cannot be read via `document.cookie` on the frontend — instead, it is returned in the JSON response body on login/refresh and stored in `localStorage` (see ADR-001).
 - **INTEGER primary keys.** Models use `Integer` primary keys, not `BigInteger` as WORKFLOW.md specifies.
 - **Schema isolation.** Database uses `quaero` schema, not the default `public` schema. This is for multi-project sharing on a single Render PostgreSQL instance.
 - **No token expiration.** `access_token_expire_minutes` is set to `0` (no expiration) in config.
@@ -100,6 +100,7 @@ If any check fails, fix before moving on.
 - [ ] **PATTERNS.md** — Update if you introduced or changed a code convention.
 - [ ] **REVIEW_CHECKLIST.md** — Update if the feature introduced a new category of checks.
 - [ ] **TESTPLAN.md** — Update before writing any new tests.
+- [ ] **docs/adr/** — Create a new numbered ADR if you chose between competing approaches, resolved a non-obvious production issue, or made a decision with lasting security/performance consequences. See **ADR Format** below.
 
 Edit the specific section that changed. Do not rewrite entire files.
 
@@ -169,6 +170,71 @@ _Add to this section when the agent makes a mistake. Each line prevents a repeat
 - **Do not create `.env` files with real secrets.** Use `.env.example` with placeholders.
 - **Do not add dependencies that duplicate existing functionality.** Check what's installed.
 - **Do not modify migration files after they've been applied.** Create a new one.
+
+---
+
+## ADR Format
+
+Architecture Decision Records live in `docs/adr/` and capture decisions with lasting consequences. Use ADR-001 as the canonical example.
+
+**When to write one:**
+- You chose between two or more real alternatives (not just "one obvious way")
+- A production issue revealed a design flaw that required a deliberate fix
+- The decision has non-obvious security, performance, or correctness implications
+- Future agents or developers would reasonably question why something was done this way
+
+**When NOT to write one:**
+- Routine feature additions with no competing approaches
+- Bug fixes with a single obvious solution
+- Anything fully covered by PATTERNS.md
+
+**File naming:** `NNN-kebab-case-title.md` — three-digit sequence number, e.g. `004-my-decision.md`. Check the existing files in `docs/adr/` for the next available number.
+
+**Required sections:**
+
+```
+# ADR-NNN: Short Title
+
+**Date:** YYYY-MM-DD
+**Status:** Accepted | Applied | Superseded by ADR-XXX
+**Branch:** branch-name-or-pr
+
+---
+
+## Context
+
+### Background
+[What is the relevant architecture or system state?]
+
+### Problem
+[What specific issue or requirement triggered this decision?]
+
+### Root Cause (if a bug or production incident)
+[Why did the problem occur?]
+
+---
+
+## Options Considered
+
+### Option A: Name
+[Description. Accepted/Rejected, and why.]
+
+### Option B: Name
+[Description. Accepted/Rejected, and why.]
+
+---
+
+## Decision
+
+[Numbered list of what was implemented and how.]
+
+---
+
+## Consequences
+
+[Bullet list: what is now true as a result, including tradeoffs, edge cases,
+and any new risks introduced.]
+```
 
 ---
 
