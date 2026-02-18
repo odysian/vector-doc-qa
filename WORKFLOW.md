@@ -560,6 +560,7 @@ This is harness engineering. Over time, the AGENTS.md becomes increasingly speci
 | Schema changed                      | ARCHITECTURE.md (database section)                 |
 | New endpoint added                  | ARCHITECTURE.md (API contracts section)            |
 | Implementation diverged from design | ARCHITECTURE.md (update to match reality)          |
+| Significant architectural decision  | docs/adr/NNN-*.md (new numbered file)              |
 
 ### Agent Responsibilities for Documentation
 
