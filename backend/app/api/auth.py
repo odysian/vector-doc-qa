@@ -80,6 +80,7 @@ async def login(
 
     access_token = create_access_token(data={"sub": str(db_user.id)})
     refresh_token = await create_refresh_token(db_user.id, db)  # type: ignore
+    await db.commit()
 
     return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
 
@@ -105,12 +106,12 @@ async def refresh(
 
     user_id: int = row.user_id  # type: ignore
 
-    # Rotation: delete the consumed token before issuing new ones
+    # Rotation: delete consumed token and stage new one in the same transaction
     await db.execute(delete(RefreshToken).where(RefreshToken.id == row.id))
-    await db.commit()
+    new_refresh_token = await create_refresh_token(user_id, db)
+    await db.commit()  # single commit — both operations succeed or both roll back
 
     access_token = create_access_token(data={"sub": str(user_id)})
-    new_refresh_token = await create_refresh_token(user_id, db)
 
     return {"access_token": access_token, "refresh_token": new_refresh_token, "token_type": "bearer"}
 

@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     chunk_size: int = DEFAULT_CHUNK_SIZE
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP
 
+    frontend_url: str = "http://localhost:3000"
+
     whitelisted_ips: list[str] = []
 
     @property
