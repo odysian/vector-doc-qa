@@ -274,9 +274,15 @@ class TestRefresh:
         await client.post(
             "/api/auth/refresh", json={"refresh_token": refresh_token_str}
         )
-        # Second use of the now-deleted token
+        # Clear the cookie jar so the second request uses only the body token.
+        # Without this, the cookie-priority rule picks up the NEW refresh_token
+        # cookie (set by the first response) and the call succeeds — masking
+        # the reuse check that the test is actually validating.
+        client.cookies.clear()
+        # Second use of the now-deleted body token — must be rejected
         response = await client.post(
-            "/api/auth/refresh", json={"refresh_token": refresh_token_str}
+            "/api/auth/refresh",
+            json={"refresh_token": refresh_token_str},
         )
 
         assert response.status_code == 401

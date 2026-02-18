@@ -53,6 +53,14 @@ def get_user_or_ip_key(request: Request) -> str:
         user_id = decode_access_token(token)
         if user_id:
             return f"user:{user_id}"
+
+    # Cookie fallback: rate limit by user when authenticated via httpOnly cookie
+    cookie_token = request.cookies.get("access_token")
+    if cookie_token:
+        user_id = decode_access_token(cookie_token)
+        if user_id:
+            return f"user:{user_id}"
+
     return client_ip
 
 
