@@ -9,9 +9,8 @@ Sets/clears the three auth cookies:
 import secrets
 from typing import Literal
 
-from fastapi import Response
-
 from app.config import settings
+from fastapi import Response
 
 
 def _is_production() -> bool:
@@ -19,9 +18,7 @@ def _is_production() -> bool:
     return settings.frontend_url.startswith("https://")
 
 
-def set_auth_cookies(
-    response: Response, access_token: str, refresh_token: str
-) -> None:
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
     """Set all three auth cookies on the response.
 
     SameSite=None requires Secure=True (enforced automatically in prod).
@@ -66,7 +63,7 @@ def set_auth_cookies(
         secure=secure,
         samesite=samesite,
         path="/",
-        max_age=access_max_age,
+        max_age=refresh_max_age,
     )
 
 
