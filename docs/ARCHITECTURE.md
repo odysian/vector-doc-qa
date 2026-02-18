@@ -31,7 +31,7 @@ Quaero is a document intelligence platform that allows users to upload PDF docum
     |
     v
 [Next.js Frontend (Vercel)]
-    |  (REST API — Authorization: Bearer <JWT>)
+    |  (REST API — httpOnly cookies + X-CSRF-Token header)
     v
 [FastAPI Backend (Render)]
     |
@@ -204,7 +204,7 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 - **Notes:** Deletes the refresh token row. Idempotent — returns 200 even if token doesn't exist.
 
 #### GET /api/auth/me
-- **Auth:** Required (Bearer token)
+- **Auth:** Required (httpOnly access_token cookie or Bearer token)
 - **Success (200):** `{ "id": 1, "username": "chris", "email": "chris@example.com", "created_at": "..." }`
 - **Errors:**
   - 401: Invalid or missing token
@@ -285,7 +285,8 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 | PDF extraction | pdfplumber | PyPDF2, PyMuPDF | Best text quality, handles complex layouts |
 | Chunk strategy | 1000 chars / 50 overlap | 500 chars, sentence-based | Balance between context and precision |
 | Schema isolation | quaero schema | Separate database | Shares Render free-tier DB across projects |
-| Auth token storage | localStorage | httpOnly cookies | Simpler implementation for SPA |
+| Auth token storage | httpOnly cookies | localStorage | XSS protection; JS cannot read access_token or refresh_token |
+| CSRF protection | Double-submit cookie pattern | Synchronizer token | csrf_token cookie (readable) echoed as X-CSRF-Token header; timing-safe compare |
 | Refresh token strategy | DB-stored opaque token, rotation | JWT refresh token, Redis | Server-side revocation; rotation detects token theft |
 | Refresh token format | secrets.token_hex(32) (opaque) | JWT | No need to encode claims; lookup is a single indexed SELECT |
 | DB driver | asyncpg (async) | psycopg2 (sync) | Non-blocking I/O for concurrent requests; psycopg2 kept for Alembic |
