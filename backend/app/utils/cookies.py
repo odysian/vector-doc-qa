@@ -18,7 +18,7 @@ def _is_production() -> bool:
     return settings.frontend_url.startswith("https://")
 
 
-def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> str:
     """Set all three auth cookies on the response.
 
     SameSite=None requires Secure=True (enforced automatically in prod).
@@ -53,8 +53,8 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
         max_age=refresh_max_age,
     )
 
-    # csrf_token is NOT httpOnly — the frontend reads it via document.cookie
-    # and echoes it back as the X-CSRF-Token request header.
+    # csrf_token is NOT httpOnly — cross-domain clients read it from the JSON
+    # response body (see ADR-001); same-origin clients can also read the cookie.
     csrf_value = secrets.token_hex(16)
     response.set_cookie(
         key="csrf_token",
@@ -65,6 +65,8 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
         path="/",
         max_age=refresh_max_age,
     )
+
+    return csrf_value
 
 
 def clear_auth_cookies(response: Response) -> None:

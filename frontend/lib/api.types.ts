@@ -30,6 +30,7 @@ export interface RegisterData {
 export interface AuthResponse {
   access_token: string;
   refresh_token: string;
+  csrf_token: string; // returned in body for cross-domain clients (see ADR-001)
   token_type: string;
 }
 

@@ -86,10 +86,11 @@ async def login(
     refresh_token = await create_refresh_token(db_user.id, db)  # type: ignore
     await db.commit()
 
-    # Set httpOnly cookies in addition to returning tokens in the body
-    set_auth_cookies(response, access_token, refresh_token)
+    # Set httpOnly cookies; csrf_value is returned in the body for cross-domain
+    # clients that cannot read a cookie set on a different origin (see ADR-001).
+    csrf_value = set_auth_cookies(response, access_token, refresh_token)
 
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+    return {"access_token": access_token, "refresh_token": refresh_token, "csrf_token": csrf_value, "token_type": "bearer"}
 
 
 @router.post("/refresh", response_model=Token)
@@ -133,10 +134,10 @@ async def refresh(
 
     access_token = create_access_token(data={"sub": str(user_id)})
 
-    # Rotate cookies alongside the body response
-    set_auth_cookies(response, access_token, new_refresh_token)
+    # Rotate cookies; return fresh csrf_token in body for cross-domain clients.
+    csrf_value = set_auth_cookies(response, access_token, new_refresh_token)
 
-    return {"access_token": access_token, "refresh_token": new_refresh_token, "token_type": "bearer"}
+    return {"access_token": access_token, "refresh_token": new_refresh_token, "csrf_token": csrf_value, "token_type": "bearer"}
 
 
 @router.post("/logout")
