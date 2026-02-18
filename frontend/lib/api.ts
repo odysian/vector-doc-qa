@@ -34,20 +34,18 @@ export type {
 // ---------------------------------------------------------------------------
 
 /**
- * Read the csrf_token cookie set by the backend on login/refresh.
- * Returns null when not present (= not logged in, or server not reachable yet).
- * Safe to call during SSR (returns null when window is not available).
+ * Read the CSRF token stored in localStorage after login/refresh.
+ * The token arrives in the JSON response body because the backend sets it as a
+ * cookie on its own domain — which document.cookie on Vercel cannot read (see
+ * ADR-001). Safe to call during SSR (returns null when window is not available).
  */
 function getCsrfToken(): string | null {
   if (typeof window === "undefined") return null;
-  const match = document.cookie
-    .split("; ")
-    .find((row) => row.startsWith("csrf_token="));
-  return match ? match.split("=")[1] : null;
+  return localStorage.getItem("csrf_token");
 }
 
 /**
- * Instant auth check based on the readable csrf_token cookie.
+ * Instant auth check based on the CSRF token in localStorage.
  * Use for UI routing decisions (redirect to /login or /dashboard).
  * Not a security guarantee — actual auth is enforced by the backend
  * on every request via the httpOnly access_token cookie.
@@ -57,22 +55,24 @@ export function isLoggedIn(): boolean {
 }
 
 /**
- * No-op — the backend now sets httpOnly cookies directly on login/refresh.
- * Kept so existing call sites (login page) don't need changes.
- * @deprecated Tokens are managed server-side via cookies.
+ * Persist the CSRF token from a login or refresh response into localStorage.
+ * The backend returns it in the JSON body because it cannot be read from
+ * document.cookie across domains (see ADR-001). The httpOnly auth cookies are
+ * set by the backend automatically — only the CSRF token needs JS storage.
  */
-export function saveTokens(_tokens: AuthResponse): void {
-  // Intentional no-op.
+export function saveTokens(tokens: AuthResponse): void {
+  localStorage.setItem("csrf_token", tokens.csrf_token);
 }
 
 /**
- * Remove any access_token / refresh_token values left in localStorage
- * from before the httpOnly-cookie migration. Does NOT touch cookies
- * (only the backend can clear those via Set-Cookie: Max-Age=0).
+ * Clear the CSRF token from localStorage on logout or session expiry.
+ * Also removes legacy auth keys left over from before the cookie migration.
+ * Does NOT touch cookies — only the backend can clear those via Max-Age=0.
  */
 function clearTokens(): void {
-  localStorage.removeItem("access_token");
-  localStorage.removeItem("refresh_token");
+  localStorage.removeItem("csrf_token");
+  localStorage.removeItem("access_token");  // legacy cleanup
+  localStorage.removeItem("refresh_token"); // legacy cleanup
 }
 
 /** Builds full URL from a path; only place that prepends API_URL. */
@@ -101,7 +101,8 @@ async function refreshAccessToken(): Promise<boolean> {
 /**
  * Ask the backend to rotate the refresh token.
  * No request body — the httpOnly refresh_token cookie is the credential.
- * The backend responds with Set-Cookie headers for all three cookies.
+ * The backend responds with Set-Cookie headers and a JSON body that includes
+ * a fresh csrf_token. We save it so subsequent requests use the new value.
  * Uses raw fetch (not apiRequest) to avoid a 401 refresh cycle.
  */
 async function doRefresh(): Promise<boolean> {
@@ -111,10 +112,13 @@ async function doRefresh(): Promise<boolean> {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      // CSRF header required when access_token cookie is present
       ...(csrf ? { "X-CSRF-Token": csrf } : {}),
     },
   });
+  if (response.ok) {
+    const data: AuthResponse = await response.json();
+    saveTokens(data); // persist rotated CSRF token
+  }
   return response.ok;
 }
 

@@ -68,17 +68,28 @@ async def get_current_user(
     return user
 
 
+
+# Login and register are credential-gated (require username + password); CSRF
+# is not a meaningful threat on them. Exempting them also breaks the deadlock
+# where a stale access_token cookie prevents login (see ADR-001).
+_CSRF_EXEMPT_PATHS = {"/api/auth/login", "/api/auth/register"}
+
+
 async def verify_csrf(request: Request) -> None:
     """Enforce double-submit CSRF protection for cookie-authenticated requests.
 
     Rules:
     - Safe methods (GET, HEAD, OPTIONS) are always exempt.
+    - Login and register are exempt (credential-gated, see _CSRF_EXEMPT_PATHS).
     - If there is no access_token cookie the request is using Bearer auth,
       which is not vulnerable to CSRF (browser won't auto-send custom headers).
     - Otherwise: the X-CSRF-Token header must match the csrf_token cookie
       (timing-safe comparison).
     """
     if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return
+
+    if request.url.path in _CSRF_EXEMPT_PATHS:
         return
 
     # No access_token cookie → Bearer auth path → no CSRF risk
