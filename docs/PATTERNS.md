@@ -157,7 +157,11 @@ const documents = await api.getDocuments();
 
 ### Auth Token
 
-Stored in `localStorage`. Retrieved by `getToken()` in `lib/api.ts`. Sent as `Authorization: Bearer` header automatically by the API client.
+Stored in httpOnly cookies set by the backend on login/refresh. JS cannot read the `access_token` or `refresh_token` cookies directly.
+
+The frontend reads the non-httpOnly `csrf_token` cookie via `getCsrfToken()` in `lib/api.ts` and echoes it as the `X-CSRF-Token` header on every mutating request (double-submit CSRF pattern). `isLoggedIn()` checks for the presence of this cookie as a fast, client-side session indicator.
+
+All `fetch` calls use `credentials: "include"` so httpOnly cookies are sent cross-origin. The API client handles 401s by attempting a silent token refresh (POST `/api/auth/refresh` — no body required, cookie is the credential) before redirecting to `/login`.
 
 ### TypeScript Types
 
