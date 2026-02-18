@@ -24,7 +24,7 @@ Prioritized roughly by impact.
 
 ---
 
-## 2. Migrate to Async (MEDIUM)
+## 2. Migrate to Async (MEDIUM) -- DONE --
 
 **Current state:** Synchronous SQLAlchemy with `psycopg2-binary`. All endpoints are `def`.
 
@@ -60,7 +60,7 @@ Prioritized roughly by impact.
 
 ---
 
-## 4. Add Token Expiration (MEDIUM)
+## 4. Add Token Expiration (MEDIUM) -- DONE --
 
 **Current state:** `access_token_expire_minutes = 0` (tokens never expire).
 
@@ -118,7 +118,7 @@ Prioritized roughly by impact.
 
 ---
 
-## 7. Improve .gitignore (LOW)
+## 7. Improve .gitignore (LOW) -- DONE --
 
 **Current state:** `docs/` directory is gitignored. This means ARCHITECTURE.md, PATTERNS.md, and REVIEW_CHECKLIST.md are not tracked.
 

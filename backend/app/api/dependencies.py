@@ -30,8 +30,19 @@ async def get_current_user(
     token = credentials.credentials
 
     # Decode JWT to get user_id
-    user_id = decode_access_token(token)
-    if user_id is None:
+    user_id_str = decode_access_token(token)
+    if user_id_str is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Convert to int — a structurally valid JWT with a non-numeric sub
+    # should return 401, not an unhandled 500 from ValueError.
+    try:
+        uid = int(user_id_str)
+    except ValueError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
@@ -39,7 +50,7 @@ async def get_current_user(
         )
 
     # Fetch user from database
-    user = await get_user_by_id(db, int(user_id))
+    user = await get_user_by_id(db, uid)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

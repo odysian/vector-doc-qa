@@ -75,9 +75,10 @@ def decode_access_token(token: str) -> Optional[str]:
 
 async def create_refresh_token(user_id: int, db: AsyncSession) -> str:
     """
-    Generate a random opaque refresh token, persist it in the DB, and return the token string.
+    Stage a new refresh token row. Does NOT commit — caller is responsible.
 
-    The token is a 64-char hex string (secrets.token_hex(32)), not a JWT.
+    This keeps the caller in control of transaction boundaries, which matters
+    for the refresh endpoint where the delete and insert must be atomic.
     """
     # Import here to avoid circular imports (models → base → security)
     from app.models.refresh_token import RefreshToken
@@ -87,7 +88,6 @@ async def create_refresh_token(user_id: int, db: AsyncSession) -> str:
         days=settings.refresh_token_expire_days
     )
     db.add(RefreshToken(user_id=user_id, token=raw_token, expires_at=expires_at))
-    await db.commit()
     return raw_token
 
 
@@ -106,7 +106,15 @@ async def validate_refresh_token(
     row = await db.scalar(stmt)
     if row is None:
         return None
-    if row.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+    # Make expires_at timezone-aware if the driver returned a naive datetime.
+    # DateTime(timezone=True) with asyncpg should always return aware, but
+    # .replace() on an already-aware value is wrong if tzinfo != UTC.
+    expires_aware = (
+        row.expires_at
+        if row.expires_at.tzinfo is not None
+        else row.expires_at.replace(tzinfo=timezone.utc)
+    )
+    if expires_aware < datetime.now(timezone.utc):
         # Expired — clean up and signal failure
         await db.execute(delete(RefreshToken).where(RefreshToken.id == row.id))
         await db.commit()
