@@ -10,8 +10,9 @@ from app.database import get_db
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.schemas.user import RefreshRequest, Token, UserCreate, UserLogin, UserResponse
+from app.utils.cookies import clear_auth_cookies, set_auth_cookies
 from app.utils.rate_limit import get_ip_key, limiter
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,13 +58,16 @@ async def register(
 @limiter.limit("5/minute", key_func=get_ip_key)
 async def login(
     request: Request,
+    response: Response,
     user: UserLogin,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Login with username and password.
 
-    Returns a short-lived access token JWT and a long-lived refresh token.
+    Returns a short-lived access token JWT and a long-lived refresh token
+    in both the JSON body and as httpOnly cookies. Existing clients that
+    read from the body continue to work unchanged.
     """
     db_user = await get_user_by_username(db, user.username)
     if not db_user:
@@ -82,6 +86,9 @@ async def login(
     refresh_token = await create_refresh_token(db_user.id, db)  # type: ignore
     await db.commit()
 
+    # Set httpOnly cookies in addition to returning tokens in the body
+    set_auth_cookies(response, access_token, refresh_token)
+
     return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
 
 
@@ -89,15 +96,28 @@ async def login(
 @limiter.limit("10/minute", key_func=get_ip_key)
 async def refresh(
     request: Request,
-    body: RefreshRequest,
+    response: Response,
+    # Body is optional: cookie-based clients send no body; legacy clients send JSON
+    body: RefreshRequest | None = Body(default=None),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Exchange a valid refresh token for a new access + refresh token pair (rotation).
 
+    Token source priority: refresh_token cookie → request body.
     Old refresh token is deleted on use — if reused, it will 401.
     """
-    row = await validate_refresh_token(body.refresh_token, db)
+    # Cookie takes priority; body is the fallback for legacy clients
+    refresh_token_value = request.cookies.get("refresh_token") or (
+        body.refresh_token if body else None
+    )
+    if not refresh_token_value:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
+    row = await validate_refresh_token(refresh_token_value, db)
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -113,6 +133,9 @@ async def refresh(
 
     access_token = create_access_token(data={"sub": str(user_id)})
 
+    # Rotate cookies alongside the body response
+    set_auth_cookies(response, access_token, new_refresh_token)
+
     return {"access_token": access_token, "refresh_token": new_refresh_token, "token_type": "bearer"}
 
 
@@ -120,16 +143,29 @@ async def refresh(
 @limiter.limit("10/minute", key_func=get_ip_key)
 async def logout(
     request: Request,
-    body: RefreshRequest,
+    response: Response,
+    # Body is optional: cookie-based clients send no body; legacy clients send JSON
+    body: RefreshRequest | None = Body(default=None),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Invalidate a refresh token. Idempotent — no error if the token doesn't exist.
+    Invalidate a refresh token and clear auth cookies.
+
+    Token source priority: refresh_token cookie → request body.
+    Idempotent — no error if the token doesn't exist.
     """
+    refresh_token_value = request.cookies.get("refresh_token") or (
+        body.refresh_token if body else None
+    )
+
     await db.execute(
-        delete(RefreshToken).where(RefreshToken.token == body.refresh_token)
+        delete(RefreshToken).where(RefreshToken.token == refresh_token_value)
     )
     await db.commit()
+
+    # Always clear cookies regardless of token source
+    clear_auth_cookies(response)
+
     return {"message": "Logged out"}
 
 
@@ -138,6 +174,6 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """
     Get current user information.
 
-    Requires authentication (JWT token in Authorization header).
+    Accepts either an httpOnly access_token cookie or an Authorization: Bearer header.
     """
     return current_user

@@ -27,7 +27,7 @@ Quaero is an AI-powered PDF question-answering platform that uses Retrieval Augm
 - **Dual DB drivers.** The app uses `asyncpg` for all async database operations. `psycopg2-binary` is kept solely for Alembic migrations (which run synchronously). Both drivers are in requirements.txt.
 - **Next.js, not Vite.** Frontend uses Next.js App Router, but all pages are client components (`"use client"`). No server components or server-side data fetching are used.
 - **Argon2, not bcrypt.** Password hashing uses `argon2-cffi` via passlib, not bcrypt.
-- **Auth tokens in localStorage.** Tokens are stored in `localStorage` and sent via `Authorization: Bearer` header, not httpOnly cookies.
+- **Auth tokens in httpOnly cookies.** `access_token` and `refresh_token` are stored in httpOnly cookies (path-scoped: `/api/` and `/api/auth/` respectively). A readable `csrf_token` cookie is set at `/` and echoed as `X-CSRF-Token` on mutating requests (double-submit CSRF pattern). The backend also accepts `Authorization: Bearer` as a fallback (keeps Swagger UI working). `saveTokens()` in `lib/api.ts` is a no-op kept for backward compat.
 - **INTEGER primary keys.** Models use `Integer` primary keys, not `BigInteger` as WORKFLOW.md specifies.
 - **Schema isolation.** Database uses `quaero` schema, not the default `public` schema. This is for multi-project sharing on a single Render PostgreSQL instance.
 - **No token expiration.** `access_token_expire_minutes` is set to `0` (no expiration) in config.
