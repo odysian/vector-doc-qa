@@ -7,7 +7,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { PanelLeft, X, FileUp } from "lucide-react";
-import { api, type Document, ApiError } from "@/lib/api";
+import { api, isLoggedIn, type Document, ApiError } from "@/lib/api";
 import { UploadZone } from "../components/dashboard/UploadZone";
 import { DocumentList } from "../components/dashboard/DocumentList";
 import { ChatWindow } from "../components/dashboard/ChatWindow";
@@ -45,8 +45,7 @@ export default function DashboardPage() {
   }, [router]);
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token");
-    if (!token) return router.push("/login");
+    if (!isLoggedIn()) return router.push("/login");
     loadDocuments();
   }, [router, loadDocuments]);
 
