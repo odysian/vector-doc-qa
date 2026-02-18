@@ -274,9 +274,15 @@ class TestRefresh:
         await client.post(
             "/api/auth/refresh", json={"refresh_token": refresh_token_str}
         )
-        # Second use of the now-deleted token
+        # Clear the cookie jar so the second request uses only the body token.
+        # Without this, the cookie-priority rule picks up the NEW refresh_token
+        # cookie (set by the first response) and the call succeeds — masking
+        # the reuse check that the test is actually validating.
+        client.cookies.clear()
+        # Second use of the now-deleted body token — must be rejected
         response = await client.post(
-            "/api/auth/refresh", json={"refresh_token": refresh_token_str}
+            "/api/auth/refresh",
+            json={"refresh_token": refresh_token_str},
         )
 
         assert response.status_code == 401
@@ -365,3 +371,175 @@ class TestLogout:
             json={"refresh_token": "c" * 64},
         )
         assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Cookie-based auth (new path — httpOnly cookies)
+# ---------------------------------------------------------------------------
+
+
+class TestCookieAuth:
+    """httpOnly cookie-based authentication.
+
+    Login sets three cookies; protected endpoints accept them;
+    refresh and logout handle them without a request body.
+    """
+
+    async def test_login_sets_all_three_cookies(
+        self, client: AsyncClient, test_user: User
+    ):
+        """POST /login sets access_token, refresh_token, and csrf_token cookies."""
+        response = await client.post(
+            "/api/auth/login",
+            json={"username": test_user.username, "password": TEST_PASSWORD},
+        )
+        assert response.status_code == 200
+        assert "access_token" in response.cookies
+        assert "refresh_token" in response.cookies
+        assert "csrf_token" in response.cookies
+
+    async def test_me_works_via_access_token_cookie(
+        self, client: AsyncClient, test_user: User
+    ):
+        """After login the client has the access_token cookie; no Bearer header needed."""
+        await client.post(
+            "/api/auth/login",
+            json={"username": test_user.username, "password": TEST_PASSWORD},
+        )
+        # httpx propagates Set-Cookie headers; next request sends the cookie automatically
+        response = await client.get("/api/auth/me")
+        assert response.status_code == 200
+        assert response.json()["id"] == test_user.id
+
+    async def test_bearer_still_works_alongside_cookies(
+        self, client: AsyncClient, test_user: User, auth_headers: dict[str, str]
+    ):
+        """Bearer header fallback is not broken by the cookie-first change."""
+        response = await client.get("/api/auth/me", headers=auth_headers)
+        assert response.status_code == 200
+        assert response.json()["id"] == test_user.id
+
+    async def test_refresh_via_cookie_rotates_and_sets_new_cookies(
+        self, client: AsyncClient, test_user: User
+    ):
+        """Refresh with no body uses the refresh_token cookie and sets fresh cookies."""
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"username": test_user.username, "password": TEST_PASSWORD},
+        )
+        original_refresh = login_resp.cookies.get("refresh_token")
+        # The client now has access_token cookie → CSRF check fires on POST
+        csrf_token = client.cookies.get("csrf_token") or ""
+
+        response = await client.post(
+            "/api/auth/refresh",
+            headers={"X-CSRF-Token": csrf_token},
+            # No body — refresh_token cookie is the credential
+        )
+        assert response.status_code == 200
+        assert "access_token" in response.cookies
+        assert "refresh_token" in response.cookies
+        assert "csrf_token" in response.cookies
+        # Token must have rotated
+        assert response.cookies["refresh_token"] != original_refresh
+
+    async def test_logout_clears_cookies(
+        self, client: AsyncClient, test_user: User
+    ):
+        """After logout, /me returns 401 because the access_token cookie is cleared."""
+        await client.post(
+            "/api/auth/login",
+            json={"username": test_user.username, "password": TEST_PASSWORD},
+        )
+        csrf_token = client.cookies.get("csrf_token") or ""
+
+        logout_resp = await client.post(
+            "/api/auth/logout",
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        assert logout_resp.status_code == 200
+
+        # Cookies cleared (Max-Age=0) — /me must now return 401
+        me_resp = await client.get("/api/auth/me")
+        assert me_resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# CSRF protection
+# ---------------------------------------------------------------------------
+
+
+class TestCSRF:
+    """Double-submit cookie CSRF protection.
+
+    Enforced on POST/PUT/DELETE when the access_token cookie is present.
+    Skipped for Bearer auth and safe methods.
+    """
+
+    async def test_csrf_required_for_cookie_auth_post(
+        self, client: AsyncClient, test_user: User
+    ):
+        """POST with access_token cookie but no X-CSRF-Token header → 403."""
+        await client.post(
+            "/api/auth/login",
+            json={"username": test_user.username, "password": TEST_PASSWORD},
+        )
+        # access_token cookie is now in client jar — CSRF check will fire
+        response = await client.post("/api/auth/logout")
+        assert response.status_code == 403
+        assert "CSRF" in response.json()["detail"]
+
+    async def test_csrf_passes_with_correct_header(
+        self, client: AsyncClient, test_user: User
+    ):
+        """X-CSRF-Token header matching the csrf_token cookie passes the check."""
+        await client.post(
+            "/api/auth/login",
+            json={"username": test_user.username, "password": TEST_PASSWORD},
+        )
+        csrf_token = client.cookies.get("csrf_token") or ""
+        response = await client.post(
+            "/api/auth/logout",
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        assert response.status_code == 200
+
+    async def test_csrf_returns_403_on_header_mismatch(
+        self, client: AsyncClient, test_user: User
+    ):
+        """X-CSRF-Token that doesn't match the csrf_token cookie → 403."""
+        await client.post(
+            "/api/auth/login",
+            json={"username": test_user.username, "password": TEST_PASSWORD},
+        )
+        response = await client.post(
+            "/api/auth/logout",
+            headers={"X-CSRF-Token": "wrong-token"},
+        )
+        assert response.status_code == 403
+        assert "CSRF" in response.json()["detail"]
+
+    async def test_csrf_not_required_for_bearer_auth(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ):
+        """Bearer auth (no cookie) is exempt — no X-CSRF-Token needed."""
+        # auth_headers uses Bearer, no access_token cookie in client jar
+        response = await client.post(
+            "/api/auth/logout",
+            headers=auth_headers,
+            json={"refresh_token": "c" * 64},  # non-existent; logout is idempotent
+        )
+        assert response.status_code == 200
+
+    async def test_csrf_not_required_for_get_requests(
+        self, client: AsyncClient, test_user: User
+    ):
+        """GET is a safe method — CSRF check is skipped even with cookie auth."""
+        await client.post(
+            "/api/auth/login",
+            json={"username": test_user.username, "password": TEST_PASSWORD},
+        )
+        # GET /me — no X-CSRF-Token header needed
+        response = await client.get("/api/auth/me")
+        assert response.status_code == 200
+        assert response.json()["id"] == test_user.id

@@ -1,6 +1,8 @@
 /**
  * API client: all HTTP calls to the backend go through this file.
- * Uses path-only URLs; base URL is applied in one place (fullUrl).
+ * Auth is now handled via httpOnly cookies set by the backend.
+ * The non-httpOnly csrf_token cookie is read by JS and echoed as
+ * X-CSRF-Token on every mutating request (double-submit CSRF pattern).
  */
 
 import type {
@@ -28,28 +30,46 @@ export type {
 } from "./api.types";
 
 // ---------------------------------------------------------------------------
-// Token storage helpers
+// Auth state helpers
 // ---------------------------------------------------------------------------
 
-function getToken(): string | null {
-  if (typeof window === "undefined") return null; // safe during SSR (Next.js)
-  return localStorage.getItem("access_token");
-}
-
-function getRefreshToken(): string | null {
+/**
+ * Read the csrf_token cookie set by the backend on login/refresh.
+ * Returns null when not present (= not logged in, or server not reachable yet).
+ * Safe to call during SSR (returns null when window is not available).
+ */
+function getCsrfToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("refresh_token");
+  const match = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith("csrf_token="));
+  return match ? match.split("=")[1] : null;
 }
 
-/** Persist both tokens after login, register, or a successful refresh. */
-export function saveTokens(tokens: {
-  access_token: string;
-  refresh_token: string;
-}): void {
-  localStorage.setItem("access_token", tokens.access_token);
-  localStorage.setItem("refresh_token", tokens.refresh_token);
+/**
+ * Instant auth check based on the readable csrf_token cookie.
+ * Use for UI routing decisions (redirect to /login or /dashboard).
+ * Not a security guarantee — actual auth is enforced by the backend
+ * on every request via the httpOnly access_token cookie.
+ */
+export function isLoggedIn(): boolean {
+  return getCsrfToken() !== null;
 }
 
+/**
+ * No-op — the backend now sets httpOnly cookies directly on login/refresh.
+ * Kept so existing call sites (login page) don't need changes.
+ * @deprecated Tokens are managed server-side via cookies.
+ */
+export function saveTokens(_tokens: AuthResponse): void {
+  // Intentional no-op.
+}
+
+/**
+ * Remove any access_token / refresh_token values left in localStorage
+ * from before the httpOnly-cookie migration. Does NOT touch cookies
+ * (only the backend can clear those via Set-Cookie: Max-Age=0).
+ */
 function clearTokens(): void {
   localStorage.removeItem("access_token");
   localStorage.removeItem("refresh_token");
@@ -65,10 +85,9 @@ function fullUrl(path: string): string {
 // ---------------------------------------------------------------------------
 
 // Module-level promise so concurrent 401s share one refresh attempt
-let refreshPromise: Promise<AuthResponse | null> | null = null;
+let refreshPromise: Promise<boolean> | null = null;
 
-async function refreshAccessToken(): Promise<AuthResponse | null> {
-  // If a refresh is already in flight, piggyback on it
+async function refreshAccessToken(): Promise<boolean> {
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = doRefresh();
@@ -80,24 +99,23 @@ async function refreshAccessToken(): Promise<AuthResponse | null> {
 }
 
 /**
- * Sends the refresh token to the backend and updates localStorage on success.
- * Uses raw fetch (not apiRequest) to avoid triggering another 401 refresh cycle.
+ * Ask the backend to rotate the refresh token.
+ * No request body — the httpOnly refresh_token cookie is the credential.
+ * The backend responds with Set-Cookie headers for all three cookies.
+ * Uses raw fetch (not apiRequest) to avoid a 401 refresh cycle.
  */
-async function doRefresh(): Promise<AuthResponse | null> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
-
+async function doRefresh(): Promise<boolean> {
+  const csrf = getCsrfToken();
   const response = await fetch(fullUrl("/api/auth/refresh"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token: refreshToken }),
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      // CSRF header required when access_token cookie is present
+      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+    },
   });
-
-  if (!response.ok) return null;
-
-  const tokens: AuthResponse = await response.json();
-  saveTokens(tokens);
-  return tokens;
+  return response.ok;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,34 +123,47 @@ async function doRefresh(): Promise<AuthResponse | null> {
 // ---------------------------------------------------------------------------
 
 /**
- * Sends a request to the backend. Adds Authorization when a token exists.
- * Omits Content-Type for FormData so the browser sets multipart/form-data.
+ * Sends a request to the backend with cookies included.
+ * Adds X-CSRF-Token header for CSRF protection (double-submit pattern).
  * On 401, attempts a silent token refresh once and retries the request.
- * If the refresh also fails, clears tokens and redirects to /login.
+ * If the refresh also fails, clears leftover localStorage tokens and
+ * redirects to /login.
  */
 async function apiRequest(path: string, options: RequestInit = {}) {
-  const token = getToken();
+  const csrf = getCsrfToken();
   const isFormData = options.body instanceof FormData;
+
   const headers: HeadersInit = {
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
-    ...(token && { Authorization: `Bearer ${token}` }),
+    // Include CSRF token when we have it; backend skips check on GET/safe methods
+    ...(csrf ? { "X-CSRF-Token": csrf } : {}),
     ...options.headers,
   };
 
-  let response = await fetch(fullUrl(path), { ...options, headers });
+  let response = await fetch(fullUrl(path), {
+    ...options,
+    headers,
+    credentials: "include", // send httpOnly cookies cross-origin
+  });
 
   // On 401, attempt one silent refresh then retry
   if (response.status === 401) {
-    const newTokens = await refreshAccessToken();
-    if (newTokens) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      // Re-read CSRF token — the refresh response set a new one
+      const newCsrf = getCsrfToken();
       const retryHeaders: HeadersInit = {
         ...(isFormData ? {} : { "Content-Type": "application/json" }),
-        Authorization: `Bearer ${newTokens.access_token}`,
+        ...(newCsrf ? { "X-CSRF-Token": newCsrf } : {}),
         ...options.headers,
       };
-      response = await fetch(fullUrl(path), { ...options, headers: retryHeaders });
+      response = await fetch(fullUrl(path), {
+        ...options,
+        headers: retryHeaders,
+        credentials: "include",
+      });
     } else {
-      // Refresh failed — session is dead
+      // Refresh failed — session is dead; clear any stale localStorage values
       clearTokens();
       window.location.href = "/login";
       throw new ApiError(401, "Session expired");
@@ -164,7 +195,11 @@ export const api = {
     });
   },
 
-  /** Log in; returns access_token + refresh_token. Use saveTokens() to persist. */
+  /**
+   * Log in; returns the token body for backward compatibility.
+   * The backend also sets httpOnly auth cookies — those are what
+   * subsequent requests rely on. saveTokens() is now a no-op.
+   */
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
     return apiRequest("/api/auth/login", {
       method: "POST",
@@ -173,18 +208,21 @@ export const api = {
   },
 
   /**
-   * Invalidate the refresh token on the backend, then clear tokens locally.
-   * Best-effort: network/server errors are swallowed so logout always completes.
+   * Invalidate the session on the backend (deletes the refresh token row
+   * and clears cookies via Set-Cookie: Max-Age=0). Best-effort: network
+   * errors are swallowed so logout always completes locally.
    */
   logout: async (): Promise<void> => {
-    const refreshToken = getRefreshToken();
-    if (refreshToken) {
-      await fetch(fullUrl("/api/auth/logout"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      }).catch(() => {}); // backend may be unreachable — local clear still happens
-    }
+    const csrf = getCsrfToken();
+    await fetch(fullUrl("/api/auth/logout"), {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+      },
+      // No body — the refresh_token httpOnly cookie is the credential
+    }).catch(() => {}); // backend may be unreachable — local clear still happens
     clearTokens();
   },
 

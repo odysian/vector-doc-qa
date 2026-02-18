@@ -7,13 +7,13 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { isLoggedIn } from "@/lib/api";
 
 export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token");
-    if (token) {
+    if (isLoggedIn()) {
       router.replace("/dashboard");
     }
   }, [router]);

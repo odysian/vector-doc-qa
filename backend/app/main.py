@@ -1,11 +1,12 @@
 from contextlib import asynccontextmanager
 
 from app.api import auth, documents
+from app.api.dependencies import verify_csrf
 from app.config import settings
 from app.database import async_engine, get_db, init_db
 from app.utils.logging_config import get_logger, setup_logging
 from app.utils.rate_limit import limiter
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
@@ -54,12 +55,22 @@ app.add_middleware(
     allow_origins=[settings.frontend_url],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
 )
 
 
-app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
-app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(
+    documents.router,
+    prefix="/api/documents",
+    tags=["documents"],
+    dependencies=[Depends(verify_csrf)],
+)
+app.include_router(
+    auth.router,
+    prefix="/api/auth",
+    tags=["auth"],
+    dependencies=[Depends(verify_csrf)],
+)
 
 
 @app.get("/")
