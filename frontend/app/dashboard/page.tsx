@@ -4,7 +4,7 @@
  */
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { PanelLeft, X, FileUp } from "lucide-react";
 import { api, isLoggedIn, type Document, ApiError } from "@/lib/api";
@@ -23,7 +23,11 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
   const [deletingInProgress, setDeletingInProgress] = useState(false);
+  const documentsRef = useRef<Document[]>([]);
   const router = useRouter();
+  const hasActiveDocuments = documents.some(
+    (doc) => doc.status === "pending" || doc.status === "processing"
+  );
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -48,6 +52,85 @@ export default function DashboardPage() {
     if (!isLoggedIn()) return router.push("/login");
     loadDocuments();
   }, [router, loadDocuments]);
+
+  useEffect(() => {
+    documentsRef.current = documents;
+  }, [documents]);
+
+  useEffect(() => {
+    if (!selectedDocument) return;
+    const updatedDocument = documents.find((doc) => doc.id === selectedDocument.id);
+
+    if (!updatedDocument) {
+      setSelectedDocument(null);
+      return;
+    }
+
+    if (updatedDocument !== selectedDocument) {
+      setSelectedDocument(updatedDocument);
+    }
+  }, [documents, selectedDocument]);
+
+  useEffect(() => {
+    if (loading || !hasActiveDocuments) return;
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let delayMs = 3000;
+
+    const scheduleNextPoll = () => {
+      if (cancelled) return;
+      timeoutId = setTimeout(pollStatuses, delayMs);
+    };
+
+    const pollStatuses = async () => {
+      const activeDocuments = documentsRef.current.filter(
+        (doc) => doc.status === "pending" || doc.status === "processing"
+      );
+
+      if (activeDocuments.length === 0 || cancelled) return;
+
+      try {
+        const statuses = await Promise.all(
+          activeDocuments.map((doc) => api.getDocumentStatus(doc.id))
+        );
+
+        if (cancelled) return;
+
+        const statusById = new Map(statuses.map((item) => [item.id, item]));
+
+        setDocuments((prev) =>
+          prev.map((doc) => {
+            const status = statusById.get(doc.id);
+            if (!status) return doc;
+            return {
+              ...doc,
+              status: status.status,
+              processed_at: status.processed_at,
+              error_message: status.error_message,
+            };
+          })
+        );
+
+        delayMs = Math.min(Math.floor(delayMs * 1.5), 10000);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          router.push("/login");
+          return;
+        }
+        delayMs = Math.min(delayMs * 2, 10000);
+      }
+
+      scheduleNextPoll();
+    };
+
+    scheduleNextPoll();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [hasActiveDocuments, loading, router]);
 
   const handleUpload = async (file: File) => {
     setError("");
@@ -97,7 +180,7 @@ export default function DashboardPage() {
         }
         setError(err.detail);
       } else {
-        setError("Failed to start processing");
+        setError("Failed to queue processing");
       }
     }
   };
