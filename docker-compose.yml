@@ -25,6 +25,11 @@ services:
           # 80% of 8 VM cores
           cpus: '6.4'
           memory: 8G
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: on-failure:5
 
 volumes:
   doc_intel_postgres_data:
