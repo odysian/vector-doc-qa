@@ -6,7 +6,7 @@ and "Document Processing".
 """
 
 import io
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,11 +45,15 @@ startxref
 
 async def _upload_pdf(client, headers, content=MINIMAL_PDF, filename="test.pdf"):
     """Helper to upload a PDF file."""
-    return await client.post(
-        "/api/documents/upload",
-        headers=headers,
-        files={"file": (filename, io.BytesIO(content), "application/pdf")},
-    )
+    with patch(
+        "app.api.documents.enqueue_document_processing",
+        new=AsyncMock(return_value=True),
+    ):
+        return await client.post(
+            "/api/documents/upload",
+            headers=headers,
+            files={"file": (filename, io.BytesIO(content), "application/pdf")},
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +72,44 @@ class TestUpload:
         assert data["status"] == "pending"
         assert data["filename"] == "test.pdf"
         assert "id" in data
+
+    async def test_upload_enqueues_background_processing(self, client, auth_headers):
+        with patch(
+            "app.api.documents.enqueue_document_processing",
+            new=AsyncMock(return_value=True),
+        ) as mock_enqueue:
+            response = await client.post(
+                "/api/documents/upload",
+                headers=auth_headers,
+                files={"file": ("test.pdf", io.BytesIO(MINIMAL_PDF), "application/pdf")},
+            )
+
+        assert response.status_code == 201
+        doc_id = response.json()["id"]
+        mock_enqueue.assert_awaited_once_with(doc_id)
+
+    async def test_upload_returns_503_when_queueing_fails(
+        self, client, auth_headers, db_session: AsyncSession
+    ):
+        with patch(
+            "app.api.documents.enqueue_document_processing",
+            new=AsyncMock(side_effect=RuntimeError("queue unavailable")),
+        ):
+            response = await client.post(
+                "/api/documents/upload",
+                headers=auth_headers,
+                files={"file": ("test.pdf", io.BytesIO(MINIMAL_PDF), "application/pdf")},
+            )
+
+        assert response.status_code == 503
+        assert "could not be queued" in response.json()["detail"].lower()
+
+        result = await db_session.execute(
+            select(Document).where(Document.filename == "test.pdf")
+        )
+        saved_document = result.scalar_one()
+        assert saved_document.status == DocumentStatus.FAILED
+        assert saved_document.error_message is not None
 
     async def test_upload_saves_document_record_with_correct_fields(
         self, client, auth_headers, test_user: User, db_session: AsyncSession
@@ -214,75 +256,21 @@ class TestDeleteDocument:
 class TestProcessDocument:
     """POST /api/documents/{id}/process"""
 
-    async def test_process_pending_document_sets_status_completed(
-        self, client, auth_headers, db_session, test_user, mock_embeddings
+    async def test_process_pending_document_returns_202_and_enqueues(
+        self, client, auth_headers, test_document
     ):
-        """Create a real PDF on disk, upload reference it, then process."""
-        # Create a PDF with actual extractable text
-        pdf_content = b"""%PDF-1.4
-1 0 obj
-<< /Type /Catalog /Pages 2 0 R >>
-endobj
-2 0 obj
-<< /Type /Pages /Kids [3 0 R] /Count 1 >>
-endobj
-3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]
-   /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
-endobj
-4 0 obj
-<< /Length 44 >>
-stream
-BT /F1 12 Tf 100 700 Td (Hello World) Tj ET
-endstream
-endobj
-5 0 obj
-<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
-endobj
-xref
-0 6
-0000000000 65535 f
-0000000009 00000 n
-0000000058 00000 n
-0000000115 00000 n
-0000000266 00000 n
-0000000360 00000 n
-trailer
-<< /Size 6 /Root 1 0 R >>
-startxref
-441
-%%EOF"""
-
-        # Write PDF to the uploads directory
-        from app.config import settings
-
-        upload_dir = settings.get_upload_path()
-        pdf_path = upload_dir / "test_process.pdf"
-        pdf_path.write_bytes(pdf_content)
-
-        try:
-            doc = Document(
-                filename="test_process.pdf",
-                file_path="uploads/test_process.pdf",
-                file_size=len(pdf_content),
-                status=DocumentStatus.PENDING,
-                user_id=test_user.id,
-            )
-            db_session.add(doc)
-            await db_session.flush()
-
+        with patch(
+            "app.api.documents.enqueue_document_processing",
+            new=AsyncMock(return_value=True),
+        ) as mock_enqueue:
             response = await client.post(
-                f"/api/documents/{doc.id}/process", headers=auth_headers
+                f"/api/documents/{test_document.id}/process",
+                headers=auth_headers,
             )
 
-            assert response.status_code == 200
-            assert "processed successfully" in response.json()["message"]
-
-            # Verify document status updated
-            await db_session.refresh(doc)
-            assert doc.status == DocumentStatus.COMPLETED
-        finally:
-            pdf_path.unlink(missing_ok=True)
+        assert response.status_code == 202
+        assert "queued" in response.json()["message"].lower()
+        mock_enqueue.assert_awaited_once_with(test_document.id)
 
     async def test_process_returns_400_for_already_completed_document(
         self, client, auth_headers, processed_document
@@ -293,10 +281,100 @@ startxref
         assert response.status_code == 400
         assert "already processed" in response.json()["detail"]
 
+    async def test_process_returns_400_for_processing_document(
+        self, client, auth_headers, db_session, test_user
+    ):
+        processing_doc = Document(
+            filename="processing.pdf",
+            file_path="uploads/processing.pdf",
+            file_size=123,
+            status=DocumentStatus.PROCESSING,
+            user_id=test_user.id,
+        )
+        db_session.add(processing_doc)
+        await db_session.flush()
+
+        response = await client.post(
+            f"/api/documents/{processing_doc.id}/process",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 400
+        assert "currently being processed" in response.json()["detail"]
+
+    async def test_process_failed_document_resets_and_requeues(
+        self, client, auth_headers, db_session, test_user
+    ):
+        failed_doc = Document(
+            filename="failed.pdf",
+            file_path="uploads/failed.pdf",
+            file_size=123,
+            status=DocumentStatus.FAILED,
+            user_id=test_user.id,
+            error_message="Old error",
+        )
+        db_session.add(failed_doc)
+        await db_session.flush()
+
+        with patch(
+            "app.api.documents.enqueue_document_processing",
+            new=AsyncMock(return_value=True),
+        ):
+            response = await client.post(
+                f"/api/documents/{failed_doc.id}/process",
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 202
+        await db_session.refresh(failed_doc)
+        assert failed_doc.status == DocumentStatus.PENDING
+        assert failed_doc.error_message is None
+
+    async def test_process_returns_503_when_queueing_fails(
+        self, client, auth_headers, db_session, test_document
+    ):
+        with patch(
+            "app.api.documents.enqueue_document_processing",
+            new=AsyncMock(side_effect=RuntimeError("queue unavailable")),
+        ):
+            response = await client.post(
+                f"/api/documents/{test_document.id}/process",
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 503
+        await db_session.refresh(test_document)
+        assert test_document.status == DocumentStatus.FAILED
+        assert test_document.error_message is not None
+
     async def test_process_returns_404_for_other_users_document(
         self, client, second_user_headers, test_document
     ):
         response = await client.post(
             f"/api/documents/{test_document.id}/process", headers=second_user_headers
+        )
+        assert response.status_code == 404
+
+
+class TestDocumentStatus:
+    """GET /api/documents/{id}/status"""
+
+    async def test_get_status_returns_document_status(self, client, auth_headers, test_document):
+        response = await client.get(
+            f"/api/documents/{test_document.id}/status",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == test_document.id
+        assert data["status"] == "pending"
+
+    async def test_get_status_returns_404_for_other_users_document(
+        self, client, second_user_headers, test_document
+    ):
+        response = await client.get(
+            f"/api/documents/{test_document.id}/status",
+            headers=second_user_headers,
         )
         assert response.status_code == 404
