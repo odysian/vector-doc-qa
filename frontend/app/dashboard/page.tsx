@@ -90,35 +90,66 @@ export default function DashboardPage() {
 
       if (activeDocuments.length === 0 || cancelled) return;
 
-      try {
-        const statuses = await Promise.all(
-          activeDocuments.map((doc) => api.getDocumentStatus(doc.id))
-        );
+      const targetIds = activeDocuments.map((doc) => doc.id);
+      const results = await Promise.allSettled(
+        targetIds.map((id) => api.getDocumentStatus(id))
+      );
 
-        if (cancelled) return;
+      if (cancelled) return;
 
-        const statusById = new Map(statuses.map((item) => [item.id, item]));
+      let shouldRedirectToLogin = false;
+      let hadPollFailures = false;
+      const missingIds = new Set<number>();
+      const statusById = new Map<number, Awaited<ReturnType<typeof api.getDocumentStatus>>>();
 
-        setDocuments((prev) =>
-          prev.map((doc) => {
-            const status = statusById.get(doc.id);
-            if (!status) return doc;
-            return {
-              ...doc,
-              status: status.status,
-              processed_at: status.processed_at,
-              error_message: status.error_message,
-            };
-          })
-        );
-
-        delayMs = Math.min(Math.floor(delayMs * 1.5), 10000);
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 401) {
-          router.push("/login");
+      results.forEach((result, index) => {
+        const documentId = targetIds[index];
+        if (result.status === "fulfilled") {
+          statusById.set(documentId, result.value);
           return;
         }
+
+        const reason = result.reason;
+        if (reason instanceof ApiError) {
+          if (reason.status === 401) {
+            shouldRedirectToLogin = true;
+            return;
+          }
+          if (reason.status === 404) {
+            missingIds.add(documentId);
+            return;
+          }
+        }
+
+        hadPollFailures = true;
+      });
+
+      if (shouldRedirectToLogin) {
+        router.push("/login");
+        return;
+      }
+
+      if (statusById.size > 0 || missingIds.size > 0) {
+        setDocuments((prev) =>
+          prev
+            .filter((doc) => !missingIds.has(doc.id))
+            .map((doc) => {
+              const status = statusById.get(doc.id);
+              if (!status) return doc;
+              return {
+                ...doc,
+                status: status.status,
+                processed_at: status.processed_at,
+                error_message: status.error_message,
+              };
+            })
+        );
+      }
+
+      if (hadPollFailures && statusById.size === 0) {
         delayMs = Math.min(delayMs * 2, 10000);
+      } else {
+        delayMs = Math.min(Math.floor(delayMs * 1.5), 10000);
       }
 
       scheduleNextPoll();

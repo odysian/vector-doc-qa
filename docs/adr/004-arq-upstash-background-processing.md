@@ -45,6 +45,12 @@ Accepted. ARQ is async-native, integrates cleanly with existing async services, 
 7. Add startup reconciliation in the worker to reset stale `processing` rows back to `pending`.
 8. Update frontend dashboard polling to query status while any docs are `pending`/`processing` and stop once all are terminal.
 
+### Applied Refinements (Post-Review)
+
+- Startup supervision was hardened so the combined Render start script exits if either the API process or ARQ worker exits, preventing a "web up, worker down" silent failure mode.
+- Dashboard retry actions were expanded to include `pending` documents (not only `failed`) so users can recover from interrupted jobs reset to `pending`.
+- Polling was changed from `Promise.all` to per-document settled handling so one failed status request does not block updates for other active documents.
+
 ---
 
 ## Consequences
