@@ -73,12 +73,12 @@ export function DocumentList({
   const [processingId, setProcessingId] = useState<number | null>(null);
 
   const isClickable = (doc: Document) => doc.status === "completed";
-  const canProcess = (doc: Document) =>
+  const canQueue = (doc: Document) =>
     doc.status === "pending" || doc.status === "failed";
 
   const handleProcess = async (e: React.MouseEvent, doc: Document) => {
     e.stopPropagation();
-    if (!canProcess(doc) || processingId !== null) return;
+    if (!canQueue(doc) || processingId !== null) return;
     setProcessingId(doc.id);
     try {
       await onProcessDocument(doc);
@@ -104,8 +104,9 @@ export function DocumentList({
     <div className="space-y-2">
       {documents.map((doc) => {
         const clickable = isClickable(doc);
-        const showProcess = canProcess(doc);
+        const showProcess = canQueue(doc);
         const isProcessing = processingId === doc.id;
+        const actionLabel = doc.status === "failed" ? "Retry" : "Process";
         return (
           <div
             key={doc.id}
@@ -139,9 +140,9 @@ export function DocumentList({
                     type="button"
                     onClick={(e) => handleProcess(e, doc)}
                     disabled={isProcessing || processingId !== null}
-                    title={doc.status === "failed" ? "Retry" : "Process"}
+                    title={actionLabel}
                     className="p-1.5 rounded text-lapis-400 hover:bg-lapis-500/20 hover:text-lapis-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-800"
-                    aria-label={doc.status === "failed" ? "Retry" : "Process"}
+                    aria-label={actionLabel}
                   >
                     {isProcessing ? (
                       <Loader2 className="w-4 h-4 animate-spin" />

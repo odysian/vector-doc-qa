@@ -4,17 +4,22 @@ from app.database import get_db
 from app.models.base import Document, DocumentStatus
 from app.models.message import Message
 from app.models.user import User
-from app.schemas.document import DocumentListResponse, DocumentResponse, UploadResponse
+from app.schemas.document import (
+    DocumentListResponse,
+    DocumentResponse,
+    DocumentStatusResponse,
+    UploadResponse,
+)
 from app.schemas.message import MessageListResponse, MessageResponse
 from app.schemas.query import QueryRequest, QueryResponse
 from app.schemas.search import SearchRequest, SearchResponse, SearchResult
 from app.services.anthropic_service import generate_answer
-from app.services.document_service import process_document_text
+from app.services.queue_service import enqueue_document_processing
 from app.services.search_service import search_chunks
 from app.utils.file_utils import save_upload_file, validate_file_upload
 from app.utils.logging_config import get_logger
 from app.utils.rate_limit import get_user_or_ip_key, limiter
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -59,7 +64,20 @@ async def upload_document(
     db.add(document)
     await db.commit()
     await db.refresh(document)  # Get auto-generated ID
-    logger.info(f"Upload complete: document_id={document.id}")
+    try:
+        await enqueue_document_processing(document.id)
+    except Exception as exc:
+        # Persist queue failure on the document so the user can retry explicitly.
+        document.status = DocumentStatus.FAILED
+        document.error_message = "Upload succeeded, but queueing failed. Please retry."
+        await db.commit()
+        logger.error(f"Queueing failed for document_id={document.id}: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=503,
+            detail="Document uploaded but could not be queued for processing.",
+        )
+
+    logger.info(f"Upload complete and queued: document_id={document.id}")
 
     return UploadResponse(
         id=document.id,
@@ -67,7 +85,7 @@ async def upload_document(
         filename=document.filename,
         file_size=document.file_size,
         status=document.status,
-        message="File uploaded successfully. Processing will begin shortly.",
+        message="File uploaded successfully. Processing started in background.",
     )
 
 
@@ -120,6 +138,39 @@ async def get_document(
     return document
 
 
+@router.get("/{document_id}/status", response_model=DocumentStatusResponse)
+@limiter.limit("120/minute", key_func=get_user_or_ip_key)
+async def get_document_status(
+    request: Request,
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get lightweight processing status for one document.
+
+    Intended for frequent polling from the dashboard while background jobs run.
+    """
+    stmt = (
+        select(Document)
+        .where(Document.id == document_id)
+        .where(Document.user_id == current_user.id)
+    )
+    document = await db.scalar(stmt)
+
+    if not document:
+        raise HTTPException(
+            status_code=404, detail=f"Document with ID {document_id} not found"
+        )
+
+    return DocumentStatusResponse(
+        id=document.id,
+        status=document.status,
+        processed_at=document.processed_at,
+        error_message=document.error_message,
+    )
+
+
 @router.delete("/{document_id}")
 @limiter.limit("10/hour", key_func=get_user_or_ip_key)
 async def delete_document(
@@ -158,7 +209,7 @@ async def delete_document(
 
 
 # PROCESS DOCUMENT
-@router.post("/{document_id}/process")
+@router.post("/{document_id}/process", status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("5/hour", key_func=get_user_or_ip_key)
 async def process_document(
     request: Request,
@@ -167,11 +218,9 @@ async def process_document(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Process a document: extract text and create chunks.
-
-    Document must be in PENDING status.
+    Queue document processing in the background worker.
     """
-    logger.info(f"Processing document_id={document_id}")
+    logger.info(f"Queue processing request for document_id={document_id}")
 
     stmt = (
         select(Document)
@@ -185,20 +234,41 @@ async def process_document(
             status_code=404, detail=f"Document with ID {document_id} not found"
         )
 
+    if document.status == DocumentStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail=f"Document {document_id} already processed")
+
+    if document.status == DocumentStatus.PROCESSING:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document {document_id} is currently being processed",
+        )
+
+    if document.status == DocumentStatus.FAILED:
+        # Reset stale failure details before retry.
+        document.status = DocumentStatus.PENDING
+        document.error_message = None
+        document.processed_at = None
+        await db.commit()
+
     try:
-        # Call service layer
-        await process_document_text(document_id, db)
+        enqueued = await enqueue_document_processing(document_id)
+    except Exception as exc:
+        document.status = DocumentStatus.FAILED
+        document.error_message = "Queueing failed. Please retry processing."
+        await db.commit()
+        logger.error(
+            f"Failed to enqueue document_id={document_id}: {exc}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=503, detail="Failed to queue document processing")
 
-        return {
-            "message": f"Document {document_id} processed successfully",
-            "document_id": document_id,
-        }
+    message = (
+        f"Document {document_id} processing already queued"
+        if not enqueued
+        else f"Document {document_id} queued for background processing"
+    )
 
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+    return {"message": message, "document_id": document_id}
 
 
 @router.post("/{document_id}/search", response_model=SearchResponse)

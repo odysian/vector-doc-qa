@@ -58,6 +58,13 @@ export interface DocumentListResponse {
   total: number;
 }
 
+export interface DocumentStatusResponse {
+  id: number;
+  status: "pending" | "processing" | "completed" | "failed";
+  processed_at: string | null;
+  error_message: string | null;
+}
+
 // Search & Query
 export interface SearchResult {
   chunk_id: number;

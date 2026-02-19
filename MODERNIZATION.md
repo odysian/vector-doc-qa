@@ -77,7 +77,7 @@ Prioritized roughly by impact.
 
 ---
 
-## 5. Move Auth Tokens to httpOnly Cookies (MEDIUM)
+## 5. Move Auth Tokens to httpOnly Cookies (MEDIUM) -- DONE --
 
 **Current state:** JWT stored in `localStorage`, sent via `Authorization: Bearer` header.
 
@@ -97,7 +97,7 @@ Prioritized roughly by impact.
 
 ---
 
-## 6. Add Background Processing (MEDIUM)
+## 6. Add Background Processing (MEDIUM) -- DONE --
 
 **Current state:** Document processing (PDF extraction, chunking, embedding) runs synchronously in the request handler. The client blocks until processing completes.
 

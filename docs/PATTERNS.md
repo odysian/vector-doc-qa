@@ -94,6 +94,28 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
     # ... business logic
 ```
 
+### Background Job Queueing
+
+HTTP routes should enqueue background work via a service helper, not import ARQ pool logic directly.
+
+```python
+from app.services.queue_service import enqueue_document_processing
+
+enqueued = await enqueue_document_processing(document.id)
+```
+
+Use deterministic ARQ job IDs (`doc:{document_id}`) so duplicate enqueue requests do not create duplicate jobs.
+
+### Worker Task Boundaries
+
+Worker tasks create their own `AsyncSession` and call existing service functions. Keep task wrappers thin and focused on orchestration/retry semantics.
+
+```python
+async def process_document_task(ctx: dict, document_id: int) -> None:
+    async with AsyncSessionLocal() as db:
+        await process_document_text(document_id=document_id, db=db)
+```
+
 ### Rate Limiting
 
 Use `@limiter.limit()` decorator with appropriate key function:
@@ -214,6 +236,10 @@ try {
   }
 }
 ```
+
+### Dashboard Polling
+
+Use the lightweight status endpoint for frequent updates while documents are in `pending` or `processing`. Stop polling when all documents reach terminal states (`completed` or `failed`).
 
 ---
 

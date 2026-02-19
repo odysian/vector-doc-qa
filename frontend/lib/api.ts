@@ -12,6 +12,7 @@ import type {
   User,
   Document,
   DocumentListResponse,
+  DocumentStatusResponse,
   QueryResponse,
   MessageListResponse,
 } from "./api.types";
@@ -23,6 +24,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export { ApiError } from "./api.types";
 export type {
   Document,
+  DocumentStatusResponse,
   SearchResult,
   QueryResponse,
   MessageResponse,
@@ -250,11 +252,18 @@ export const api = {
     });
   },
 
-  /** Trigger processing (chunking + embedding) for an uploaded document. */
-  processDocument: async (documentId: number): Promise<{ message: string }> => {
+  /** Queue processing (chunking + embedding) for an uploaded/failed document. */
+  processDocument: async (
+    documentId: number
+  ): Promise<{ message: string; document_id: number }> => {
     return apiRequest(`/api/documents/${documentId}/process`, {
       method: "POST",
     });
+  },
+
+  /** Poll lightweight processing status for one document. */
+  getDocumentStatus: async (documentId: number): Promise<DocumentStatusResponse> => {
+    return apiRequest(`/api/documents/${documentId}/status`);
   },
 
   /** Delete a document and its file. */
