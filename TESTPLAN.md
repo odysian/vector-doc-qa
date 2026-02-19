@@ -75,7 +75,9 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 
 ### Happy Path
 
-- POST /api/documents/{id}/process on PENDING document sets status to PROCESSING then COMPLETED
+- POST /api/documents/upload enqueues a background processing job and returns immediately
+- POST /api/documents/{id}/process enqueues processing and returns 202 Accepted
+- Background worker moves status PENDING -> PROCESSING -> COMPLETED
 - Document text is extracted and split into chunks (1000 chars, 50 overlap)
 - Chunks are stored with embeddings in the database
 - Chunk count is reasonable for document size
@@ -86,11 +88,13 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 - Returns 404 if document belongs to another user
 - Returns 400 if document is already COMPLETED
 - Returns 400 if document is currently PROCESSING
+- Upload returns 503 and sets status FAILED if queueing fails
 - Processing a corrupt/empty PDF sets status to FAILED with error message
 
 ### Edge Cases
 
 - Processing a FAILED document retries successfully
+- GET /api/documents/{id}/status reflects status transitions until terminal state
 - Very large PDF (many pages) completes within timeout
 - PDF with no extractable text (scanned image) [?]
 
