@@ -13,6 +13,8 @@ Quaero is a document intelligence platform that allows users to upload PDF docum
 | Frontend | Next.js 16 + React 19 + TypeScript | App Router, type safety, Vercel deployment |
 | Styling | Tailwind CSS 4 | Utility-first, custom theme tokens |
 | Backend | FastAPI (Python 3.12+) | Auto-docs, Pydantic validation, lightweight |
+| Background Jobs | ARQ worker | Async-native queue worker for document processing |
+| Queue/Broker | Redis (Upstash in production) | Durable job queue across app restarts |
 | ORM | SQLAlchemy 2.0 (async) | Type-safe models, mapped_column, select(), AsyncSession |
 | Database | PostgreSQL + pgvector | Relational + vector similarity search |
 | Embeddings | OpenAI text-embedding-3-small | 1536 dimensions, cost-effective |
@@ -35,6 +37,14 @@ Quaero is a document intelligence platform that allows users to upload PDF docum
     v
 [FastAPI Backend (Render)]
     |
+    ├──> [Redis Queue (Upstash)]
+    |         queue: quaero:queue
+    |         jobs: process_document_task
+    |
+    ├──> [ARQ Worker (same Render service)]
+    |         consumes Redis jobs
+    |         updates document status + chunks
+    |
     ├──> [PostgreSQL + pgvector (Render)]
     |         quaero schema
     |         tables: users, documents, chunks, messages, refresh_tokens
@@ -54,12 +64,15 @@ Quaero is a document intelligence platform that allows users to upload PDF docum
 1. Upload:   User → PDF file → Backend validates (magic bytes, size)
                               → Saves to disk (backend/uploads/)
                               → Creates Document record (status: PENDING)
+                              → Enqueues process_document_task in Redis
 
-2. Process:  User triggers → Backend extracts text (pdfplumber)
+2. Process:  ARQ worker consumes queued job
+                           → Sets status: PROCESSING
+                           → Extracts text (pdfplumber)
                            → Chunks text (1000 chars, 50 overlap, word boundaries)
                            → Generates embeddings (OpenAI batch API)
                            → Stores chunks + embeddings in PostgreSQL
-                           → Updates Document (status: COMPLETED)
+                           → Updates Document (status: COMPLETED or FAILED)
 
 3. Query:    User asks question → Backend generates query embedding (OpenAI)
                                 → Cosine similarity search in pgvector (top 5 chunks)
@@ -215,10 +228,12 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 - **Auth:** Required
 - **Rate Limit:** 5/hour per user/IP
 - **Request Body:** multipart/form-data with `file` field (PDF, max 10MB)
-- **Success (201):** Document object (status: PENDING)
+- **Success (201):** Upload response with document metadata (status: PENDING)
+- **Notes:** Upload returns immediately and queues background processing
 - **Errors:**
   - 400: Not a PDF, file too large, invalid magic bytes
   - 401: Not authenticated
+  - 503: Upload saved but queueing failed
 
 #### GET /api/documents/
 - **Auth:** Required
@@ -233,6 +248,14 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 - **Errors:**
   - 404: Document not found or belongs to another user
 
+#### GET /api/documents/{document_id}/status
+- **Auth:** Required
+- **Rate Limit:** 120/minute per user/IP
+- **Success (200):** `{ "id": 1, "status": "processing", "processed_at": null, "error_message": null }`
+- **Notes:** Lightweight status endpoint intended for frontend polling
+- **Errors:**
+  - 404: Document not found or belongs to another user
+
 #### DELETE /api/documents/{document_id}
 - **Auth:** Required
 - **Rate Limit:** 10/hour per user/IP
@@ -243,11 +266,12 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 #### POST /api/documents/{document_id}/process
 - **Auth:** Required
 - **Rate Limit:** 5/hour per user/IP
-- **Success (200):** `{ "message": "Document processing started" }`
-- **Notes:** Processes synchronously (blocking). Only works on PENDING or FAILED documents.
+- **Success (202):** `{ "message": "Document ... queued for background processing", "document_id": 1 }`
+- **Notes:** Queue-only endpoint. Does not process inline. Used for retrying FAILED docs.
 - **Errors:**
   - 404: Document not found
-  - 400: Document already processed or processing
+  - 400: Document already processed or already processing
+  - 503: Queue unavailable
 
 #### POST /api/documents/{document_id}/search
 - **Auth:** Required
@@ -291,6 +315,7 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 | Refresh token format | secrets.token_hex(32) (opaque) | JWT | No need to encode claims; lookup is a single indexed SELECT |
 | DB driver | asyncpg (async) | psycopg2 (sync) | Non-blocking I/O for concurrent requests; psycopg2 kept for Alembic |
 | Rate limiting | SlowAPI | Custom middleware | Battle-tested, per-endpoint configuration |
+| Background processing | ARQ + Redis queue | FastAPI BackgroundTasks, Celery | Durable async jobs with lightweight async-native worker |
 
 ---
 

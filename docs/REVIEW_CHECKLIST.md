@@ -19,6 +19,8 @@ Post-implementation verification checklist. Run through after every feature befo
 - [ ] JWT tokens validated on every protected request
 - [ ] No SQL string interpolation or f-strings in queries
 - [ ] Error messages don't expose internals (stack traces, DB errors, file paths)
+- [ ] Background job endpoints are non-blocking (no long-running work in request handlers)
+- [ ] Job deduplication is enforced for repeat enqueue requests (stable job IDs)
 
 ## Performance
 
@@ -27,6 +29,7 @@ Post-implementation verification checklist. Run through after every feature befo
 - [ ] Embedding generation uses batch API (not one-at-a-time)
 - [ ] Large file operations are streamed (not loaded entirely into memory)
 - [ ] Frontend doesn't re-fetch data unnecessarily
+- [ ] Polling uses lightweight status endpoints and stops after terminal states
 
 ## Code Quality
 
@@ -53,6 +56,7 @@ Post-implementation verification checklist. Run through after every feature befo
 - [ ] At least one edge case covered
 - [ ] Assertions are specific (check response body, not just status code)
 - [ ] Test names describe the scenario and expected outcome
+- [ ] Async job status transitions are covered (`pending` -> `processing` -> terminal state)
 
 ## Documentation
 

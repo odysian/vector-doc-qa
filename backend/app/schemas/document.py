@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.models.base import DocumentStatus
 
@@ -38,3 +38,12 @@ class UploadResponse(BaseModel):
     file_size: int
     status: DocumentStatus
     message: str = "File uploaded successfully"
+
+
+class DocumentStatusResponse(BaseModel):
+    """Lightweight response model for polling document processing status."""
+
+    id: int
+    status: DocumentStatus
+    processed_at: Optional[datetime] = None
+    error_message: Optional[str] = None
