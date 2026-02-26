@@ -1,8 +1,6 @@
 # tests/test_chunking.py
 """Tests for text chunking algorithm in pdf_utils.chunk_text."""
 
-import pytest
-
 from app.utils.pdf_utils import chunk_text
 
 

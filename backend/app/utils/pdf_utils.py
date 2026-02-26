@@ -1,5 +1,4 @@
 # backend/app/utils/pdf_utils.py
-from pathlib import Path
 from typing import List
 
 import pdfplumber
