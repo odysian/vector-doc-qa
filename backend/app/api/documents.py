@@ -448,13 +448,13 @@ async def get_document_messages(
         raise HTTPException(status_code=404, detail="Document not found")
 
     # Get messages for this document and user, ordered by creation time
-    stmt = (
+    msg_stmt = (
         select(Message)
         .where(Message.document_id == document_id)
         .where(Message.user_id == current_user.id)
         .order_by(Message.created_at.asc())
     )
-    messages = (await db.scalars(stmt)).all()
+    messages = (await db.scalars(msg_stmt)).all()
 
     return MessageListResponse(
         messages=[MessageResponse.model_validate(msg) for msg in messages],

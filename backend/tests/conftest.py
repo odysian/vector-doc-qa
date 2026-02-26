@@ -10,6 +10,7 @@ import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -62,6 +63,26 @@ def event_loop():
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
+
+
+# ---------------------------------------------------------------------------
+# Session-scoped: clean up uploaded files after test run
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_uploads():
+    """Remove any files written to uploads/ during the test run."""
+    upload_dir = Path(__file__).parent.parent / "uploads"
+    # Snapshot existing files so we only delete new ones
+    existing = set(upload_dir.glob("*")) if upload_dir.exists() else set()
+
+    yield
+
+    if upload_dir.exists():
+        for path in upload_dir.iterdir():
+            if path not in existing and path.is_file():
+                path.unlink()
 
 
 # ---------------------------------------------------------------------------
