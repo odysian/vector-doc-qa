@@ -24,7 +24,7 @@ AI-powered PDF question-answering using Retrieval Augmented Generation (RAG). Up
 - Deployed on Render
 
 **Frontend:**
-- Next.js 15 with TypeScript
+- Next.js 16 with TypeScript
 - Tailwind CSS v4
 - Deployed on Vercel
 
@@ -141,6 +141,10 @@ The Docker setup uses the `ankane/pgvector` image with pgvector pre-installed.
 - **Cold starts:** Free tier spins down after 15 min (30-60 sec first load)
 - **Chunking strategy:** Increased from 500 to 1000 chars for better context
 - **File security:** Check magic bytes (`%PDF`), not just extension
+
+## AI Review Log
+
+No logged review corrections yet. Add entries here when agent-generated code is reviewed and corrected.
 
 ## Contact
 
