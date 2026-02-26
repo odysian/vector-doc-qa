@@ -181,7 +181,7 @@ const documents = await api.getDocuments();
 
 Stored in httpOnly cookies set by the backend on login/refresh. JS cannot read the `access_token` or `refresh_token` cookies directly.
 
-The frontend reads the non-httpOnly `csrf_token` cookie via `getCsrfToken()` in `lib/api.ts` and echoes it as the `X-CSRF-Token` header on every mutating request (double-submit CSRF pattern). `isLoggedIn()` checks for the presence of this cookie as a fast, client-side session indicator.
+Because frontend and backend are on different domains, the frontend reads `csrf_token` from login/refresh JSON responses and stores it in `localStorage`. `getCsrfToken()` in `lib/api.ts` reads this value and echoes it as `X-CSRF-Token` on mutating requests (double-submit CSRF pattern). `isLoggedIn()` checks for the presence of this `localStorage` value as a fast client-side session indicator.
 
 All `fetch` calls use `credentials: "include"` so httpOnly cookies are sent cross-origin. The API client handles 401s by attempting a silent token refresh (POST `/api/auth/refresh` — no body required, cookie is the credential) before redirecting to `/login`.
 

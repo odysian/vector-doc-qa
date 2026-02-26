@@ -62,6 +62,7 @@ Post-implementation verification checklist. Run through after every feature befo
 
 - [ ] ARCHITECTURE.md updated if schema, endpoints, or infrastructure changed
 - [ ] PATTERNS.md updated if new convention introduced
+- [ ] ISSUES_WORKFLOW.md updated if issue/DoR/DoD policy changed
 - [ ] TESTPLAN.md updated before writing new tests
 
 ---

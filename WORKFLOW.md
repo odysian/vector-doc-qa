@@ -29,17 +29,22 @@ Every project follows this layout. Create it at project initialization before wr
 ```
 project-root/
 ├── AGENTS.md                  # Agent behavior rules (root level — auto-read by Cursor)
-├── TASKS.md                   # Current sprint tasks (GITIGNORED)
-├── TESTPLAN.md                # Test case definitions (GITIGNORED)
+├── TASKS.md                   # Optional local scratchpad (not source of truth)
+├── TESTPLAN.md                # Test case definitions (committed in this repo)
 ├── docs/
 │   ├── ARCHITECTURE.md        # System design, schemas, API contracts
+│   ├── ISSUES_WORKFLOW.md     # Issue control plane (single/gated/fast) + DoR/DoD
 │   ├── PATTERNS.md            # Code conventions and reusable patterns
 │   └── REVIEW_CHECKLIST.md    # Post-implementation verification checklist
+├── .github/
+│   ├── ISSUE_TEMPLATE/        # Spec/Task/Decision issue templates
+│   └── PULL_REQUEST_TEMPLATE.md
+├── skills/                    # Portable issue workflow playbooks
 ├── tests/
 │   ├── conftest.py            # Shared fixtures, test DB setup, factories
 │   ├── test_auth.py           # Tests organized by domain
 │   └── ...
-├── .gitignore                 # Must include TASKS.md, TESTPLAN.md
+├── .gitignore                 # Must include local scratch artifacts and secrets
 ├── README.md                  # Includes AI Review Log section
 └── src/ or app/               # Application code
 ```
@@ -49,8 +54,6 @@ project-root/
 Always include these entries:
 
 ```
-TASKS.md
-TESTPLAN.md
 .env
 .env.local
 .env.production
@@ -76,9 +79,11 @@ When starting a new project, create all workspace files immediately with placeho
 
 **docs/PATTERNS.md** — Starts mostly empty. Populated after the first 3-4 features are built by scanning the codebase for established conventions.
 
+**docs/ISSUES_WORKFLOW.md** — Defines issue execution modes (`single`, `gated`, `fast`) and the control-plane rules for DoR/DoD.
+
 **docs/REVIEW_CHECKLIST.md** — Starts with the generic checklist. Updated with project-specific checks after the first feature is reviewed.
 
-**TASKS.md** — Populated with the first sprint of agent-sized tasks after the design phase.
+**TASKS.md** — Optional scratchpad only. Keep it out of the execution critical path.
 
 **TESTPLAN.md** — Populated feature-by-feature during the design phase, before implementation.
 
@@ -395,15 +400,16 @@ If any step fails, fix the issue before reporting completion. Do not leave broke
 
 1. Read TESTPLAN.md for the current feature's test cases
 2. Read docs/ARCHITECTURE.md for the schema, API contract, and design decisions
-3. Read docs/PATTERNS.md for established conventions in this codebase
-4. Implement tests first (they should fail — no feature code yet)
-5. Implement feature code to pass the tests
-6. Run full verification suite (tests, lint, types)
-7. Report results including any tests that unexpectedly passed or failed
+3. Read docs/ISSUES_WORKFLOW.md for execution mode rules, DoR, and DoD
+4. Read docs/PATTERNS.md for established conventions in this codebase
+5. Implement tests first (they should fail — no feature code yet)
+6. Implement feature code to pass the tests
+7. Run full verification suite (tests, lint, types)
+8. Report results including any tests that unexpectedly passed or failed
 
 ### One Task at a Time
 
-Never implement multiple features in a single session. Each task from TASKS.md is one unit of work:
+Never implement multiple features in a single session. Each **Task issue** is one unit of work:
 
 - One endpoint
 - One component
@@ -417,6 +423,16 @@ If a feature requires changes across backend, database, and frontend, break it i
 3. Backend tests (verify API behavior)
 4. Frontend component (UI implementation)
 5. Integration (connect frontend to backend)
+
+### Issues Workflow (Control Plane)
+
+GitHub issues are the execution source of truth.
+
+- Choose mode first: `single` (default), `gated` (Spec + Task issues), or `fast` (tiny low-risk fixes).
+- Default sizing is 1 feature -> 1 Task issue -> 1 PR unless split criteria apply.
+- PRs close Task issues (`Closes #...`), not Spec issues.
+- Decision Locks live in the controlling issue (Task in `single`, Spec in `gated`).
+- `TASKS.md` is optional scratchpad only and never authoritative.
 
 ### Code Organization
 
@@ -552,11 +568,11 @@ This is harness engineering. Over time, the AGENTS.md becomes increasingly speci
 
 | Event                               | Files to Update                                    |
 | ----------------------------------- | -------------------------------------------------- |
-| New feature designed                | ARCHITECTURE.md, TESTPLAN.md, TASKS.md             |
-| Feature implemented                 | PATTERNS.md (if new convention), TASKS.md          |
+| New feature designed                | ARCHITECTURE.md, TESTPLAN.md, docs/ISSUES_WORKFLOW.md (if execution policy changed) |
+| Feature implemented                 | PATTERNS.md (if new convention), related Task/Spec issue status |
 | Agent made a mistake                | AGENTS.md (new rule), README.md (Review Log)       |
 | Code review completed               | REVIEW_CHECKLIST.md (if new check type discovered) |
-| Session completed                   | TASKS.md (check off done items)                    |
+| Session completed                   | Task issue moved/closed with PR link               |
 | Schema changed                      | ARCHITECTURE.md (database section)                 |
 | New endpoint added                  | ARCHITECTURE.md (API contracts section)            |
 | Implementation diverged from design | ARCHITECTURE.md (update to match reality)          |
@@ -570,6 +586,7 @@ Agents are expected to:
 - Follow all conventions documented in PATTERNS.md
 - Suggest updates to ARCHITECTURE.md when implementation differs from the spec
 - Flag when a task requires a schema or API contract not yet in ARCHITECTURE.md
+- Follow docs/ISSUES_WORKFLOW.md for execution mode selection and control-plane rules
 - Update the AI Review Log when instructed to do so after a review session
 - Never modify AGENTS.md directly — only the developer adds rules
 
@@ -866,7 +883,7 @@ These rules govern agent behavior across all tasks. They supplement project-spec
 2. Read docs/ARCHITECTURE.md for system design context
 3. Read docs/PATTERNS.md for code conventions
 4. Read TESTPLAN.md if the task involves implementing tests or features with test coverage
-5. Check TASKS.md to understand the current task scope
+5. Read docs/ISSUES_WORKFLOW.md and identify the controlling Task/Spec issue
 
 ### During Implementation
 
@@ -949,7 +966,7 @@ Before reporting any task as complete:
 │  1. DESIGN (Developer + Claude)                         │
 │     Whiteboard architecture → Update ARCHITECTURE.md    │
 │     Define test cases → Update TESTPLAN.md              │
-│     Break into tasks → Update TASKS.md                  │
+│     Select issue mode + create Task/Spec issues         │
 ├─────────────────────────────────────────────────────────┤
 │  2. TEST (Agent implements from TESTPLAN.md)             │
 │     Write test code → Tests should FAIL (no feature yet)│
@@ -970,7 +987,7 @@ Before reporting any task as complete:
 │     Update ARCHITECTURE.md if design changed             │
 │     Update PATTERNS.md if new convention established     │
 │     Update AGENTS.md if agent made a mistake             │
-│     Check off TASKS.md                                   │
+│     Update/close Task issue and link implementing PR     │
 │     Write LEARNINGS.md entry                             │
 └─────────────────────────────────────────────────────────┘
 ```

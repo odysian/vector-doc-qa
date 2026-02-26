@@ -1,8 +1,52 @@
 # AGENTS.md
 
+## Start Here (Canonical Entrypoint)
+
+`AGENTS.md` is the canonical entrypoint for agents and contributors in this repository.
+
+Read in this order:
+1. `AGENTS.md` (this file)
+2. `WORKFLOW.md`
+3. `docs/ISSUES_WORKFLOW.md`
+4. `docs/ARCHITECTURE.md`
+5. `docs/PATTERNS.md`
+6. `docs/REVIEW_CHECKLIST.md`
+7. `skills/write-spec.md`
+8. `skills/spec-to-issues.md`
+9. `skills/issue-to-pr.md`
+10. `skills/spec-workflow-gh.md`
+
+## Unit of Work Rule
+
+- **Unit of work is a GitHub Issue.**
+- Choose an execution mode from `docs/ISSUES_WORKFLOW.md` before coding:
+  - `single` (default): one feature -> one Task issue -> one PR
+  - `gated`: Spec issue + child Task issue(s) for feature sets or higher-risk work
+  - `fast`: quick-fix path for tiny low-risk changes
+- Convert freeform requests into the selected issue mode before implementation.
+- Work one Task issue at a time.
+- PRs close Task issues (`Closes #123`), not Specs.
+- Specs close only when all child Tasks are done or explicitly deferred.
+- Detailed control-plane rules are canonical in `docs/ISSUES_WORKFLOW.md`.
+- For one-shot issue body + `gh` command generation, use `skills/spec-workflow-gh.md`.
+- Default shorthand command:
+  - `Create an issue workflow for feature <feature-id> in <filename>.`
+  - Interpreted as `mode=single` automation using `skills/spec-workflow-gh.md` with minimal chatter and direct `gh issue create`.
+
+## Agent Operating Loop
+
+1. Whiteboard scope in `plans/*.md` or spec docs (scratch only).
+2. Choose execution mode (`single` default, `gated`, or `fast`) and create required issue(s).
+3. Restate goal and acceptance criteria.
+4. Plan minimal files and scope.
+5. Implement with tight, surgical changes.
+6. Run verification commands.
+7. Update tests/docs if required.
+8. Open PR that closes the Task issue; close Spec after child Tasks are done/deferred.
+
 ## Process
 
-Read and follow `WORKFLOW.md` for the full development process — it defines the Design → Test → Implement → Review → Document loop, TDD workflow, technical constraints (SQLAlchemy 2.0, Pydantic v2, async patterns), security requirements, and documentation maintenance rules.
+Read and follow `WORKFLOW.md` for the full development process and `docs/ISSUES_WORKFLOW.md` for the issue-control execution modes. Together they define the Design -> Test -> Implement -> Review -> Document loop, TDD workflow, technical constraints (SQLAlchemy 2.0, Pydantic v2, async patterns), security requirements, and documentation maintenance rules.
 
 This file contains **project-specific rules** that supplement WORKFLOW.md. If they conflict, this file wins.
 
@@ -12,38 +56,43 @@ This file contains **project-specific rules** that supplement WORKFLOW.md. If th
 
 Quaero is an AI-powered PDF question-answering platform that uses Retrieval Augmented Generation (RAG) to let users upload documents, ask natural language questions, and get answers with cited sources.
 
-**Stack:**
-
-- Backend: FastAPI (Python 3.12+, async/await throughout)
-- Frontend: Next.js 16 (App Router) + React 19 + TypeScript
-- Database: PostgreSQL with pgvector extension (Render, `quaero` schema)
-- ORM: SQLAlchemy 2.0 (async with `asyncpg` driver)
-- Auth: JWT (HS256) with Argon2 password hashing
-- AI: OpenAI API (text-embedding-3-small for embeddings), Anthropic API (Claude for RAG answers)
-- Deployment: Vercel (frontend) + Render (backend + PostgreSQL)
+**Stack:** FastAPI backend, Next.js 16 + React 19 frontend, PostgreSQL + pgvector, OpenAI embeddings, Anthropic RAG responses.
 
 **Deviations from WORKFLOW.md defaults:**
 
 - **Dual DB drivers.** The app uses `asyncpg` for all async database operations. `psycopg2-binary` is kept solely for Alembic migrations (which run synchronously). Both drivers are in requirements.txt.
 - **Next.js, not Vite.** Frontend uses Next.js App Router, but all pages are client components (`"use client"`). No server components or server-side data fetching are used.
 - **Argon2, not bcrypt.** Password hashing uses `argon2-cffi` via passlib, not bcrypt.
-- **Auth tokens in httpOnly cookies.** `access_token` and `refresh_token` are stored in httpOnly cookies (path-scoped: `/api/` and `/api/auth/` respectively). A readable `csrf_token` cookie is set at `/` and echoed as `X-CSRF-Token` on mutating requests (double-submit CSRF pattern). The backend also accepts `Authorization: Bearer` as a fallback (keeps Swagger UI working). Because the frontend (Vercel) and backend (Render) are on different domains, the `csrf_token` cookie cannot be read via `document.cookie` on the frontend — instead, it is returned in the JSON response body on login/refresh and stored in `localStorage` (see ADR-001).
+- **Auth tokens in httpOnly cookies.** `access_token` and `refresh_token` are stored in httpOnly cookies (path-scoped: `/api/` and `/api/auth/` respectively). A readable `csrf_token` cookie is set at `/` and echoed as `X-CSRF-Token` on mutating requests (double-submit CSRF pattern). Because frontend and backend are on different domains, the frontend stores the `csrf_token` value from login/refresh JSON responses in `localStorage` (see ADR-001).
 - **INTEGER primary keys.** Models use `Integer` primary keys, not `BigInteger` as WORKFLOW.md specifies.
-- **Schema isolation.** Database uses `quaero` schema, not the default `public` schema. This is for multi-project sharing on a single Render PostgreSQL instance.
+- **Schema isolation.** Database uses `quaero` schema, not the default `public` schema.
 - **No token expiration.** `access_token_expire_minutes` is set to `0` (no expiration) in config.
 
 ---
 
 ## Core Rules
 
-- **Simplicity first.** Write the minimum code that solves the problem. No features beyond what was asked. No abstractions for single-use code. No speculative flexibility. If you write 200 lines and it could be 50, rewrite it.
-- **Surgical changes only.** Touch only what the task requires. Don't "improve" adjacent code, comments, or formatting. Match existing style. If you notice unrelated issues, mention them — don't fix them. Every changed line should trace to the user's request.
-- **Explain what you're doing.** Include brief comments explaining _why_ for non-obvious logic. This is a learning environment.
+- **Simplicity first.** Write the minimum code that solves the problem. No features beyond what was asked. No abstractions for single-use code. No speculative flexibility.
+- **Surgical changes only.** Touch only what the task requires. Do not improve adjacent code, comments, or formatting. Match existing style.
+- **Explain what you're doing.** Include brief comments explaining why for non-obvious logic.
 - **Prefer explicit over clever.** Readable, straightforward code. No one-liners that sacrifice clarity.
+
+## Decision Brief (Required)
+
+For non-trivial fixes/features, include a short decision brief before completion:
+
+- **Chosen approach:** what was implemented.
+- **Alternative considered:** one realistic alternative.
+- **Tradeoff:** why this choice won (complexity/risk/perf/security).
+- **Revisit trigger:** when the alternative should be reconsidered.
+
+For tiny quick fixes, a one-line brief is enough: chosen approach + primary risk.
 
 ---
 
 ## Verification
+
+Before considering any task complete, run the relevant checks:
 
 ### Backend
 
@@ -56,7 +105,7 @@ ruff check .
 # Type check
 mypy . --ignore-missing-imports
 
-# Run tests (when tests exist)
+# Run tests
 pytest -v
 
 # Security check
@@ -96,11 +145,12 @@ If any check fails, fix before moving on.
 
 ### Documentation (after every feature)
 
-- [ ] **ARCHITECTURE.md** — Update if you changed: DB schema, API endpoints, system diagram, or infrastructure.
-- [ ] **PATTERNS.md** — Update if you introduced or changed a code convention.
-- [ ] **REVIEW_CHECKLIST.md** — Update if the feature introduced a new category of checks.
+- [ ] **docs/ARCHITECTURE.md** — Update if you changed DB schema, API endpoints, system diagram, or infrastructure.
+- [ ] **docs/PATTERNS.md** — Update if you introduced or changed a code convention.
+- [ ] **docs/REVIEW_CHECKLIST.md** — Update if the feature introduced a new category of checks.
+- [ ] **docs/ISSUES_WORKFLOW.md** — Update if issue workflow rules changed.
 - [ ] **TESTPLAN.md** — Update before writing any new tests.
-- [ ] **docs/adr/** — Create a new numbered ADR if you chose between competing approaches, resolved a non-obvious production issue, or made a decision with lasting security/performance consequences. See **ADR Format** below.
+- [ ] **docs/adr/** — Create a new numbered ADR if you chose between competing approaches, resolved a non-obvious production issue, or made a decision with lasting security/performance consequences.
 
 Edit the specific section that changed. Do not rewrite entire files.
 
@@ -108,28 +158,29 @@ Edit the specific section that changed. Do not rewrite entire files.
 
 ## File Structure
 
-_See docs/ARCHITECTURE.md for the full directory tree._
+See `docs/ARCHITECTURE.md` for the full directory tree.
 
 ### Backend (`backend/`)
 
-- **App entry** → `app/main.py`
-- **Config** → `app/config.py`, `app/constants.py`
-- **Database** → `app/database.py`
-- **Models** → `app/models/` (`base.py` for Document/Chunk, `user.py`, `message.py`)
-- **Schemas** → `app/schemas/` (`document.py`, `auth.py`)
-- **Routes** → `app/api/` (`auth.py`, `documents.py`, `dependencies.py`)
-- **Services** → `app/services/` (`document_service.py`, `search_service.py`, `embedding_service.py`, `anthropic_service.py`)
-- **Security** → `app/core/security.py`
-- **Utilities** → `app/utils/` (`file_utils.py`, `pdf_utils.py`, `rate_limit.py`)
-- **Migrations** → `alembic/versions/`
+- **App entry** -> `app/main.py`
+- **Config** -> `app/config.py`, `app/constants.py`
+- **Database** -> `app/database.py`
+- **Models** -> `app/models/` (`base.py`, `user.py`, `message.py`, `refresh_token.py`)
+- **Schemas** -> `app/schemas/`
+- **Routes** -> `app/api/` (`auth.py`, `documents.py`, `dependencies.py`)
+- **Services** -> `app/services/`
+- **Security** -> `app/core/security.py`
+- **Utilities** -> `app/utils/`
+- **Workers** -> `app/workers/`
+- **Migrations** -> `alembic/versions/`
 
 ### Frontend (`frontend/`)
 
-- **Pages** → `app/page.tsx` (landing), `app/login/page.tsx`, `app/register/page.tsx`, `app/dashboard/page.tsx`
-- **Layout** → `app/layout.tsx`
-- **Components** → `app/components/dashboard/` (`ChatWindow.tsx`, `DocumentList.tsx`, `UploadZone.tsx`, `DeleteDocumentModal.tsx`)
-- **API client** → `lib/api.ts`, `lib/api.types.ts`
-- **Styles** → `app/globals.css` (Tailwind + custom lapis theme)
+- **Pages** -> `app/page.tsx`, `app/login/page.tsx`, `app/register/page.tsx`, `app/dashboard/page.tsx`
+- **Layout** -> `app/layout.tsx`
+- **Components** -> `app/components/dashboard/`
+- **API client** -> `lib/api.ts`, `lib/api.types.ts`
+- **Styles** -> `app/globals.css`
 
 ---
 
@@ -138,33 +189,42 @@ _See docs/ARCHITECTURE.md for the full directory tree._
 ### Think before coding
 
 - State assumptions explicitly. If uncertain, ask.
-- If multiple valid approaches exist, present them — don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
+- If multiple valid approaches exist, present them; do not pick silently.
+- If a simpler approach exists, say so.
 - If something is unclear, stop and ask.
 
-### Vague or multi-file tasks
+### When a task is vague or spans multiple files
 
-1. Plan first — outline files, data flow, API contracts as a checklist.
+1. Plan first: outline files, data flow, and API contracts as a checklist.
 2. Get approval before writing code.
-3. Execute step by step, verify after each step.
+3. Execute step by step and verify after each step.
 
-### Clear, scoped tasks
+### When a task is clear and scoped
 
 Execute directly. No plan needed. Verify and report.
+
+### Issues Workflow (Control Plane)
+
+- Choose mode first: `single` (default), `gated` (Spec + Tasks), or `fast` (tiny low-risk fixes).
+- Default sizing in issue modes: 1 feature -> 1 Task -> 1 PR unless split criteria apply.
+- GitHub issues are the execution source of truth. `TASKS.md` is scratchpad-only if present.
+- Follow canonical rules in `docs/ISSUES_WORKFLOW.md` for DoR/DoD.
+- Decision Locks live in the controlling issue (Task in `single`, Spec in `gated`).
+- If a decision has lasting architecture/security/performance impact, create and link an ADR (`docs/adr/NNN-kebab-case-title.md`).
 
 ### Goal-driven execution
 
 Transform tasks into verifiable goals before coding:
 
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
+- "Add validation" -> "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" -> "Write a test that reproduces it, then make it pass"
+- "Refactor X" -> "Ensure tests pass before and after"
 
 ---
 
 ## Common Mistakes to Avoid
 
-_Add to this section when the agent makes a mistake. Each line prevents a repeat. These are project-specific — generic rules live in WORKFLOW.md Section 9._
+_Add to this section when the agent makes a mistake. Each line prevents a repeat._
 
 - **Do not install packages without asking first.** State what and why. Wait for approval.
 - **Do not create `.env` files with real secrets.** Use `.env.example` with placeholders.
@@ -173,22 +233,36 @@ _Add to this section when the agent makes a mistake. Each line prevents a repeat
 
 ---
 
+## Skill Governance
+
+Keep external skills high-signal and conflict-free:
+
+- Precedence order: `AGENTS.md` -> `WORKFLOW.md` -> `docs/ISSUES_WORKFLOW.md` -> local `skills/*` -> external installed skills.
+- Install external skills globally in Codex home, not inside project repos.
+- Keep a small baseline (about 4-6 active external skills).
+- Use skills intentionally (named skill or clear task match), not by default for every request.
+- Avoid overlap: keep one primary skill per domain.
+- If an external skill conflicts with repo docs, follow repo docs and treat the skill as advisory.
+- Review and prune unused or low-value skills regularly.
+
+---
+
 ## ADR Format
 
 Architecture Decision Records live in `docs/adr/` and capture decisions with lasting consequences. Use ADR-001 as the canonical example.
 
 **When to write one:**
-- You chose between two or more real alternatives (not just "one obvious way")
-- A production issue revealed a design flaw that required a deliberate fix
-- The decision has non-obvious security, performance, or correctness implications
-- Future agents or developers would reasonably question why something was done this way
+- You chose between two or more real alternatives.
+- A production issue revealed a design flaw that required a deliberate fix.
+- The decision has non-obvious security, performance, or correctness implications.
+- Future contributors would reasonably question why something was done this way.
 
 **When NOT to write one:**
-- Routine feature additions with no competing approaches
-- Bug fixes with a single obvious solution
-- Anything fully covered by PATTERNS.md
+- Routine feature additions with no competing approaches.
+- Bug fixes with a single obvious solution.
+- Anything fully covered by PATTERNS.md.
 
-**File naming:** `NNN-kebab-case-title.md` — three-digit sequence number, e.g. `004-my-decision.md`. Check the existing files in `docs/adr/` for the next available number.
+**File naming:** `NNN-kebab-case-title.md` (three-digit sequence number).
 
 **Required sections:**
 
@@ -232,8 +306,7 @@ Architecture Decision Records live in `docs/adr/` and capture decisions with las
 
 ## Consequences
 
-[Bullet list: what is now true as a result, including tradeoffs, edge cases,
-and any new risks introduced.]
+[Bullet list: what is now true as a result, including tradeoffs, edge cases, and any new risks introduced.]
 ```
 
 ---
