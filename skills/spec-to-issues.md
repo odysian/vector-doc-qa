@@ -33,7 +33,7 @@ Given a feature plan (from `plans/*.md`, specs, or a Spec):
 
 If the request is phrased as:
 
-`Create an issue workflow for feature <feature-id> in <filename>.`
+`Run kickoff for feature <feature-id> from <filename> mode=<single|gated|fast>.`
 
 apply these defaults automatically:
 
