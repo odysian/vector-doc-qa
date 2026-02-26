@@ -98,8 +98,14 @@ def chunk_text(
         # Move forward with overlap
         start = end - overlap
 
-        # Prevent infinite loop
-        if start >= len(text) - overlap:
-            break
+        # Snap start forward to next word boundary so chunks
+        # don't begin mid-word
+        if start > 0 and start < len(text):
+            # Skip past the partial word
+            while start < end and not text[start].isspace():
+                start += 1
+            # Skip past whitespace to land on next word
+            while start < end and text[start].isspace():
+                start += 1
 
     return chunks
