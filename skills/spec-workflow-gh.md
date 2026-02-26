@@ -6,15 +6,15 @@ Use this when starting a new feature and you want issue bodies + `gh` commands i
 
 Example request:
 
-`Run skills/spec-workflow-gh.md for 3.1 New Messages Divider mode=single. Produce issue body files + gh issue create commands.`
+`Run kickoff for feature 3.1 New Messages Divider from docs/specs/frontend-design-audit.md mode=single.`
 
 Default shorthand request:
 
-`Create an issue workflow for feature <feature-id> in <filename>.`
+`Run kickoff for feature <feature-id> from <filename> mode=<single|gated|fast>.`
 
 Interpret this shorthand as:
 
-- `mode=single`
+- if `mode` omitted, use `mode=single`
 - source from `<filename>` (feature section)
 - create/update one Task body file under `plans/`
 - run `gh issue create` directly

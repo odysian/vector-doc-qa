@@ -372,22 +372,14 @@ tests/
 After implementing tests AND feature code, the agent must run verification before considering the task complete:
 
 ```bash
-# 1. Run the tests
-pytest -v --tb=short
+# Preferred verification entrypoints from repo root
+make backend-verify
 
-# 2. Check that tests actually fail without the feature
-#    (Agent should note if all tests passed before implementation —
-#    that means the tests are testing nothing)
+# If frontend changed
+make frontend-verify
 
-# 3. Lint
-ruff check .
-
-# 4. Type check
-mypy . --ignore-missing-imports
-
-# 5. If frontend changes were made
-npx tsc --noEmit
-npx next lint
+# Optional context check: ensure tests would fail without feature behavior
+# (if all tests passed before implementation, tests may be too weak)
 ```
 
 If any step fails, fix the issue before reporting completion. Do not leave broken tests, lint errors, or type errors for the developer to clean up.
@@ -952,7 +944,7 @@ Before reporting any task as complete:
 - [ ] Tests pass (`pytest -v`)
 - [ ] Lint passes (`ruff check .`)
 - [ ] Type check passes (`mypy . --ignore-missing-imports`)
-- [ ] Frontend builds (`npx tsc --noEmit && npx next lint`)
+- [ ] Frontend verification passes (`make frontend-verify`; fallback: `cd frontend && npx tsc --noEmit && npx next lint && npm run build`)
 - [ ] No hardcoded secrets, URLs, or credentials
 - [ ] New endpoints are documented in ARCHITECTURE.md or flagged for update
 - [ ] New patterns are consistent with PATTERNS.md

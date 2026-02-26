@@ -29,9 +29,10 @@ Read in this order:
 - Specs close only when all child Tasks are done or explicitly deferred.
 - Detailed control-plane rules are canonical in `docs/ISSUES_WORKFLOW.md`.
 - For one-shot issue body + `gh` command generation, use `skills/spec-workflow-gh.md`.
-- Default shorthand command:
-  - `Create an issue workflow for feature <feature-id> in <filename>.`
-  - Interpreted as `mode=single` automation using `skills/spec-workflow-gh.md` with minimal chatter and direct `gh issue create`.
+- Canonical single-line kickoff prompt:
+  - `Run kickoff for feature <feature-id> from <filename> mode=<single|gated|fast>.`
+  - If `mode` is omitted, default to `single`.
+  - Expected output: issue body file(s), `gh issue create` command(s), created issue link(s), and a 3-5 step implementation plan.
 
 ## Agent Operating Loop
 
@@ -96,6 +97,12 @@ Before considering any task complete, run the relevant checks:
 
 ### Backend
 
+Preferred: run from repo root:
+```bash
+make backend-verify
+```
+
+If needed, run individual commands from `backend/`:
 ```bash
 cd backend
 
@@ -114,6 +121,12 @@ bandit -r app/ -ll
 
 ### Frontend
 
+Preferred: run from repo root:
+```bash
+make frontend-verify
+```
+
+If needed, run individual commands from `frontend/`:
 ```bash
 cd frontend
 
