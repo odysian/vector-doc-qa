@@ -2,11 +2,11 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.models.base import Chunk, Document, DocumentStatus
 from app.services.embedding_service import generate_embeddings_batch
+from app.services.storage_service import read_file_bytes
 from app.utils.logging_config import get_logger
-from app.utils.pdf_utils import chunk_text, extract_text_from_pdf
+from app.utils.pdf_utils import chunk_text, extract_text_from_pdf_bytes
 
 logger = get_logger(__name__)
 
@@ -27,7 +27,7 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
     logger.info(f"Starting document processing: document_id={document_id}")
 
     # Get document
-    stmt = select(Document).where(Document.id == document_id).where()
+    stmt = select(Document).where(Document.id == document_id)
     document = await db.scalar(stmt)
 
     if not document:
@@ -45,11 +45,10 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
         document.status = DocumentStatus.PROCESSING
         await db.commit()
 
-        pdf_path = settings.get_upload_path().parent / document.file_path
-
         # Extract text from pdf (CPU-bound, offloaded to process pool)
         logger.info(f"Extracting text from {document.filename}")
-        text = await extract_text_from_pdf(str(pdf_path))
+        pdf_bytes = await read_file_bytes(document.file_path)
+        text = await extract_text_from_pdf_bytes(pdf_bytes)
         logger.info(f"Extracted {len(text)} characters")
 
         if not text or not text.strip():
