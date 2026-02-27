@@ -27,6 +27,9 @@ class Settings(BaseSettings):
 
     upload_dir: str = "uploads"
     max_file_size: int = MAX_FILE_SIZE_BYTES
+    storage_backend: str = "local"
+    gcs_bucket_name: str = ""
+    gcp_project_id: str = ""
 
     allowed_extensions: set[str] = ALLOWED_EXTENSIONS
 

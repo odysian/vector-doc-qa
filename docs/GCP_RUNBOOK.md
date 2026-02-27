@@ -249,3 +249,49 @@ Minimum diagnostics during incidents:
 
 - Initial runbook created during Step 1 (container + CI/CD foundation).
 - Update this file after each completed migration milestone.
+
+---
+
+## 10. Cloud Storage Setup (Production)
+
+Use this after backend deployment is stable on GCP VM.
+
+1. Create bucket (example):
+
+```bash
+gcloud storage buckets create gs://quaero-pdf-storage \
+  --location=us-east1 \
+  --uniform-bucket-level-access
+```
+
+2. Grant VM service account object permissions:
+
+```bash
+PROJECT_ID="$(gcloud config get-value project)"
+VM_SA="$(gcloud compute instances describe quaero-backend --zone=us-east1-b --format='value(serviceAccounts[0].email)')"
+gcloud storage buckets add-iam-policy-binding gs://quaero-pdf-storage \
+  --member="serviceAccount:${VM_SA}" \
+  --role="roles/storage.objectAdmin"
+```
+
+3. Update backend env file on VM:
+
+```bash
+sudo sed -i '/^STORAGE_BACKEND=/d;/^GCS_BUCKET_NAME=/d;/^GCP_PROJECT_ID=/d' /opt/quaero/env/backend.env
+cat <<'EOF' | sudo tee -a /opt/quaero/env/backend.env
+STORAGE_BACKEND=gcs
+GCS_BUCKET_NAME=quaero-pdf-storage
+GCP_PROJECT_ID=portfolio-488721
+EOF
+```
+
+4. Redeploy backend with GitHub Actions.
+
+5. Validate upload/process/delete against production.
+
+Debug checks:
+
+```bash
+docker logs quaero-backend --tail 300
+gcloud storage ls gs://quaero-pdf-storage/uploads/
+```

@@ -1,5 +1,4 @@
 from app.api.dependencies import get_current_user
-from app.config import settings
 from app.database import get_db
 from app.models.base import Document, DocumentStatus
 from app.models.message import Message
@@ -16,6 +15,7 @@ from app.schemas.search import SearchRequest, SearchResponse, SearchResult
 from app.services.anthropic_service import generate_answer
 from app.services.queue_service import enqueue_document_processing
 from app.services.search_service import search_chunks
+from app.services.storage_service import delete_file
 from app.utils.file_utils import save_upload_file, validate_file_upload
 from app.utils.logging_config import get_logger
 from app.utils.rate_limit import get_user_or_ip_key, limiter
@@ -196,9 +196,8 @@ async def delete_document(
             status_code=404, detail=f"Document with ID {document_id} not found"
         )
 
-    # Delete file from disk
-    full_path = settings.get_upload_path().parent / document.file_path
-    full_path.unlink(missing_ok=True)
+    # Delete file from configured storage backend.
+    await delete_file(document.file_path)
 
     # Delete from database (cascades to chunks)
     await db.delete(document)

@@ -1,10 +1,11 @@
-import os
 import secrets
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
 from app.config import settings
 from app.constants import PDF_MAGIC_BYTES, UPLOAD_CHUNK_SIZE_BYTES
+from app.services.storage_service import write_file_from_path
 from fastapi import HTTPException, UploadFile
 
 
@@ -80,37 +81,33 @@ def generate_unique_filename(original_filename: str) -> str:
 # File Storage
 async def save_upload_file(file: UploadFile) -> tuple[str, int]:
     """
-    Save uploaded file to disk.
+    Save uploaded file through the configured storage backend.
 
     Returns:
         tuple: (file_path, file_size)
 
     Security:
-    - Validates file during read
+    - Validates file content during read
     - Uses unique filename
-    - Stores in dedicated uploads directory
+    - Enforces max size before persisting
     """
 
     unique_filename = generate_unique_filename(file.filename)  # type: ignore
 
-    # Get upload dir path
-    upload_dir = settings.get_upload_path()
-    file_path = upload_dir / unique_filename
-
-    # Read and write file in chunks (memory efficient)
+    # Read upload stream in chunks, validate, and spool to a temp file.
     file_size = 0
     chunk_size = UPLOAD_CHUNK_SIZE_BYTES  # 1MB chunks
     first_chunk = True
     is_pdf = unique_filename.lower().endswith(".pdf")
+    temp_path: str | None = None
 
     try:
-        with open(file_path, "wb") as f:
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            temp_path = temp_file.name
+
             while chunk := await file.read(chunk_size):
                 # Reject non-PDF content when extension is .pdf (blocks malware renamed as .pdf)
                 if first_chunk and is_pdf and not chunk.startswith(PDF_MAGIC_BYTES):
-                    f.close()
-                    if file_path.exists():
-                        os.remove(file_path)
                     raise HTTPException(
                         status_code=400,
                         detail="File content does not match PDF format. Only real PDF files are allowed.",
@@ -121,26 +118,27 @@ async def save_upload_file(file: UploadFile) -> tuple[str, int]:
 
                 # Check size during read
                 if file_size > settings.max_file_size:
-                    f.close()
-                    os.remove(file_path)
-
                     max_mb = settings.max_file_size / 1024 / 1024
                     raise HTTPException(
                         status_code=413,
                         detail=f"File too large. Maximum size: {max_mb}MB",
                     )
-                f.write(chunk)
+                temp_file.write(chunk)
+
+        relative_path = f"uploads/{unique_filename}"
+        await write_file_from_path(
+            relative_path,
+            temp_path,
+            content_type=file.content_type,
+        )
 
     except HTTPException:
         raise
     except Exception as e:
-        # Catch any other errors (disk full, permissions, etc)
-        # Clean up partial file if exists
-        if file_path.exists():
-            os.remove(file_path)
-
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+    finally:
+        if temp_path and Path(temp_path).exists():
+            Path(temp_path).unlink(missing_ok=True)
 
     # Return relative path (not absolute) and size
-    relative_path = f"uploads/{unique_filename}"
     return relative_path, file_size
