@@ -15,6 +15,7 @@ Quaero is a document intelligence platform that allows users to upload PDF docum
 | Backend | FastAPI (Python 3.12+) | Auto-docs, Pydantic validation, lightweight |
 | Background Jobs | ARQ worker | Async-native queue worker for document processing |
 | Queue/Broker | Redis (Upstash in production) | Durable job queue across app restarts |
+| File Storage | Local disk (dev/test) + Google Cloud Storage (prod) | Durable uploaded PDF storage in production |
 | ORM | SQLAlchemy 2.0 (async) | Type-safe models, mapped_column, select(), AsyncSession |
 | Database | PostgreSQL + pgvector | Relational + vector similarity search |
 | Embeddings | OpenAI text-embedding-3-small | 1536 dimensions, cost-effective |
@@ -22,7 +23,7 @@ Quaero is a document intelligence platform that allows users to upload PDF docum
 | Auth | JWT (HS256) + Argon2 | Stateless auth, secure password hashing |
 | Rate Limiting | SlowAPI | Per-endpoint cost control |
 | PDF Processing | pdfplumber | Reliable text extraction |
-| Deployment | Vercel (FE) + Render (BE + DB) | Free tier, auto-deploy from main |
+| Deployment | Vercel (FE) + GCP VM + Cloud SQL (BE + DB) | Keeps FE/BE split and supports controlled rolling deploys with rollback |
 
 ---
 
@@ -35,17 +36,17 @@ Quaero is a document intelligence platform that allows users to upload PDF docum
 [Next.js Frontend (Vercel)]
     |  (REST API — httpOnly cookies + X-CSRF-Token header)
     v
-[FastAPI Backend (Render)]
+[FastAPI Backend (GCP VM)]
     |
     ├──> [Redis Queue (Upstash)]
     |         queue: quaero:queue
     |         jobs: process_document_task
     |
-    ├──> [ARQ Worker (same Render service)]
+    ├──> [ARQ Worker (same VM runtime container)]
     |         consumes Redis jobs
     |         updates document status + chunks
     |
-    ├──> [PostgreSQL + pgvector (Render)]
+    ├──> [PostgreSQL + pgvector (Cloud SQL)]
     |         quaero schema
     |         tables: users, documents, chunks, messages, refresh_tokens
     |
@@ -62,7 +63,7 @@ Quaero is a document intelligence platform that allows users to upload PDF docum
 
 ```
 1. Upload:   User → PDF file → Backend validates (magic bytes, size)
-                              → Saves to disk (backend/uploads/)
+                              → Saves via storage backend (local disk or GCS)
                               → Creates Document record (status: PENDING)
                               → Enqueues process_document_task in Redis
 
@@ -308,7 +309,7 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 | Password hashing | Argon2 | bcrypt | Modern, memory-hard, winner of PHC |
 | PDF extraction | pdfplumber | PyPDF2, PyMuPDF | Best text quality, handles complex layouts |
 | Chunk strategy | 1000 chars / 50 overlap | 500 chars, sentence-based | Balance between context and precision |
-| Schema isolation | quaero schema | Separate database | Shares Render free-tier DB across projects |
+| Schema isolation | quaero schema | Separate database | Shares a single portfolio Cloud SQL instance across projects while keeping data isolated |
 | Auth token storage | httpOnly cookies | localStorage | XSS protection; JS cannot read access_token or refresh_token |
 | CSRF protection | Double-submit cookie pattern | Synchronizer token | csrf_token cookie (readable) echoed as X-CSRF-Token header; timing-safe compare |
 | Refresh token strategy | DB-stored opaque token, rotation | JWT refresh token, Redis | Server-side revocation; rotation detects token theft |
