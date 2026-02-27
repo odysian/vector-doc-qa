@@ -5,11 +5,11 @@ import pdfplumber
 
 from app.config import settings
 from app.constants import PDF_PROCESSING_TIMEOUT_SECONDS
-from app.utils.timeout import run_with_timeout
+from app.utils.timeout import run_with_timeout_async
 
 
 def _do_pdf_extraction(pdf_path: str) -> str:
-    """Extract text from PDF."""
+    """Extract text from PDF. Runs in a subprocess via ProcessPoolExecutor."""
     text_parts = []
 
     with pdfplumber.open(pdf_path) as pdf:
@@ -21,9 +21,12 @@ def _do_pdf_extraction(pdf_path: str) -> str:
     return "\n\n".join(text_parts)
 
 
-def extract_text_from_pdf(pdf_path: str) -> str:
+async def extract_text_from_pdf(pdf_path: str) -> str:
     """
     Extract all text from a PDF file with timeout protection.
+
+    Offloads CPU-bound extraction to a process pool so the caller's
+    event loop is not blocked.
 
     Args:
         pdf_path: Path to PDF file
@@ -33,7 +36,7 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     """
 
     try:
-        text = run_with_timeout(
+        text = await run_with_timeout_async(
             _do_pdf_extraction, (pdf_path,), PDF_PROCESSING_TIMEOUT_SECONDS
         )
         return text
