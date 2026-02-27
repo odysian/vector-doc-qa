@@ -1,0 +1,92 @@
+name: Deploy Backend
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: quaero-backend-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/quaero-backend
+  VM_DEPLOY_SCRIPT_PATH: /opt/quaero/deploy/deploy_backend.sh
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image metadata
+        id: meta
+        run: |
+          SHORT_SHA="${GITHUB_SHA::12}"
+          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${SHORT_SHA}"
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image_tag }}
+            ${{ steps.meta.outputs.latest_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH key
+        run: |
+          echo "${{ secrets.GCP_VM_SSH_KEY }}" > vm_key.pem
+          chmod 600 vm_key.pem
+
+      - name: Ensure deploy dir exists on VM
+        run: |
+          ssh -i vm_key.pem -o StrictHostKeyChecking=no "${{ secrets.GCP_VM_USER }}@${{ secrets.GCP_VM_HOST }}" \
+            "mkdir -p /opt/quaero/deploy"
+
+      - name: Upload deploy script to VM
+        run: |
+          scp -i vm_key.pem -o StrictHostKeyChecking=no \
+            ./ops/deploy_backend.sh \
+            "${{ secrets.GCP_VM_USER }}@${{ secrets.GCP_VM_HOST }}:${{ env.VM_DEPLOY_SCRIPT_PATH }}"
+
+      - name: Run deploy script on VM
+        run: |
+          ssh -i vm_key.pem -o StrictHostKeyChecking=no "${{ secrets.GCP_VM_USER }}@${{ secrets.GCP_VM_HOST }}" \
+            "chmod +x '${{ env.VM_DEPLOY_SCRIPT_PATH }}' && \
+             GHCR_USERNAME='${{ secrets.GHCR_USERNAME }}' \
+             GHCR_TOKEN='${{ secrets.GHCR_TOKEN }}' \
+             '${{ env.VM_DEPLOY_SCRIPT_PATH }}' '${{ needs.build-and-push.outputs.image_tag }}'"
+
+      - name: Cleanup local SSH key
+        if: always()
+        run: rm -f vm_key.pem
