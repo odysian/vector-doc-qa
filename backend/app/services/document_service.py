@@ -47,9 +47,9 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
 
         pdf_path = settings.get_upload_path().parent / document.file_path
 
-        # Extract text from pdf (CPU-bound, stays sync)
+        # Extract text from pdf (CPU-bound, offloaded to process pool)
         logger.info(f"Extracting text from {document.filename}")
-        text = extract_text_from_pdf(str(pdf_path))
+        text = await extract_text_from_pdf(str(pdf_path))
         logger.info(f"Extracted {len(text)} characters")
 
         if not text or not text.strip():
