@@ -10,6 +10,7 @@ Post-implementation verification checklist. Run through after every feature befo
 - [ ] String fields have explicit max_length constraints
 - [ ] File uploads validated by magic bytes, not just extension
 - [ ] File size checked during streaming upload (not after)
+- [ ] File operations go through storage service abstraction (no direct route/service filesystem writes)
 - [ ] Every endpoint is authenticated unless explicitly documented as public
 - [ ] User can only access their own data (ownership check on every query)
 - [ ] No secrets in code, logs, or error messages
@@ -28,6 +29,7 @@ Post-implementation verification checklist. Run through after every feature befo
 - [ ] Indexes exist on columns used in WHERE clauses and JOINs
 - [ ] Embedding generation uses batch API (not one-at-a-time)
 - [ ] Large file operations are streamed (not loaded entirely into memory)
+- [ ] Production storage backend is configured correctly (`STORAGE_BACKEND=gcs`, bucket/IAM validated)
 - [ ] Frontend doesn't re-fetch data unnecessarily
 - [ ] Polling uses lightweight status endpoints and stops after terminal states
 

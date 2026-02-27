@@ -148,6 +148,26 @@ stmt = select(Document).where(
 )
 ```
 
+### File Storage Backend
+
+Do not read/write document files directly from routes/services. Use `app.services.storage_service` so local and production storage can be switched by config.
+
+```python
+from app.services.storage_service import write_file_from_path, read_file_bytes, delete_file
+
+await write_file_from_path(
+    "uploads/example.pdf",
+    "/tmp/example.pdf",
+    content_type="application/pdf",
+)
+pdf_bytes = await read_file_bytes(document.file_path)
+await delete_file(document.file_path)
+```
+
+`STORAGE_BACKEND` controls backend selection:
+- `local` (default): filesystem in `backend/uploads/`
+- `gcs`: Google Cloud Storage bucket (`GCS_BUCKET_NAME`)
+
 ### Constants
 
 Magic numbers live in `app/constants.py`, not scattered in code.
