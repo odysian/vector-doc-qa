@@ -1,4 +1,5 @@
 # backend/app/utils/pdf_utils.py
+import io
 from typing import List
 
 import pdfplumber
@@ -38,6 +39,39 @@ async def extract_text_from_pdf(pdf_path: str) -> str:
     try:
         text = await run_with_timeout_async(
             _do_pdf_extraction, (pdf_path,), PDF_PROCESSING_TIMEOUT_SECONDS
+        )
+        return text
+    except TimeoutError:
+        raise TimeoutError(
+            f"PDF processing timed out after {PDF_PROCESSING_TIMEOUT_SECONDS} seconds. "
+            "This PDF may contain complex graphics or be image-based."
+        )
+
+
+def _do_pdf_extraction_from_bytes(pdf_bytes: bytes) -> str:
+    """Extract text from PDF bytes. Runs in subprocess via ProcessPoolExecutor."""
+    text_parts = []
+
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        for page in pdf.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text_parts.append(page_text)
+
+    return "\n\n".join(text_parts)
+
+
+async def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
+    """
+    Extract all text from PDF bytes with timeout protection.
+
+    Uses the same timeout/executor behavior as path-based extraction.
+    """
+    try:
+        text = await run_with_timeout_async(
+            _do_pdf_extraction_from_bytes,
+            (pdf_bytes,),
+            PDF_PROCESSING_TIMEOUT_SECONDS,
         )
         return text
     except TimeoutError:
