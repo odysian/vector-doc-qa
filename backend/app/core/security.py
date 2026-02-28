@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Optional
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -91,6 +91,26 @@ async def create_refresh_token(user_id: int, db: AsyncSession) -> str:
     return raw_token
 
 
+async def consume_refresh_token(token: str, db: AsyncSession) -> Optional[int]:
+    """
+    Atomically consume an unexpired refresh token.
+
+    Returns the token's user_id if the token existed and was valid; otherwise
+    returns None. Does NOT commit — caller owns transaction boundaries.
+    """
+    from app.models.refresh_token import RefreshToken
+
+    stmt = (
+        delete(RefreshToken)
+        .where(
+            RefreshToken.token == token,
+            RefreshToken.expires_at >= func.now(),
+        )
+        .returning(RefreshToken.user_id)
+    )
+    return await db.scalar(stmt)
+
+
 async def validate_refresh_token(
     token: str, db: AsyncSession
 ) -> Optional["RefreshToken"]:
@@ -98,7 +118,7 @@ async def validate_refresh_token(
     Look up a refresh token in the DB.
 
     Returns the RefreshToken row if found and not expired, otherwise None.
-    Does NOT delete the row — callers handle deletion for rotation/expiry.
+    Expired rows are staged for deletion. Caller owns commit/rollback.
     """
     from app.models.refresh_token import RefreshToken
 
@@ -117,6 +137,5 @@ async def validate_refresh_token(
     if expires_aware < datetime.now(timezone.utc):
         # Expired — clean up and signal failure
         await db.execute(delete(RefreshToken).where(RefreshToken.id == row.id))
-        await db.commit()
         return None
     return row
