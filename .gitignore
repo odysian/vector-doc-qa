@@ -50,9 +50,20 @@ Thumbs.db
 # Docker
 doc_intel_postgres_data/
 
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
 # Frontend
 frontend/node_modules/
 frontend/.next/
 frontend/out/
 frontend/build/
 notes/
+scratch.txt
