@@ -1,5 +1,5 @@
 # backend/app/services/document_service.py
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import Chunk, Document, DocumentStatus
@@ -43,6 +43,11 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
 
     try:
         document.status = DocumentStatus.PROCESSING
+        document.error_message = None
+        document.processed_at = None
+
+        # Retry semantics: always rebuild from scratch to avoid duplicate chunks.
+        await db.execute(delete(Chunk).where(Chunk.document_id == document.id))
         await db.commit()
 
         # Extract text from pdf (CPU-bound, offloaded to process pool)
@@ -89,7 +94,16 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
 
     except Exception as e:
         logger.error(f"Processing failed: {e}", exc_info=True)
-        document.status = DocumentStatus.FAILED
-        document.error_message = str(e)
-        await db.commit()
+
+        # Explicitly clear the current unit of work so flushed chunk rows are not committed.
+        await db.rollback()
+
+        failed_document = await db.scalar(
+            select(Document).where(Document.id == document_id)
+        )
+        if failed_document:
+            failed_document.status = DocumentStatus.FAILED
+            failed_document.error_message = str(e)
+            failed_document.processed_at = None
+            await db.commit()
         raise
