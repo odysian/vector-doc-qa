@@ -299,8 +299,15 @@ FAKE_EMBEDDING = [0.1] * 1536
 
 @pytest.fixture()
 def mock_embeddings():
-    """Mock OpenAI embedding service functions (now async)."""
+    """Mock embedding functions at definition + runtime call sites."""
     with (
+        # search_service imports generate_embedding directly, so patch that symbol
+        patch(
+            "app.services.search_service.generate_embedding",
+            new_callable=AsyncMock,
+            return_value=FAKE_EMBEDDING,
+        ) as mock_search_single,
+        # keep patch on source module for tests that call embedding_service directly
         patch(
             "app.services.embedding_service.generate_embedding",
             new_callable=AsyncMock,
@@ -313,15 +320,25 @@ def mock_embeddings():
     ):
         # Batch returns one embedding per input text
         mock_batch.side_effect = lambda texts: [FAKE_EMBEDDING] * len(texts)
-        yield {"single": mock_single, "batch": mock_batch}
+        yield {
+            "single": mock_single,
+            "search_single": mock_search_single,
+            "batch": mock_batch,
+        }
 
 
 @pytest.fixture()
 def mock_anthropic():
-    """Mock Anthropic Claude answer generation (now async)."""
+    """Mock answer generation at definition + runtime call sites."""
     with patch(
+        # documents API imports generate_answer directly; patch that runtime symbol
+        "app.api.documents.generate_answer",
+        new_callable=AsyncMock,
+        return_value="This is a test answer based on the document.",
+    ) as mock_api, patch(
+        # keep patch on source module for tests that call anthropic_service directly
         "app.services.anthropic_service.generate_answer",
         new_callable=AsyncMock,
         return_value="This is a test answer based on the document.",
-    ) as mock:
-        yield mock
+    ) as mock_service:
+        yield {"api": mock_api, "service": mock_service}
