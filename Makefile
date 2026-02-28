@@ -6,11 +6,12 @@ help: ## Show available targets
 verify: backend-verify frontend-verify ## Run all verification checks
 
 backend-verify: ## Lint, type-check, test, and security-scan the backend
+	@test -x backend/.venv/bin/ruff || (echo "Missing backend/.venv. Run: cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt" && exit 1)
 	@cd backend && \
-		ruff check . && \
-		mypy . --ignore-missing-imports --explicit-package-bases && \
-		pytest -v && \
-		bandit -r app/ -ll
+		.venv/bin/ruff check . && \
+		.venv/bin/mypy . --ignore-missing-imports --explicit-package-bases && \
+		.venv/bin/pytest -v && \
+		.venv/bin/bandit -r app/ -ll
 
 frontend-verify: ## Type-check, lint, and build the frontend
 	@cd frontend && \

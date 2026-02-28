@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+set -euxo pipefail
+
+SSH_USER="${ssh_user}"
+API_DOMAIN="${api_domain}"
+FRONTEND_URL="${frontend_url}"
+BACKEND_PORT="${backend_port}"
+CERTBOT_EMAIL="${certbot_email}"
+ENABLE_TLS_BOOTSTRAP="${enable_tls_bootstrap}"
+BUCKET_NAME="${bucket_name}"
+PROJECT_ID="${project_id}"
+
+BOOTSTRAP_MARKER="/opt/quaero/.bootstrap_v2_done"
+ENV_FILE="/opt/quaero/env/backend.env"
+NGINX_SITE="/etc/nginx/sites-available/quaero-backend"
+
+export DEBIAN_FRONTEND=noninteractive
+
+if ! id -u "$${SSH_USER}" >/dev/null 2>&1; then
+  useradd -m -s /bin/bash "$${SSH_USER}"
+fi
+
+install -d -m 755 /opt/quaero
+install -d -m 755 /opt/quaero/deploy
+install -d -m 755 /opt/quaero/env
+install -d -m 755 /opt/quaero/logs
+
+if [[ ! -f "$${BOOTSTRAP_MARKER}" ]]; then
+  apt-get update
+  apt-get install -y ca-certificates curl nginx certbot python3-certbot-nginx
+
+  if ! command -v docker >/dev/null 2>&1; then
+    curl -fsSL https://get.docker.com | sh
+  fi
+
+  cat > "$${NGINX_SITE}" <<EOF
+server {
+    listen 80;
+    server_name $${API_DOMAIN};
+
+    location / {
+        proxy_pass http://127.0.0.1:$${BACKEND_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+
+  ln -sf "$${NGINX_SITE}" /etc/nginx/sites-enabled/quaero-backend
+  rm -f /etc/nginx/sites-enabled/default
+  nginx -t
+  systemctl enable --now nginx
+  systemctl restart nginx
+
+  systemctl enable --now docker
+  systemctl enable --now certbot.timer || true
+  touch "$${BOOTSTRAP_MARKER}"
+fi
+
+if [[ "$${ENABLE_TLS_BOOTSTRAP}" == "true" ]] && [[ -n "$${CERTBOT_EMAIL}" ]] && [[ ! -f "/etc/letsencrypt/live/$${API_DOMAIN}/fullchain.pem" ]]; then
+  certbot --nginx --non-interactive --agree-tos \
+    --email "$${CERTBOT_EMAIL}" \
+    --domains "$${API_DOMAIN}" \
+    --redirect || true
+fi
+
+if [[ ! -f "$${ENV_FILE}" ]]; then
+  cat > "$${ENV_FILE}" <<EOF
+# Fill in all placeholder values before first deploy.
+DATABASE_URL=postgresql://postgres:<password>@<cloud-sql-ip>:5432/postgres?options=-c%20search_path=quaero,public
+SECRET_KEY=<strong-random-secret>
+OPENAI_API_KEY=<openai-key>
+ANTHROPIC_API_KEY=<anthropic-key>
+REDIS_URL=<upstash-redis-url>
+FRONTEND_URL=$${FRONTEND_URL}
+PORT=$${BACKEND_PORT}
+STORAGE_BACKEND=gcs
+GCS_BUCKET_NAME=$${BUCKET_NAME}
+GCP_PROJECT_ID=$${PROJECT_ID}
+EOF
+  chown "$${SSH_USER}:$${SSH_USER}" "$${ENV_FILE}"
+  chmod 600 "$${ENV_FILE}"
+fi
+
+if id -u "$${SSH_USER}" >/dev/null 2>&1; then
+  usermod -aG docker "$${SSH_USER}" || true
+  chown -R "$${SSH_USER}:$${SSH_USER}" /opt/quaero
+fi

@@ -1,0 +1,132 @@
+locals {
+  vm_service_account_id = replace("${var.vm_name}-sa", "_", "-")
+  ssh_keys_metadata     = join("\n", [for key in var.ssh_public_keys : "${var.ssh_user}:${key}"])
+}
+
+resource "google_compute_address" "backend" {
+  name   = var.static_ip_name
+  region = var.region
+}
+
+resource "google_service_account" "backend_vm" {
+  account_id   = substr(local.vm_service_account_id, 0, 30)
+  display_name = "Quaero Backend VM Service Account"
+}
+
+resource "google_project_iam_member" "backend_vm_logging" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.backend_vm.email}"
+}
+
+resource "google_project_iam_member" "backend_vm_monitoring" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.backend_vm.email}"
+}
+
+resource "google_storage_bucket" "documents" {
+  name                        = var.bucket_name
+  location                    = var.region
+  uniform_bucket_level_access = true
+  force_destroy               = false
+}
+
+resource "google_storage_bucket_iam_member" "backend_vm_bucket_access" {
+  bucket = google_storage_bucket.documents.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.backend_vm.email}"
+}
+
+resource "google_compute_firewall" "allow_http" {
+  name    = "quaero-allow-http"
+  network = var.network
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = [var.vm_network_tag]
+}
+
+resource "google_compute_firewall" "allow_https" {
+  name    = "quaero-allow-https"
+  network = var.network
+
+  allow {
+    protocol = "tcp"
+    ports    = ["443"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = [var.vm_network_tag]
+}
+
+resource "google_compute_firewall" "allow_ssh" {
+  name    = "quaero-allow-ssh"
+  network = var.network
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  source_ranges = var.ssh_source_ranges
+  target_tags   = [var.vm_network_tag]
+}
+
+resource "google_compute_instance" "backend" {
+  name         = var.vm_name
+  machine_type = var.machine_type
+  zone         = var.zone
+  tags         = [var.vm_network_tag]
+
+  boot_disk {
+    auto_delete = true
+
+    initialize_params {
+      image = var.vm_image
+      size  = var.vm_boot_disk_size_gb
+    }
+  }
+
+  network_interface {
+    network    = var.network
+    subnetwork = var.subnetwork
+
+    access_config {
+      nat_ip = google_compute_address.backend.address
+    }
+  }
+
+  metadata = {
+    "ssh-keys"               = local.ssh_keys_metadata
+    "block-project-ssh-keys" = "true"
+  }
+
+  metadata_startup_script = templatefile("${path.module}/scripts/startup.sh.tftpl", {
+    ssh_user             = var.ssh_user
+    api_domain           = var.api_domain
+    frontend_url         = var.frontend_url
+    backend_port         = var.backend_port
+    certbot_email        = var.certbot_email
+    enable_tls_bootstrap = var.enable_tls_bootstrap
+    bucket_name          = var.bucket_name
+    project_id           = var.project_id
+  })
+
+  service_account {
+    email  = google_service_account.backend_vm.email
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+  }
+
+  shielded_instance_config {
+    enable_secure_boot          = false
+    enable_vtpm                 = true
+    enable_integrity_monitoring = true
+  }
+
+  allow_stopping_for_update = true
+}
