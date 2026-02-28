@@ -116,6 +116,15 @@ async def process_document_task(ctx: dict, document_id: int) -> None:
         await process_document_text(document_id=document_id, db=db)
 ```
 
+### Document Processing Transactions
+
+Document processing retries use `delete-all-then-rebuild` semantics for chunks.
+
+- At processing start: set `status=PROCESSING`, clear stale failure fields, delete existing chunks for the document, and commit.
+- During processing: create chunks and call `flush()` before embedding assignment when IDs/order are needed.
+- On failure after `flush()`: call `rollback()` before persisting failure metadata so partial chunk rows are not committed.
+- After rollback: re-fetch the document in the same session, set `status=FAILED` + `error_message`, commit, and re-raise.
+
 ### Rate Limiting
 
 Use `@limiter.limit()` decorator with appropriate key function:
