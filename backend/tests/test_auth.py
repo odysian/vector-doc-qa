@@ -4,17 +4,21 @@ Tests for authentication endpoints: register, login, me, refresh, logout.
 Covers TESTPLAN.md "Feature: Authentication".
 """
 
+import asyncio
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from httpx import AsyncClient
-from sqlalchemy import select
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import create_refresh_token
+from app.core.security import create_refresh_token, get_password_hash, validate_refresh_token
+from app.database import get_db
+from app.main import app
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
-from tests.conftest import TEST_PASSWORD
+from tests.conftest import TEST_PASSWORD, TestAsyncSession
 
 
 # ---------------------------------------------------------------------------
@@ -319,6 +323,136 @@ class TestRefresh:
 
         me_response = await client.get("/api/auth/me")
         assert me_response.status_code == 200
+
+    async def test_refresh_concurrent_requests_only_one_succeeds(self):
+        """Two concurrent refreshes for one token must not both succeed."""
+        user_id: int | None = None
+        refresh_token: str | None = None
+
+        try:
+            async with TestAsyncSession() as seed_session:
+                suffix = uuid.uuid4().hex[:8]
+                user = User(
+                    username=f"race_user_{suffix}",
+                    email=f"race_{suffix}@example.com",
+                    hashed_password=get_password_hash(TEST_PASSWORD),
+                )
+                seed_session.add(user)
+                await seed_session.flush()
+                user_id = user.id
+                refresh_token = await create_refresh_token(user.id, seed_session)
+                await seed_session.commit()
+
+            assert user_id is not None
+            assert refresh_token is not None
+
+            async def _override_get_db():
+                async with TestAsyncSession() as session:
+                    yield session
+
+            app.dependency_overrides[get_db] = _override_get_db
+            app.state.limiter.enabled = False
+
+            transport = ASGITransport(app=app)
+            async with (
+                AsyncClient(transport=transport, base_url="http://test") as client_a,
+                AsyncClient(transport=transport, base_url="http://test") as client_b,
+            ):
+                response_a, response_b = await asyncio.gather(
+                    client_a.post(
+                        "/api/auth/refresh",
+                        json={"refresh_token": refresh_token},
+                    ),
+                    client_b.post(
+                        "/api/auth/refresh",
+                        json={"refresh_token": refresh_token},
+                    ),
+                )
+
+            assert sorted([response_a.status_code, response_b.status_code]) == [200, 401]
+
+            async with TestAsyncSession() as verify_session:
+                rows = (
+                    await verify_session.scalars(
+                        select(RefreshToken).where(RefreshToken.user_id == user_id)
+                    )
+                ).all()
+                assert len(rows) == 1
+                assert rows[0].token != refresh_token
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+            app.state.limiter.enabled = True
+
+            if user_id is not None:
+                async with TestAsyncSession() as cleanup_session:
+                    await cleanup_session.execute(
+                        delete(RefreshToken).where(RefreshToken.user_id == user_id)
+                    )
+                    await cleanup_session.execute(delete(User).where(User.id == user_id))
+                    await cleanup_session.commit()
+
+    async def test_refresh_rollback_preserves_old_token_on_rotation_failure(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """If rotation fails before commit, old token must remain valid in DB."""
+        refresh_token = await create_refresh_token(test_user.id, db_session)
+        await db_session.commit()
+
+        async def _raise_during_rotation(_user_id: int, _db: AsyncSession) -> str:
+            raise RuntimeError("forced refresh rotation failure")
+
+        monkeypatch.setattr("app.api.auth.create_refresh_token", _raise_during_rotation)
+
+        with pytest.raises(RuntimeError):
+            await client.post(
+                "/api/auth/refresh",
+                json={"refresh_token": refresh_token},
+            )
+
+        # Roll back staged changes in this test transaction and verify old token remains.
+        await db_session.rollback()
+        row = await db_session.scalar(
+            select(RefreshToken).where(RefreshToken.token == refresh_token)
+        )
+        assert row is not None
+
+
+class TestRefreshTokenHelperContract:
+    """Contract tests for refresh-token helper transaction ownership."""
+
+    async def test_validate_refresh_token_does_not_commit(
+        self,
+        db_session: AsyncSession,
+        test_user: User,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Expired-token cleanup is staged only; helper must not commit."""
+        expired_token = "d" * 64
+        db_session.add(
+            RefreshToken(
+                user_id=test_user.id,
+                token=expired_token,
+                expires_at=datetime.now(timezone.utc) - timedelta(days=1),
+            )
+        )
+        await db_session.flush()
+
+        async def _unexpected_commit() -> None:
+            raise AssertionError("validate_refresh_token must not call commit()")
+
+        monkeypatch.setattr(db_session, "commit", _unexpected_commit)
+
+        row = await validate_refresh_token(expired_token, db_session)
+        assert row is None
+
+        deleted_row = await db_session.scalar(
+            select(RefreshToken).where(RefreshToken.token == expired_token)
+        )
+        assert deleted_row is None
 
 
 class TestLogout:

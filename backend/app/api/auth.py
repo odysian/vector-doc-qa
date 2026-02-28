@@ -1,8 +1,8 @@
 from app.api.dependencies import get_current_user
 from app.core.security import (
+    consume_refresh_token,
     create_access_token,
     create_refresh_token,
-    validate_refresh_token,
     verify_password,
 )
 from app.crud.user import create_user, get_user_by_email, get_user_by_username
@@ -117,17 +117,15 @@ async def refresh(
             detail="Invalid or expired refresh token",
         )
 
-    row = await validate_refresh_token(refresh_token_value, db)
-    if row is None:
+    # Single-statement consume gate: only one request can consume a token.
+    user_id = await consume_refresh_token(refresh_token_value, db)
+    if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
 
-    user_id: int = row.user_id  # type: ignore
-
-    # Rotation: delete consumed token and stage new one in the same transaction
-    await db.execute(delete(RefreshToken).where(RefreshToken.id == row.id))
+    # Rotation: consumed old token + staged new token in one transaction.
     new_refresh_token = await create_refresh_token(user_id, db)
     await db.commit()  # single commit — both operations succeed or both roll back
 
