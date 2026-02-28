@@ -137,6 +137,14 @@ raise HTTPException(status_code=404, detail="Document not found")
 raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 ```
 
+### Refresh Token Rotation
+
+The refresh endpoint consumes tokens with a single SQL statement (`DELETE ... RETURNING`) and commits exactly once after staging the replacement token.
+
+- Prevents read-then-delete races under concurrent refresh attempts.
+- Keeps transaction ownership at the route level.
+- Security helpers (`create_refresh_token`, `validate_refresh_token`, consume helpers) must not call `commit()`.
+
 ### Document Ownership
 
 Every query for user-specific data filters by `current_user.id`. Never trust the client.

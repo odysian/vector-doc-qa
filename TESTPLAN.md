@@ -33,12 +33,15 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 - Username with leading/trailing whitespace [?] (currently no trim)
 - Very long password (128+ chars) is handled
 - Email with valid but unusual format (plus addressing, etc.)
+- Concurrent POST `/api/auth/refresh` requests using the same refresh token allow at most one success
+- Reusing a consumed refresh token is rejected with 401
 
 ### Security Cases
 
 - Rate limit: register limited to 3/hour per IP
 - Rate limit: login limited to 5/minute per IP
 - Token cannot be decoded with wrong secret key
+- Refresh rotation keeps a single route-level transaction boundary (no helper-side commits)
 
 ---
 
