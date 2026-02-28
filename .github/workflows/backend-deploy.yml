@@ -60,19 +60,19 @@ jobs:
 
       - name: Ensure deploy dir exists on VM
         run: |
-          ssh -i vm_key.pem -o StrictHostKeyChecking=no "${{ secrets.GCP_VM_USER }}@${{ secrets.GCP_VM_HOST }}" \
+          ssh -i vm_key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "${{ secrets.GCP_VM_USER }}@${{ secrets.GCP_VM_HOST }}" \
             "mkdir -p /opt/quaero/deploy"
 
       - name: Upload deploy script to VM
         run: |
-          scp -i vm_key.pem -o StrictHostKeyChecking=no \
+          scp -i vm_key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=no \
             ./ops/deploy_backend.sh \
             "${{ secrets.GCP_VM_USER }}@${{ secrets.GCP_VM_HOST }}:${{ env.VM_DEPLOY_SCRIPT_PATH }}"
 
       - name: Run deploy script on VM
         run: |
           IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
-          ssh -i vm_key.pem -o StrictHostKeyChecking=no "${{ secrets.GCP_VM_USER }}@${{ secrets.GCP_VM_HOST }}" \
+          ssh -i vm_key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "${{ secrets.GCP_VM_USER }}@${{ secrets.GCP_VM_HOST }}" \
             "chmod +x '${{ env.VM_DEPLOY_SCRIPT_PATH }}' && \
              GHCR_USERNAME='${{ secrets.GHCR_USERNAME }}' \
              GHCR_TOKEN='${{ secrets.GHCR_TOKEN }}' \
