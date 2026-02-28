@@ -10,6 +10,7 @@ Use this for:
 - common production debugging
 
 The implementation plan lives in `GCP-plan.md`. This runbook is command-first and incident-focused.
+For full VM reprovision/reset steps, use `docs/GCP_VM_REBUILD_TERRAFORM_PLAN.md`.
 
 ---
 
@@ -27,11 +28,12 @@ The implementation plan lives in `GCP-plan.md`. This runbook is command-first an
 
 - GCP VM, static IP, firewall
 - DNS (`api.quaero.odysian.dev`)
-- NGINX + Certbot setup
 - VM production env file
 - GitHub secrets
 - Vercel `NEXT_PUBLIC_API_URL` update
 - Cloud Storage bucket/IAM setup
+
+Terraform startup bootstrap now handles Docker + NGINX + Certbot + env file stub creation on VM rebuild.
 
 ---
 
