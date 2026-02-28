@@ -11,7 +11,8 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 ### Happy Path
 
 - POST /api/auth/register with valid username, email, password returns 201 and user object
-- POST /api/auth/login with valid credentials returns 200 and JWT token
+- POST /api/auth/login with valid credentials returns 200 and JSON body with `csrf_token` (no auth tokens in body)
+- POST /api/auth/refresh with valid refresh credential returns 200 and JSON body with `csrf_token` (no auth tokens in body)
 - GET /api/auth/me with valid token returns current user data
 - Password is hashed (not stored as plaintext) in database
 

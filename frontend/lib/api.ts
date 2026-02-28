@@ -202,9 +202,8 @@ export const api = {
   },
 
   /**
-   * Log in; returns the token body for backward compatibility.
-   * The backend also sets httpOnly auth cookies — those are what
-   * subsequent requests rely on. saveTokens() is now a no-op.
+   * Log in; backend sets httpOnly auth cookies and returns csrf_token.
+   * subsequent requests rely on cookies; csrf_token is persisted locally.
    */
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
     return apiRequest("/api/auth/login", {

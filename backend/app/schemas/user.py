@@ -31,10 +31,8 @@ class UserResponse(BaseModel):
 
 
 class Token(BaseModel):
-    """Token pair returned on login and token refresh."""
+    """Auth response payload for login and refresh."""
 
-    access_token: str
-    refresh_token: str
     csrf_token: str  # returned in body for cross-domain clients (see ADR-001)
     token_type: str = "bearer"
 

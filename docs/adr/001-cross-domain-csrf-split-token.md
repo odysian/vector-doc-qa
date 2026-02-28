@@ -93,4 +93,4 @@ Additionally, to break the login deadlock:
 - The `csrf_token` cookie is still set on the response for potential future same-origin clients or debugging visibility.
 - `localStorage` is readable by JS: XSS can read the CSRF token and make authenticated requests. However, XSS cannot steal the httpOnly `access_token` or `refresh_token` — the session credentials are still protected. The CSRF token alone is insufficient to impersonate a user without the accompanying httpOnly cookies.
 - If `localStorage` is cleared while cookies persist, `isLoggedIn()` returns `false`, redirecting the user to login, which now succeeds without CSRF (exemption from point 9).
-- The `access_token` and `refresh_token` fields remain in the response body for backward compatibility with Swagger UI and any non-cookie clients.
+- `access_token` and `refresh_token` were initially kept in response bodies for compatibility, but this was later removed by ADR-006 for token confidentiality hardening.
