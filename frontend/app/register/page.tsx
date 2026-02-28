@@ -11,7 +11,7 @@ import { api, saveTokens } from "@/lib/api";
 
 /**
  * Renders centered registration form. On submit: api.register, then api.login
- * to get token and redirect. Link to login for existing users.
+ * to get csrf token and redirect. Link to login for existing users.
  */
 export default function RegisterPage() {
   const [username, setUsername] = useState("");

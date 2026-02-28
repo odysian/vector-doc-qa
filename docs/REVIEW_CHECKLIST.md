@@ -18,6 +18,7 @@ Post-implementation verification checklist. Run through after every feature befo
 - [ ] CORS restricted to specific frontend origin (no wildcard in production)
 - [ ] Passwords hashed with Argon2 (never stored plaintext)
 - [ ] JWT tokens validated on every protected request
+- [ ] Login/refresh response bodies do not expose `access_token` or `refresh_token`
 - [ ] No SQL string interpolation or f-strings in queries
 - [ ] Error messages don't expose internals (stack traces, DB errors, file paths)
 - [ ] Background job endpoints are non-blocking (no long-running work in request handlers)

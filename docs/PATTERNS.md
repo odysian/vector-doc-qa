@@ -200,6 +200,7 @@ const documents = await api.getDocuments();
 ### Auth Token
 
 Stored in httpOnly cookies set by the backend on login/refresh. JS cannot read the `access_token` or `refresh_token` cookies directly.
+Login/refresh JSON bodies must not include `access_token` or `refresh_token`; they return only browser-safe fields (`csrf_token`, `token_type`).
 
 Because frontend and backend are on different domains, the frontend reads `csrf_token` from login/refresh JSON responses and stores it in `localStorage`. `getCsrfToken()` in `lib/api.ts` reads this value and echoes it as `X-CSRF-Token` on mutating requests (double-submit CSRF pattern). `isLoggedIn()` checks for the presence of this `localStorage` value as a fast client-side session indicator.
 
