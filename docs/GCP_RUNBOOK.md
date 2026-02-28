@@ -20,6 +20,7 @@ For full VM reprovision/reset steps, use `docs/GCP_VM_REBUILD_TERRAFORM_PLAN.md`
 
 - `backend/Dockerfile`
 - `backend/.dockerignore`
+- `.github/workflows/backend-test.yml`
 - `.github/workflows/backend-deploy.yml`
 - `ops/deploy_backend.sh`
 - docs updates in this runbook
@@ -67,12 +68,16 @@ PORT=8000
 
 ## 3. Deployment Flow (Normal)
 
-1. Trigger GitHub Action:
-   - Workflow: `Deploy Backend`
-   - Event: `workflow_dispatch`
-2. CI builds and pushes image to GHCR.
-3. CI uploads `ops/deploy_backend.sh` to VM.
-4. CI executes deploy script on VM:
+1. CI validation runs on:
+   - every `pull_request` (`Backend CI`)
+   - direct `push` to non-`main` branches (`Backend CI`)
+2. Production deploy runs on:
+   - `push` to `main` (`Deploy Backend`)
+   - manual `workflow_dispatch` from `main` only (`Deploy Backend`)
+3. `Deploy Backend` runs `backend-tests` first. If tests fail, deploy stops.
+4. If tests pass, CI builds and pushes image to GHCR.
+5. CI uploads `ops/deploy_backend.sh` to VM.
+6. CI executes deploy script on VM:
    - pulls image
    - runs migrations
    - restarts container
@@ -85,7 +90,17 @@ Expected running container name:
 
 ---
 
-## 4. Manual Commands
+## 4. Branch Protection (Required)
+
+Protect `main` and require status check:
+
+- `Backend CI / backend-verify`
+
+This ensures PR merges are blocked until backend checks pass. Deploy still runs its own `backend-tests` gate on `main` pushes for fail-closed production safety.
+
+---
+
+## 5. Manual Commands
 
 ## Check running container
 
@@ -127,7 +142,7 @@ GHCR_TOKEN="<ghcr-token>" \
 
 ---
 
-## 5. Post-Deploy Smoke Checklist
+## 6. Post-Deploy Smoke Checklist
 
 1. Health endpoint:
    - `GET /health` returns healthy
@@ -145,7 +160,7 @@ GHCR_TOKEN="<ghcr-token>" \
 
 ---
 
-## 6. NGINX and TLS Checks
+## 7. NGINX and TLS Checks
 
 ## NGINX status and config test
 
@@ -163,7 +178,7 @@ sudo certbot renew --dry-run
 
 ---
 
-## 7. Common Failure Scenarios
+## 8. Common Failure Scenarios
 
 ## Deploy fails before container restart
 
@@ -229,7 +244,7 @@ Actions:
 
 ---
 
-## 8. Observability Pointers
+## 9. Observability Pointers
 
 Minimum diagnostics during incidents:
 
@@ -247,14 +262,14 @@ Minimum diagnostics during incidents:
 
 ---
 
-## 9. Change Log
+## 10. Change Log
 
 - Initial runbook created during Step 1 (container + CI/CD foundation).
 - Update this file after each completed migration milestone.
 
 ---
 
-## 10. Cloud Storage Setup (Production)
+## 11. Cloud Storage Setup (Production)
 
 Use this after backend deployment is stable on GCP VM.
 

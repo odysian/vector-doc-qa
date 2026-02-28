@@ -1,6 +1,9 @@
 name: Deploy Backend
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 concurrency:
@@ -13,8 +16,23 @@ env:
   VM_DEPLOY_SCRIPT_PATH: /opt/quaero/deploy/deploy_backend.sh
 
 jobs:
+  enforce-main-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Block deploys from non-main refs
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Deploys are only allowed from main. Current ref: ${GITHUB_REF}"
+            exit 1
+          fi
+
+  backend-tests:
+    needs: enforce-main-branch
+    uses: ./.github/workflows/backend-test.yml
+
   build-and-push:
     runs-on: ubuntu-latest
+    needs: backend-tests
     permissions:
       contents: read
       packages: write
