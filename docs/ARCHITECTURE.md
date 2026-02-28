@@ -210,7 +210,7 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 - **Auth:** None
 - **Rate Limit:** 5/minute per IP
 - **Request Body:** `{ "username": "string", "password": "string" }`
-- **Success (200):** `{ "access_token": "jwt...", "refresh_token": "hex64...", "token_type": "bearer" }`
+- **Success (200):** `{ "csrf_token": "opaque...", "token_type": "bearer" }`
 - **Errors:**
   - 401: Invalid username or password
 
@@ -218,7 +218,7 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 - **Auth:** None (refresh token is the credential)
 - **Rate Limit:** 10/minute per IP
 - **Request Body:** `{ "refresh_token": "string" }`
-- **Success (200):** `{ "access_token": "jwt...", "refresh_token": "new-hex64...", "token_type": "bearer" }`
+- **Success (200):** `{ "csrf_token": "opaque...", "token_type": "bearer" }`
 - **Notes:** Rotates the token — old token is deleted, new one issued. Reusing a consumed token returns 401.
 - **Errors:**
   - 401: Invalid or expired refresh token

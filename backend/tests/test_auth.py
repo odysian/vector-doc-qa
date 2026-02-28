@@ -157,7 +157,9 @@ class TestRegister:
 class TestLogin:
     """POST /api/auth/login"""
 
-    async def test_login_returns_token_with_valid_credentials(self, client, test_user: User):
+    async def test_login_hides_auth_tokens_in_response_body(
+        self, client, test_user: User
+    ):
         response = await client.post(
             "/api/auth/login",
             json={"username": test_user.username, "password": TEST_PASSWORD},
@@ -165,11 +167,11 @@ class TestLogin:
 
         assert response.status_code == 200
         data = response.json()
-        assert "access_token" in data
-        assert "refresh_token" in data
+        assert "access_token" not in data
+        assert "refresh_token" not in data
+        assert "csrf_token" in data
         assert data["token_type"] == "bearer"
-        assert len(data["access_token"]) > 0
-        assert len(data["refresh_token"]) == 64  # secrets.token_hex(32)
+        assert len(data["csrf_token"]) > 0
 
     async def test_login_returns_401_with_wrong_username(self, client):
         response = await client.post(
@@ -220,12 +222,13 @@ class TestLoginStoresRefreshToken:
     async def test_login_stores_refresh_token_in_db(
         self, client: AsyncClient, db_session: AsyncSession, test_user: User
     ):
-        """The refresh token returned by login must exist in the DB."""
+        """The refresh token cookie issued by login must exist in the DB."""
         response = await client.post(
             "/api/auth/login",
             json={"username": test_user.username, "password": TEST_PASSWORD},
         )
-        refresh_token = response.json()["refresh_token"]
+        refresh_token = response.cookies.get("refresh_token")
+        assert refresh_token is not None
 
         row = await db_session.scalar(
             select(RefreshToken).where(RefreshToken.token == refresh_token)
@@ -237,7 +240,7 @@ class TestLoginStoresRefreshToken:
 class TestRefresh:
     """POST /api/auth/refresh"""
 
-    async def test_refresh_returns_new_token_pair_with_valid_token(
+    async def test_refresh_hides_auth_tokens_in_response_body(
         self, client: AsyncClient, refresh_token_str: str
     ):
         response = await client.post(
@@ -247,11 +250,12 @@ class TestRefresh:
 
         assert response.status_code == 200
         data = response.json()
-        assert "access_token" in data
-        assert "refresh_token" in data
+        assert "access_token" not in data
+        assert "refresh_token" not in data
+        assert "csrf_token" in data
         assert data["token_type"] == "bearer"
         # New refresh token must differ from the consumed one (rotation)
-        assert data["refresh_token"] != refresh_token_str
+        assert response.cookies["refresh_token"] != refresh_token_str
 
     async def test_refresh_rotates_old_token_deleted_from_db(
         self, client: AsyncClient, db_session: AsyncSession, refresh_token_str: str
@@ -303,20 +307,17 @@ class TestRefresh:
         )
         assert response.status_code == 401
 
-    async def test_refresh_new_access_token_grants_access_to_me(
+    async def test_refresh_sets_access_cookie_that_grants_access_to_me(
         self, client: AsyncClient, refresh_token_str: str
     ):
-        """The new access token from a refresh should work on protected endpoints."""
+        """A refresh response should set an access cookie that works on /me."""
         refresh_response = await client.post(
             "/api/auth/refresh",
             json={"refresh_token": refresh_token_str},
         )
-        new_access_token = refresh_response.json()["access_token"]
+        assert refresh_response.status_code == 200
 
-        me_response = await client.get(
-            "/api/auth/me",
-            headers={"Authorization": f"Bearer {new_access_token}"},
-        )
+        me_response = await client.get("/api/auth/me")
         assert me_response.status_code == 200
 
 

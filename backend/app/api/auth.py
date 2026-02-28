@@ -65,9 +65,8 @@ async def login(
     """
     Login with username and password.
 
-    Returns a short-lived access token JWT and a long-lived refresh token
-    in both the JSON body and as httpOnly cookies. Existing clients that
-    read from the body continue to work unchanged.
+    Sets access/refresh tokens in httpOnly cookies and returns only
+    browser-safe fields in the JSON body.
     """
     db_user = await get_user_by_username(db, user.username)
     if not db_user:
@@ -90,7 +89,7 @@ async def login(
     # clients that cannot read a cookie set on a different origin (see ADR-001).
     csrf_value = set_auth_cookies(response, access_token, refresh_token)
 
-    return {"access_token": access_token, "refresh_token": refresh_token, "csrf_token": csrf_value, "token_type": "bearer"}
+    return {"csrf_token": csrf_value, "token_type": "bearer"}
 
 
 @router.post("/refresh", response_model=Token)
@@ -137,7 +136,7 @@ async def refresh(
     # Rotate cookies; return fresh csrf_token in body for cross-domain clients.
     csrf_value = set_auth_cookies(response, access_token, new_refresh_token)
 
-    return {"access_token": access_token, "refresh_token": new_refresh_token, "csrf_token": csrf_value, "token_type": "bearer"}
+    return {"csrf_token": csrf_value, "token_type": "bearer"}
 
 
 @router.post("/logout")

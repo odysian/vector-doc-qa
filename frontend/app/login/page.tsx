@@ -9,7 +9,7 @@ import Link from "next/link";
 import { api, saveTokens } from "@/lib/api";
 
 /**
- * Renders centered login form. Submits to api.login, saves access_token to
+ * Renders centered login form. Submits to api.login, saves csrf_token to
  * localStorage, then redirects to /dashboard. Link to register for new users.
  */
 export default function LoginPage() {
