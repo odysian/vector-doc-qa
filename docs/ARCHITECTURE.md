@@ -24,6 +24,19 @@ Quaero is a document intelligence platform that allows users to upload PDF docum
 | Rate Limiting | SlowAPI | Per-endpoint cost control |
 | PDF Processing | pdfplumber | Reliable text extraction |
 | Deployment | Vercel (FE) + GCP VM + Cloud SQL (BE + DB) | Keeps FE/BE split and supports controlled rolling deploys with rollback |
+| CI/CD | GitHub Actions + GHCR + VM deploy script | Test-gated deploys with rollback contract |
+| Infrastructure as Code | Terraform (`infra/terraform`, non-DB scope) | Import-first, reviewable GCP infrastructure state |
+
+---
+
+## Infrastructure and Delivery
+
+- **Terraform ownership (non-DB):** VM instance, static IP, firewall rules, VM service account/IAM, and GCS document bucket are managed from `infra/terraform` via import-first workflow.
+- **Bootstrap model:** VM startup script installs Docker, NGINX, Certbot, and creates `/opt/quaero` deploy/env directories with an env stub.
+- **CI trigger policy:** `Backend CI` runs on every PR and direct push to non-`main` branches.
+- **Deploy trigger policy:** `Deploy Backend` runs on `main` pushes and manual `workflow_dispatch` from `main`; deploy is blocked unless backend tests pass.
+- **Control-plane guardrail:** `main` branch protection should require status check `Backend CI / backend-verify`.
+- **Operational references:** day-2 operations live in `docs/GCP_RUNBOOK.md`; Terraform usage/import/apply steps live in `infra/terraform/README.md`.
 
 ---
 
