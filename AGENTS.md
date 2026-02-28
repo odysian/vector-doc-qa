@@ -243,6 +243,9 @@ _Add to this section when the agent makes a mistake. Each line prevents a repeat
 - **Do not create `.env` files with real secrets.** Use `.env.example` with placeholders.
 - **Do not add dependencies that duplicate existing functionality.** Check what's installed.
 - **Do not modify migration files after they've been applied.** Create a new one.
+- **Before running `gh` issue/PR commands, run preflight once per session:** `gh auth status`, `gh repo set-default odysian/vector-doc-qa`, `gh repo view --json nameWithOwner,url`.
+- **If `gh` fails with transient API connectivity errors, retry 2-3 times, then use the equivalent `gh api` endpoint as fallback.**
+- **When using `gh api` with query strings in zsh, quote the endpoint string to avoid shell globbing.**
 
 ---
 
