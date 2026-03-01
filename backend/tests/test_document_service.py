@@ -147,3 +147,42 @@ class TestDocumentServiceProcessingIntegrity:
         assert len(chunks) == 2
         assert [chunk.chunk_index for chunk in chunks] == [0, 1]
         assert [chunk.content for chunk in chunks] == ["new-chunk-0", "new-chunk-1"]
+
+    async def test_embedding_count_mismatch_fails_with_no_partial_chunk_commit(
+        self, db_session, test_user
+    ):
+        document = await _create_document(
+            db_session, test_user.id, status=DocumentStatus.PENDING
+        )
+
+        with (
+            patch(
+                "app.services.document_service.read_file_bytes",
+                new=AsyncMock(return_value=b"%PDF-1.4 test"),
+            ),
+            patch(
+                "app.services.document_service.extract_text_from_pdf_bytes",
+                new=AsyncMock(return_value="alpha beta gamma"),
+            ),
+            patch(
+                "app.services.document_service.chunk_text",
+                return_value=["chunk-a", "chunk-b"],
+            ),
+            patch(
+                "app.services.document_service.generate_embeddings_batch",
+                new=AsyncMock(return_value=[[0.2] * 1536]),
+            ),
+        ):
+            with pytest.raises(ValueError, match="Embedding count mismatch"):
+                await process_document_text(document_id=document.id, db=db_session)
+
+        chunks = (
+            await db_session.scalars(
+                select(Chunk).where(Chunk.document_id == document.id)
+            )
+        ).all()
+        assert chunks == []
+
+        await db_session.refresh(document)
+        assert document.status == DocumentStatus.FAILED
+        assert "Embedding count mismatch" in document.error_message

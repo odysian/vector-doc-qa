@@ -79,9 +79,15 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
         chunk_texts = [chunk.content for chunk in chunk_objects]
         embeddings = await generate_embeddings_batch(chunk_texts)
 
-        # Assign embeddings to chunks
-        for chunk, embedding in zip(chunk_objects, embeddings):
-            chunk.embedding = embedding
+        # Guard invariant even when embedding service is mocked/bypassed in tests.
+        if len(embeddings) != len(chunk_objects):
+            raise ValueError(
+                f"Embedding count mismatch: expected {len(chunk_objects)}, got {len(embeddings)}"
+            )
+
+        # Assign by index to preserve explicit chunk->embedding alignment.
+        for index, chunk in enumerate(chunk_objects):
+            chunk.embedding = embeddings[index]
 
         logger.info("Embeddings generated and assigned successfully")
 

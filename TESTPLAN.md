@@ -95,12 +95,14 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 - Upload returns 503 and sets status FAILED if queueing fails
 - Processing a corrupt/empty PDF sets status to FAILED with error message
 - Failure after chunk `flush()` rolls back uncommitted chunk rows and persists `FAILED` status/error
+- Batch embedding generation fails fast if any chunk text is empty/whitespace (no silent filtering)
 
 ### Edge Cases
 
 - Processing a FAILED document retries successfully
 - Retrying with pre-existing chunks rebuilds a single canonical chunk set (no duplicates)
 - Failed processing attempt does not leave partial chunk rows committed
+- Embedding batch output count/order must match input chunk count/order exactly; mismatch fails processing
 - GET /api/documents/{id}/status reflects status transitions until terminal state
 - Very large PDF (many pages) completes within timeout
 - PDF with no extractable text (scanned image) [?]
