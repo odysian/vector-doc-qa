@@ -47,6 +47,7 @@ terraform plan -var-file=envs/prod.tfvars
 ## Security Defaults and Rollout
 
 - `ssh_source_ranges` is now explicit and must be provided.
+- Include `35.235.240.0/20` in `ssh_source_ranges` if you want IAP/Console SSH as a backup path.
 - `0.0.0.0/0` is blocked by default. Use
   `allow_insecure_ssh_from_anywhere=true` only as a temporary rollout exception.
 - Shielded VM secure boot is enabled by default (`enable_secure_boot=true`).
