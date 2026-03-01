@@ -81,6 +81,10 @@ terraform apply -var-file=envs/prod.tfvars
 ## After Apply (Required Before First Deploy)
 
 1. SSH to VM and fill real secrets in `/opt/quaero/env/backend.env` (replace placeholders).
+   - For list env vars (for example `TRUSTED_PROXY_IPS`), use JSON array syntax
+     without outer shell quotes since deployment uses Docker `--env-file`.
+   - Example: `TRUSTED_PROXY_IPS=["172.17.0.1/32"]` (correct),
+     `TRUSTED_PROXY_IPS='["172.17.0.1/32"]'` (incorrect).
 2. Confirm NGINX/TLS status:
 
 ```bash

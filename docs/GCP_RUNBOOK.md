@@ -65,6 +65,20 @@ FRONTEND_URL=https://quaero.odysian.dev
 PORT=8000
 ```
 
+For list-type settings in this file (for example `TRUSTED_PROXY_IPS`,
+`WHITELISTED_IPS`), use raw JSON arrays with no outer shell quotes because
+deploys use Docker `--env-file`:
+
+```bash
+TRUSTED_PROXY_IPS=["172.17.0.1/32"]
+```
+
+Do **not** write:
+
+```bash
+TRUSTED_PROXY_IPS='["172.17.0.1/32"]'
+```
+
 ---
 
 ## 3. Deployment Flow (Normal)
