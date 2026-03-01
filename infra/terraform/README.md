@@ -34,6 +34,37 @@ terraform validate
 terraform plan -var-file=envs/prod.tfvars
 ```
 
+## Security Defaults and Rollout
+
+- `ssh_source_ranges` is now explicit and must be provided.
+- `0.0.0.0/0` is blocked by default. Use
+  `allow_insecure_ssh_from_anywhere=true` only as a temporary rollout exception.
+- Shielded VM secure boot is enabled by default (`enable_secure_boot=true`).
+- VM service account defaults to least privilege for current runtime:
+  - Bucket IAM: `roles/storage.objectUser`
+  - OAuth scope: `https://www.googleapis.com/auth/devstorage.read_write`
+
+### Existing Environment Rollout
+
+1. Keep current SSH access temporarily by setting both:
+   - `ssh_source_ranges = ["0.0.0.0/0"]`
+   - `allow_insecure_ssh_from_anywhere = true`
+2. Run plan/apply and confirm infra health.
+3. Replace `ssh_source_ranges` with fixed admin CIDR(s) (for example `x.x.x.x/32`).
+4. Set `allow_insecure_ssh_from_anywhere = false`.
+5. Run plan/apply again to remove world-open SSH.
+
+### Rollback Notes
+
+- If SSH access is lost, temporarily re-enable:
+  - `ssh_source_ranges = ["0.0.0.0/0"]`
+  - `allow_insecure_ssh_from_anywhere = true`
+  then apply and re-lock after recovery.
+- If secure boot causes boot/runtime issues, set `enable_secure_boot = false`,
+  apply, investigate startup logs, and re-enable once fixed.
+- If workload expands beyond GCS object access, add only required IAM role(s)
+  and scope(s) instead of restoring broad `cloud-platform`.
+
 ## Import Existing Resources (If Already Present)
 
 Run these before `apply` when resources already exist in production:

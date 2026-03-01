@@ -13,18 +13,6 @@ resource "google_service_account" "backend_vm" {
   display_name = "Quaero Backend VM Service Account"
 }
 
-resource "google_project_iam_member" "backend_vm_logging" {
-  project = var.project_id
-  role    = "roles/logging.logWriter"
-  member  = "serviceAccount:${google_service_account.backend_vm.email}"
-}
-
-resource "google_project_iam_member" "backend_vm_monitoring" {
-  project = var.project_id
-  role    = "roles/monitoring.metricWriter"
-  member  = "serviceAccount:${google_service_account.backend_vm.email}"
-}
-
 resource "google_storage_bucket" "documents" {
   name                        = var.bucket_name
   location                    = var.region
@@ -34,7 +22,7 @@ resource "google_storage_bucket" "documents" {
 
 resource "google_storage_bucket_iam_member" "backend_vm_bucket_access" {
   bucket = google_storage_bucket.documents.name
-  role   = "roles/storage.objectAdmin"
+  role   = "roles/storage.objectUser"
   member = "serviceAccount:${google_service_account.backend_vm.email}"
 }
 
@@ -75,6 +63,16 @@ resource "google_compute_firewall" "allow_ssh" {
 
   source_ranges = var.ssh_source_ranges
   target_tags   = [var.vm_network_tag]
+
+  lifecycle {
+    precondition {
+      condition = (
+        var.allow_insecure_ssh_from_anywhere
+        || !contains(var.ssh_source_ranges, "0.0.0.0/0")
+      )
+      error_message = "0.0.0.0/0 is blocked by default. Set allow_insecure_ssh_from_anywhere=true only as a temporary rollout exception."
+    }
+  }
 }
 
 resource "google_compute_instance" "backend" {
@@ -119,11 +117,11 @@ resource "google_compute_instance" "backend" {
 
   service_account {
     email  = google_service_account.backend_vm.email
-    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+    scopes = var.vm_service_account_scopes
   }
 
   shielded_instance_config {
-    enable_secure_boot          = false
+    enable_secure_boot          = var.enable_secure_boot
     enable_vtpm                 = true
     enable_integrity_monitoring = true
   }
