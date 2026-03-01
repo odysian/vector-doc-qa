@@ -10,6 +10,7 @@ logger = get_logger(__name__)
 async def generate_embedding(text: str) -> list[float]:
     """Generate a vector embedding for a single text string"""
 
+    # Keep single-item and batch behavior aligned: blank input is always invalid.
     if not text or not text.strip():
         raise ValueError("Cannot generate embedding for empty text")
 
@@ -53,6 +54,7 @@ async def generate_embeddings_batch(texts: list[str]) -> list[list[float]]:
     if not texts:
         raise ValueError("Cannot generate embeddings for empty list")
 
+    # Fail fast instead of filtering so callers never lose position alignment silently.
     for index, text in enumerate(texts):
         if not isinstance(text, str) or not text.strip():
             raise ValueError(
@@ -68,6 +70,8 @@ async def generate_embeddings_batch(texts: list[str]) -> list[list[float]]:
             model=EMBEDDING_MODEL, input=texts, encoding_format="float"
         )
 
+        # Build a map by provider-reported index so we can enforce deterministic
+        # input-order output even if the API response ordering changes.
         embeddings_by_index: dict[int, list[float]] = {}
         for item in response.data:
             if item.index in embeddings_by_index:
@@ -83,6 +87,7 @@ async def generate_embeddings_batch(texts: list[str]) -> list[list[float]]:
                 f"Expected {len(texts)} embeddings, got {len(embeddings_by_index)}"
             )
 
+        # Reconstruct in original input order and fail if any index is missing.
         ordered_embeddings: list[list[float]] = []
         for index in range(len(texts)):
             if index not in embeddings_by_index:
