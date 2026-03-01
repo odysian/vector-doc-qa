@@ -80,7 +80,17 @@ variable "ssh_public_keys" {
 variable "ssh_source_ranges" {
   description = "Source CIDRs allowed for SSH ingress."
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+
+  validation {
+    condition     = length(var.ssh_source_ranges) > 0
+    error_message = "ssh_source_ranges must contain at least one CIDR."
+  }
+}
+
+variable "allow_insecure_ssh_from_anywhere" {
+  description = "Temporary rollout exception to allow ssh_source_ranges to include 0.0.0.0/0."
+  type        = bool
+  default     = false
 }
 
 variable "api_domain" {
@@ -111,4 +121,16 @@ variable "enable_tls_bootstrap" {
   description = "Whether startup bootstrap should attempt Certbot certificate provisioning."
   type        = bool
   default     = false
+}
+
+variable "vm_service_account_scopes" {
+  description = "OAuth scopes attached to the VM service account."
+  type        = list(string)
+  default     = ["https://www.googleapis.com/auth/devstorage.read_write"]
+}
+
+variable "enable_secure_boot" {
+  description = "Whether to enable Shielded VM secure boot."
+  type        = bool
+  default     = true
 }
