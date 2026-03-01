@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: pgvector/pgvector:pg15
@@ -19,17 +17,20 @@ services:
       -c max_worker_processes=8
     # Restart on crash but stop after 5 attempts to avoid a crash loop hammering the host
     restart: on-failure:5
-    deploy:
-      resources:
-        limits:
-          # 80% of 8 VM cores
-          cpus: '6.4'
-          memory: 8G
+    # Compose runtime limits (enforced in regular `docker compose up`).
+    cpus: 3.0
+    mem_limit: 4g
+    mem_reservation: 2g
+    pids_limit: 512
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
     restart: on-failure:5
+    cpus: 0.50
+    mem_limit: 512m
+    mem_reservation: 256m
+    pids_limit: 256
 
 volumes:
   doc_intel_postgres_data:

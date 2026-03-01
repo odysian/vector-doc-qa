@@ -2,6 +2,7 @@
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import EMBEDDING_BATCH_SIZE
 from app.models.base import Chunk, Document, DocumentStatus
 from app.services.embedding_service import generate_embeddings_batch
 from app.services.storage_service import read_file_bytes
@@ -74,20 +75,24 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
         # Flush to get chunk IDs without committing
         await db.flush()
 
-        # Generate embeddings for all chunks (async API call)
+        # Generate embeddings in bounded batches to keep memory stable for large docs.
         logger.info(f"Generating embeddings for {len(chunks)} chunks")
-        chunk_texts = [chunk.content for chunk in chunk_objects]
-        embeddings = await generate_embeddings_batch(chunk_texts)
+        for batch_start in range(0, len(chunk_objects), EMBEDDING_BATCH_SIZE):
+            batch_end = min(batch_start + EMBEDDING_BATCH_SIZE, len(chunk_objects))
+            chunk_batch = chunk_objects[batch_start:batch_end]
+            batch_texts = [chunk.content for chunk in chunk_batch]
+            embeddings = await generate_embeddings_batch(batch_texts)
 
-        # Guard invariant even when embedding service is mocked/bypassed in tests.
-        if len(embeddings) != len(chunk_objects):
-            raise ValueError(
-                f"Embedding count mismatch: expected {len(chunk_objects)}, got {len(embeddings)}"
-            )
+            # Guard invariant even when embedding service is mocked/bypassed in tests.
+            if len(embeddings) != len(chunk_batch):
+                raise ValueError(
+                    "Embedding count mismatch: "
+                    f"expected {len(chunk_batch)}, got {len(embeddings)}"
+                )
 
-        # Assign by index to preserve explicit chunk->embedding alignment.
-        for index, chunk in enumerate(chunk_objects):
-            chunk.embedding = embeddings[index]
+            # Assign by index to preserve explicit chunk->embedding alignment.
+            for index, chunk in enumerate(chunk_batch):
+                chunk.embedding = embeddings[index]
 
         logger.info("Embeddings generated and assigned successfully")
 

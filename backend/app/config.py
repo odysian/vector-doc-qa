@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP
 
     frontend_url: str = "http://localhost:3000"
+    port: int = 8000
 
     whitelisted_ips: list[str] = []
     trusted_proxy_ips: list[str] = []
@@ -67,6 +68,11 @@ class Settings(BaseSettings):
     arq_job_timeout_seconds: int = 900
     arq_max_jobs: int = 1
     arq_stale_processing_minutes: int = 15
+
+    log_level: str = "INFO"
+    enable_file_logging: bool = True
+    log_file_max_bytes: int = 10 * 1024 * 1024
+    log_file_backup_count: int = 5
 
     @property
     def is_strict_environment(self) -> bool:

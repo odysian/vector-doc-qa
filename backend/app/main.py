@@ -13,7 +13,12 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
-setup_logging(log_level="DEBUG")
+setup_logging(
+    log_level=settings.log_level,
+    enable_file_logging=settings.enable_file_logging,
+    log_file_max_bytes=settings.log_file_max_bytes,
+    log_file_backup_count=settings.log_file_backup_count,
+)
 logger = get_logger(__name__)
 
 
