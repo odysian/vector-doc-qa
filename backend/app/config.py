@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from app.constants import (
     ALLOWED_EXTENSIONS,
@@ -6,11 +7,30 @@ from app.constants import (
     DEFAULT_CHUNK_SIZE,
     MAX_FILE_SIZE_BYTES,
 )
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
+
+
+NON_STRICT_APP_ENVS = {"local", "development", "dev", "test"}
+FORBIDDEN_SECRET_KEY_VALUES = {
+    "dev-secret-key-change-in-production",
+    "changeme",
+    "change-me",
+    "replace-me",
+    "your-secret-key",
+}
+FORBIDDEN_DB_HOSTS = {"localhost", "127.0.0.1", "::1"}
+FORBIDDEN_DB_NAMES = {"document_intelligence"}
+FORBIDDEN_DB_CREDENTIALS = {
+    ("postgres", "postgres"),
+    ("postgres", "password"),
+}
 
 
 class Settings(BaseSettings):
     """Application settings loaded from env vars."""
+
+    app_env: str = "development"
 
     database_url: str = (
         "postgresql://postgres:postgres@localhost:5434/document_intelligence"
@@ -49,6 +69,11 @@ class Settings(BaseSettings):
     arq_stale_processing_minutes: int = 15
 
     @property
+    def is_strict_environment(self) -> bool:
+        """Return True when startup guardrails should fail closed."""
+        return self.app_env.strip().lower() not in NON_STRICT_APP_ENVS
+
+    @property
     def async_database_url(self) -> str:
         """Convert sync database URL to asyncpg format.
 
@@ -62,6 +87,61 @@ class Settings(BaseSettings):
         if "?options=" in url:
             url = url[: url.index("?options=")]
         return url
+
+    @model_validator(mode="after")
+    def validate_runtime_security_guardrails(self) -> "Settings":
+        """Fail startup in strict environments when security config is unsafe."""
+        if not self.is_strict_environment:
+            return self
+
+        errors: list[str] = []
+        secret_key = self.secret_key.strip()
+        normalized_secret_key = secret_key.lower()
+
+        if len(secret_key) < 32:
+            errors.append(
+                "SECRET_KEY must be at least 32 characters in strict environments"
+            )
+        if normalized_secret_key in FORBIDDEN_SECRET_KEY_VALUES:
+            errors.append(
+                "SECRET_KEY uses a forbidden dev/default value in strict environments"
+            )
+        if "<" in secret_key and ">" in secret_key:
+            errors.append(
+                "SECRET_KEY contains placeholder syntax; set a real secret value"
+            )
+
+        parsed_db_url = urlparse(self.database_url)
+        if not parsed_db_url.scheme.startswith("postgresql"):
+            errors.append("DATABASE_URL must use a PostgreSQL URL in strict environments")
+
+        db_host = (parsed_db_url.hostname or "").strip().lower()
+        if db_host in FORBIDDEN_DB_HOSTS:
+            errors.append("DATABASE_URL must not use localhost/loopback in strict mode")
+
+        db_name = parsed_db_url.path.lstrip("/").lower()
+        if db_name in FORBIDDEN_DB_NAMES:
+            errors.append(
+                "DATABASE_URL must not use the default dev database name in strict mode"
+            )
+
+        db_username = unquote(parsed_db_url.username or "").strip().lower()
+        db_password = unquote(parsed_db_url.password or "").strip().lower()
+        if (db_username, db_password) in FORBIDDEN_DB_CREDENTIALS:
+            errors.append(
+                "DATABASE_URL must not use default dev credentials in strict mode"
+            )
+
+        if "<" in self.database_url and ">" in self.database_url:
+            errors.append(
+                "DATABASE_URL contains placeholder syntax; set real connection values"
+            )
+
+        if errors:
+            error_list = "; ".join(errors)
+            raise ValueError(f"Unsafe runtime configuration: {error_list}")
+
+        return self
 
     class Config:
         env_file = ".env"

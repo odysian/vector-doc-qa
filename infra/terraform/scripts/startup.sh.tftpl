@@ -71,6 +71,7 @@ if [[ ! -f "$${ENV_FILE}" ]]; then
   cat > "$${ENV_FILE}" <<EOF
 # Fill in all placeholder values before first deploy.
 DATABASE_URL=postgresql://postgres:<password>@<cloud-sql-ip>:5432/postgres?options=-c%20search_path=quaero,public
+APP_ENV=production
 SECRET_KEY=<strong-random-secret>
 OPENAI_API_KEY=<openai-key>
 ANTHROPIC_API_KEY=<anthropic-key>

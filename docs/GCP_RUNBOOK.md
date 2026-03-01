@@ -56,6 +56,7 @@ Required values:
 
 ```bash
 DATABASE_URL=postgresql://postgres:<password>@<cloud-sql-ip>:5432/postgres?options=-c%20search_path=quaero,public
+APP_ENV=production
 SECRET_KEY=<strong-random-secret>
 OPENAI_API_KEY=<...>
 ANTHROPIC_API_KEY=<...>
