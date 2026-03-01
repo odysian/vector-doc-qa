@@ -62,6 +62,7 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+infra/terraform/envs/prod.tfvars
 
 # Frontend
 frontend/node_modules/

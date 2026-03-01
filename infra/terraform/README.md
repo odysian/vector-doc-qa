@@ -24,6 +24,16 @@ gcloud config set project portfolio-488721
 gcloud auth application-default login
 ```
 
+## Environment tfvars
+
+`envs/prod.tfvars` is local-only and gitignored. Start from the committed
+template:
+
+```bash
+cd infra/terraform
+cp envs/prod.tfvars.example envs/prod.tfvars
+```
+
 ## Validate
 
 ```bash
