@@ -40,6 +40,10 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 
 - Rate limit: register limited to 3/hour per IP
 - Rate limit: login limited to 5/minute per IP
+- Rate-limit IP identity uses `X-Forwarded-For` only when the direct peer is in `trusted_proxy_ips`
+- Untrusted peers cannot influence rate-limit identity via forwarded-header spoofing
+- Spoofing a whitelisted IP in forwarded headers does not bypass limits
+- Authenticated rate-limit keys still resolve to `user:<id>` (Bearer and cookie fallback)
 - Token cannot be decoded with wrong secret key
 - Refresh rotation keeps a single route-level transaction boundary (no helper-side commits)
 
