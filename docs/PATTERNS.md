@@ -137,6 +137,11 @@ Use `@limiter.limit()` decorator with appropriate key function:
 def login(request: Request, ...):
 ```
 
+Proxy-aware identity rule:
+- Trust `X-Forwarded-For` only when the direct peer IP is in `settings.trusted_proxy_ips` (IP/CIDR list).
+- Resolve client IP by stripping trusted hops right-to-left in the forwarded chain.
+- Ignore forwarded headers from untrusted peers.
+
 ### Error Responses
 
 Always use `HTTPException` with `detail` string. Never return raw error objects.
