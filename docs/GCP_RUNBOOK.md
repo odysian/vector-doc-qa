@@ -56,12 +56,27 @@ Required values:
 
 ```bash
 DATABASE_URL=postgresql://postgres:<password>@<cloud-sql-ip>:5432/postgres?options=-c%20search_path=quaero,public
+APP_ENV=production
 SECRET_KEY=<strong-random-secret>
 OPENAI_API_KEY=<...>
 ANTHROPIC_API_KEY=<...>
 REDIS_URL=<upstash-redis-url>
 FRONTEND_URL=https://quaero.odysian.dev
 PORT=8000
+```
+
+For list-type settings in this file (for example `TRUSTED_PROXY_IPS`,
+`WHITELISTED_IPS`), use raw JSON arrays with no outer shell quotes because
+deploys use Docker `--env-file`:
+
+```bash
+TRUSTED_PROXY_IPS=["172.17.0.1/32"]
+```
+
+Do **not** write:
+
+```bash
+TRUSTED_PROXY_IPS='["172.17.0.1/32"]'
 ```
 
 ---

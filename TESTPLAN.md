@@ -49,6 +49,25 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 
 ---
 
+## Feature: Runtime Config Guardrails
+
+### Happy Path
+
+- Strict environments (`APP_ENV=production` or similar) start successfully with a strong `SECRET_KEY` and non-dev `DATABASE_URL`
+
+### Error Cases
+
+- Strict environments fail startup when `SECRET_KEY` is a known dev/default value
+- Strict environments fail startup when `SECRET_KEY` is too short or placeholder-shaped
+- Strict environments fail startup when `DATABASE_URL` uses loopback host, default dev credentials, or default dev DB name
+
+### Edge Cases
+
+- Local/dev/test environments remain bootable with intentional local defaults
+- `APP_ENV` matching is case-insensitive (`Production` still enforces strict guardrails)
+
+---
+
 ## Feature: Document Upload
 
 ### Happy Path
