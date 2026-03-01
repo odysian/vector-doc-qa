@@ -197,6 +197,10 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 
 ### Authentication
 
+Rate-limit IP identity is proxy-aware: the backend trusts `X-Forwarded-For`
+only when the direct peer IP is in `trusted_proxy_ips`; otherwise it falls
+back to socket peer IP to prevent header spoofing.
+
 #### POST /api/auth/register
 - **Auth:** None
 - **Rate Limit:** 3/hour per IP
