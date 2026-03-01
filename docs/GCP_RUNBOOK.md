@@ -29,7 +29,6 @@ For full VM reprovision/reset steps, use `docs/GCP_VM_REBUILD_TERRAFORM_PLAN.md`
 
 - GCP VM, static IP, firewall
 - DNS (`api.quaero.odysian.dev`)
-- VM production env file
 - GitHub secrets
 - Vercel `NEXT_PUBLIC_API_URL` update
 - Cloud Storage bucket/IAM setup
@@ -47,10 +46,12 @@ Terraform startup bootstrap now handles Docker + NGINX + Certbot + env file stub
 - `GCP_VM_SSH_KEY`
 - `GHCR_USERNAME`
 - `GHCR_TOKEN`
+- `BACKEND_ENV_B64` (base64-encoded contents of production `backend.env`)
 
-## VM env file
+## Backend env source of truth
 
-Path: `/opt/quaero/env/backend.env`
+Canonical source: GitHub secret `BACKEND_ENV_B64`.
+Deploy workflow writes it to VM path `/opt/quaero/env/backend.env` on every deploy.
 
 Required values:
 
@@ -79,6 +80,12 @@ Do **not** write:
 TRUSTED_PROXY_IPS='["172.17.0.1/32"]'
 ```
 
+Set/update secret from your local env file:
+
+```bash
+base64 -w 0 /path/to/backend.env | gh secret set BACKEND_ENV_B64
+```
+
 ---
 
 ## 3. Deployment Flow (Normal)
@@ -91,8 +98,9 @@ TRUSTED_PROXY_IPS='["172.17.0.1/32"]'
    - manual `workflow_dispatch` from `main` only (`Deploy Backend`)
 3. `Deploy Backend` runs `backend-tests` first. If tests fail, deploy stops.
 4. If tests pass, CI builds and pushes image to GHCR.
-5. CI uploads `ops/deploy_backend.sh` to VM.
-6. CI executes deploy script on VM:
+5. CI renders `backend.env` from `BACKEND_ENV_B64` and uploads it to VM.
+6. CI uploads `ops/deploy_backend.sh` to VM.
+7. CI executes deploy script on VM:
    - pulls image
    - runs migrations
    - restarts container

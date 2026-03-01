@@ -76,10 +76,28 @@ jobs:
           echo "${{ secrets.GCP_VM_SSH_KEY }}" > vm_key.pem
           chmod 600 vm_key.pem
 
-      - name: Ensure deploy dir exists on VM
+      - name: Render backend env file from GitHub secret
+        run: |
+          if [ -z "${{ secrets.BACKEND_ENV_B64 }}" ]; then
+            echo "Missing required GitHub secret: BACKEND_ENV_B64"
+            exit 1
+          fi
+          echo "${{ secrets.BACKEND_ENV_B64 }}" | base64 --decode > backend.env
+          chmod 600 backend.env
+
+      - name: Ensure deploy/env dirs exist on VM
         run: |
           ssh -i vm_key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "${{ secrets.GCP_VM_USER }}@${{ secrets.GCP_VM_HOST }}" \
-            "mkdir -p /opt/quaero/deploy"
+            "mkdir -p /opt/quaero/deploy /opt/quaero/env"
+
+      - name: Upload backend env file to VM
+        run: |
+          scp -i vm_key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=no \
+            ./backend.env \
+            "${{ secrets.GCP_VM_USER }}@${{ secrets.GCP_VM_HOST }}:/opt/quaero/env/backend.env"
+
+          ssh -i vm_key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "${{ secrets.GCP_VM_USER }}@${{ secrets.GCP_VM_HOST }}" \
+            "chmod 600 /opt/quaero/env/backend.env"
 
       - name: Upload deploy script to VM
         run: |
@@ -98,4 +116,4 @@ jobs:
 
       - name: Cleanup local SSH key
         if: always()
-        run: rm -f vm_key.pem
+        run: rm -f vm_key.pem backend.env

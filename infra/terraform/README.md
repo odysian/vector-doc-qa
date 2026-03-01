@@ -13,7 +13,7 @@ VM bootstrap via startup script also configures:
 - Docker engine
 - NGINX reverse proxy (`server_name = api.quaero.odysian.dev`)
 - Certbot TLS issuance/renewal (when enabled)
-- `/opt/quaero/env/backend.env` stub with placeholders
+- `/opt/quaero/env/backend.env` directory/path (file is provisioned by deploy workflow secret)
 - `/opt/quaero/{deploy,env,logs}` directories
 
 ## Prerequisites
@@ -122,11 +122,14 @@ terraform apply -var-file=envs/prod.tfvars
 
 ## After Apply (Required Before First Deploy)
 
-1. SSH to VM and fill real secrets in `/opt/quaero/env/backend.env` (replace placeholders).
-   - For list env vars (for example `TRUSTED_PROXY_IPS`), use JSON array syntax
-     without outer shell quotes since deployment uses Docker `--env-file`.
-   - Example: `TRUSTED_PROXY_IPS=["172.17.0.1/32"]` (correct),
-     `TRUSTED_PROXY_IPS='["172.17.0.1/32"]'` (incorrect).
+1. Set GitHub repo secret `BACKEND_ENV_B64` from your production env file contents.
+   - Generate a base64 payload from your local env file:
+
+```bash
+base64 -w 0 /path/to/backend.env
+```
+
+   - Add it as repository secret `BACKEND_ENV_B64`.
 2. Confirm NGINX/TLS status:
 
 ```bash
@@ -135,7 +138,7 @@ sudo systemctl status nginx --no-pager
 sudo systemctl status certbot.timer --no-pager
 ```
 
-3. Trigger GitHub Actions `Deploy Backend`.
+3. Trigger GitHub Actions `Deploy Backend` (it now uploads `/opt/quaero/env/backend.env` from `BACKEND_ENV_B64` on every deploy).
 
 ## Outputs
 
