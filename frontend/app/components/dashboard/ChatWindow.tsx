@@ -210,9 +210,9 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
   };
 
   return (
-    <div className="flex flex-col h-full min-h-[280px] bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shadow-xl">
+    <div className="flex flex-col h-full min-h-0 max-h-full bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shadow-xl">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50 backdrop-blur">
+      <div className="shrink-0 flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50 backdrop-blur">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <button
             type="button"
@@ -238,7 +238,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
       {/* Messages Area */}
       <div
         ref={scrollRef}
-        className="messages-scroll flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth"
+        className="messages-scroll min-h-0 flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth"
       >
         {loadingHistory && (
           <div className="h-full flex items-center justify-center">
@@ -460,7 +460,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
       </div>
 
       {/* Input Area */}
-      <div className="p-4 border-t border-zinc-800 bg-zinc-900">
+      <div className="shrink-0 p-4 border-t border-zinc-800 bg-zinc-900">
         <form onSubmit={handleSubmit} className="flex gap-3">
           <input
             type="text"
