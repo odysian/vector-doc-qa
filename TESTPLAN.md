@@ -137,6 +137,8 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 ### Happy Path
 
 - POST /api/documents/{id}/query with valid query returns answer with sources
+- POST /api/documents/{id}/query includes pipeline_meta timing/similarity fields
+- POST /api/documents/{id}/query/stream returns SSE events in order: sources -> token* -> meta -> done
 - Answer includes cited chunks from the document
 - User message and assistant response are saved to messages table
 - Sources include similarity scores and chunk content
@@ -145,16 +147,18 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 
 - Returns 404 if document does not exist or belongs to another user
 - Returns 400 if document is not yet processed (status != COMPLETED) [?]
+- Streaming query emits error event with generic detail on provider/database failures
 
 ### Edge Cases
 
 - Query with no relevant chunks in document still returns a response
+- Streaming failure after partial tokens still persists a terminal assistant message when DB is available
 - Very short query (single word)
 - Very long query (paragraph)
 
 ### Security Cases
 
-- Rate limit: 10/hour per user
+- Rate limit: 10/hour shared bucket across /query and /query/stream per user
 - Cannot query another user's documents
 
 ---

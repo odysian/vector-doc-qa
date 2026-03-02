@@ -115,11 +115,17 @@ async def generate_answer_stream(query: str, chunks: list[dict]) -> AsyncGenerat
                 if token:
                     yield token
     except APIStatusError as e:
+        if e.status_code == 529:
+            logger.warning("Anthropic streaming API is overloaded (HTTP 529).")
+            yield "I'm sorry, the AI service is currently overloaded. Please try again in a few minutes."
+            return
+
         logger.error(
             f"Anthropic streaming API returned an error: {e.status_code} - {e.message}",
             exc_info=True,
         )
-        raise
+        yield "I encountered an error communicating with the AI service. Please try again later."
+        return
     except Exception as e:
         logger.error(f"Unexpected error generating streaming answer: {e}", exc_info=True)
         raise

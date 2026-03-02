@@ -585,6 +585,32 @@ async def query_document_stream(
         raise HTTPException(status_code=500, detail="Query failed")
 
     async def _stream_events() -> AsyncGenerator[ServerSentEvent, None]:
+        async def _persist_assistant_message(
+            *,
+            content: str,
+            sources_payload: list[dict] | None,
+        ) -> int | None:
+            try:
+                async with AsyncSessionLocal() as write_db:
+                    assistant_message = Message(
+                        document_id=document_id,
+                        user_id=current_user.id,
+                        role="assistant",
+                        content=content,
+                        sources=sources_payload,
+                    )
+                    write_db.add(assistant_message)
+                    await write_db.flush()
+                    message_id = assistant_message.id
+                    await write_db.commit()
+                    return message_id
+            except Exception as e:
+                logger.error(
+                    f"Failed to persist streamed assistant message for document_id={document_id}: {e}",
+                    exc_info=True,
+                )
+                return None
+
         answer_tokens: list[str] = []
         llm_start = time.perf_counter()
 
@@ -595,6 +621,16 @@ async def query_document_stream(
                 yield ServerSentEvent(event="token", raw_data=token)
         except Exception as e:
             logger.error(f"Streaming query failed for document_id={document_id}: {e}", exc_info=True)
+            partial_answer = "".join(answer_tokens).strip()
+            assistant_content = (
+                partial_answer
+                if partial_answer
+                else "I encountered an error communicating with the AI service. Please try again later."
+            )
+            await _persist_assistant_message(
+                content=assistant_content,
+                sources_payload=sources_dict,
+            )
             yield ServerSentEvent(event="error", raw_data=json.dumps({"detail": "Query failed"}))
             return
 
@@ -609,30 +645,22 @@ async def query_document_stream(
         yield ServerSentEvent(event="meta", raw_data=pipeline_meta.model_dump_json())
 
         answer = "".join(answer_tokens)
-        try:
-            # Transaction 2: open a new session and persist assistant response.
-            async with AsyncSessionLocal() as write_db:
-                assistant_message = Message(
-                    document_id=document_id,
-                    user_id=current_user.id,
-                    role="assistant",
-                    content=answer,
-                    sources=sources_dict,
-                )
-                write_db.add(assistant_message)
-                await write_db.commit()
-                await write_db.refresh(assistant_message)
-        except Exception as e:
-            logger.error(
-                f"Failed to persist streamed assistant message for document_id={document_id}: {e}",
-                exc_info=True,
+        assistant_message_id = await _persist_assistant_message(
+            content=answer,
+            sources_payload=sources_dict,
+        )
+        if assistant_message_id is None:
+            # Best effort fallback so chat history still has a terminal assistant turn.
+            await _persist_assistant_message(
+                content="I encountered an internal error saving the final response. Please retry.",
+                sources_payload=None,
             )
             yield ServerSentEvent(event="error", raw_data=json.dumps({"detail": "Query failed"}))
             return
 
         yield ServerSentEvent(
             event="done",
-            raw_data=json.dumps({"message_id": assistant_message.id}),
+            raw_data=json.dumps({"message_id": assistant_message_id}),
         )
 
     async def _encoded_stream_events() -> AsyncGenerator[bytes, None]:

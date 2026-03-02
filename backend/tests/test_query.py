@@ -288,7 +288,13 @@ class TestQueryStream:
         assert response.status_code == 400
 
     async def test_stream_query_emits_error_event_when_llm_stream_fails(
-        self, client, auth_headers, processed_document, mock_embeddings
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        mock_embeddings,
+        db_session: AsyncSession,
+        test_user: User,
     ):
         async def _failing_generate_answer_stream(
             query: str,
@@ -301,6 +307,9 @@ class TestQueryStream:
         with patch(
             "app.api.documents.generate_answer_stream",
             new=_failing_generate_answer_stream,
+        ), patch(
+            "app.api.documents.AsyncSessionLocal",
+            new=lambda: _NoCloseSessionContext(db_session),
         ):
             async with client.stream(
                 "POST",
@@ -315,8 +324,26 @@ class TestQueryStream:
         assert event_types == ["sources", "token", "error"]
         assert json.loads(events[-1][1]) == {"detail": "Query failed"}
 
+        result = await db_session.execute(
+            select(Message)
+            .where(Message.document_id == processed_document.id)
+            .where(Message.user_id == test_user.id)
+            .order_by(Message.created_at)
+        )
+        messages = result.scalars().all()
+        assert len(messages) == 2
+        assert messages[0].role == "user"
+        assert messages[1].role == "assistant"
+        assert "partial" in messages[1].content.lower()
+
     async def test_stream_query_emits_error_event_when_db_save_fails(
-        self, client, auth_headers, processed_document, mock_embeddings
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        mock_embeddings,
+        db_session: AsyncSession,
+        test_user: User,
     ):
         async def _fake_generate_answer_stream(
             query: str,
@@ -325,6 +352,14 @@ class TestQueryStream:
             del query, chunks
             yield "streamed token"
 
+        fail_then_succeed_calls = {"count": 0}
+
+        def _fail_then_succeed_session():
+            fail_then_succeed_calls["count"] += 1
+            if fail_then_succeed_calls["count"] == 1:
+                return _FailingSessionContext()
+            return _NoCloseSessionContext(db_session)
+
         with (
             patch(
                 "app.api.documents.generate_answer_stream",
@@ -332,7 +367,7 @@ class TestQueryStream:
             ),
             patch(
                 "app.api.documents.AsyncSessionLocal",
-                new=lambda: _FailingSessionContext(),
+                new=_fail_then_succeed_session,
             ),
         ):
             async with client.stream(
@@ -347,6 +382,18 @@ class TestQueryStream:
         event_types = [event for event, _ in events]
         assert event_types == ["sources", "token", "meta", "error"]
         assert json.loads(events[-1][1]) == {"detail": "Query failed"}
+
+        result = await db_session.execute(
+            select(Message)
+            .where(Message.document_id == processed_document.id)
+            .where(Message.user_id == test_user.id)
+            .order_by(Message.created_at)
+        )
+        messages = result.scalars().all()
+        assert len(messages) == 2
+        assert messages[0].role == "user"
+        assert messages[1].role == "assistant"
+        assert "internal error saving the final response" in messages[1].content.lower()
 
 
 # ---------------------------------------------------------------------------
