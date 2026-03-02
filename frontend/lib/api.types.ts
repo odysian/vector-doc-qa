@@ -75,6 +75,17 @@ export interface QueryResponse {
   query: string;
   answer: string;
   sources: SearchResult[];
+  pipeline_meta?: PipelineMeta;
+}
+
+export interface PipelineMeta {
+  embed_ms: number;
+  retrieval_ms: number;
+  llm_ms: number;
+  total_ms: number;
+  top_similarity: number;
+  avg_similarity: number;
+  chunks_retrieved: number;
 }
 
 // Messages

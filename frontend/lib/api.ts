@@ -15,6 +15,7 @@ import type {
   DocumentStatusResponse,
   QueryResponse,
   MessageListResponse,
+  PipelineMeta,
 } from "./api.types";
 import { ApiError } from "./api.types";
 
@@ -27,9 +28,18 @@ export type {
   DocumentStatusResponse,
   SearchResult,
   QueryResponse,
+  PipelineMeta,
   MessageResponse,
   MessageListResponse,
 } from "./api.types";
+
+interface QueryStreamCallbacks {
+  onSources: (sources: QueryResponse["sources"]) => void;
+  onToken: (token: string) => void;
+  onMeta: (meta: PipelineMeta) => void;
+  onDone: (data: { message_id: number }) => void;
+  onError: (detail: string) => void;
+}
 
 // ---------------------------------------------------------------------------
 // Auth state helpers
@@ -281,6 +291,128 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ query }),
     });
+  },
+
+  /**
+   * RAG Q&A stream: read token updates from SSE using fetch + ReadableStream.
+   * EventSource cannot be used here because it does not support POST or headers.
+   */
+  queryDocumentStream: async (
+    documentId: number,
+    query: string,
+    callbacks: QueryStreamCallbacks
+  ): Promise<void> => {
+    const buildHeaders = (csrfToken: string | null): HeadersInit => ({
+      "Content-Type": "application/json",
+      ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+    });
+
+    let response = await fetch(fullUrl(`/api/documents/${documentId}/query/stream`), {
+      method: "POST",
+      credentials: "include",
+      headers: buildHeaders(getCsrfToken()),
+      body: JSON.stringify({ query }),
+    });
+
+    // On 401, attempt one silent refresh then retry
+    if (response.status === 401) {
+      const refreshed = await refreshAccessToken();
+      if (refreshed) {
+        response = await fetch(fullUrl(`/api/documents/${documentId}/query/stream`), {
+          method: "POST",
+          credentials: "include",
+          headers: buildHeaders(getCsrfToken()),
+          body: JSON.stringify({ query }),
+        });
+      } else {
+        clearTokens();
+        window.location.href = "/login";
+        throw new ApiError(401, "Session expired");
+      }
+    }
+
+    if (!response.ok) {
+      const error = await response
+        .json()
+        .catch(() => ({ detail: "Request failed" }));
+      throw new ApiError(response.status, error.detail || "Request failed");
+    }
+
+    if (!response.body) {
+      throw new ApiError(500, "Streaming response unavailable");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    const parseFrame = (frame: string) => {
+      const lines = frame.split("\n");
+      let event = "";
+      const dataLines: string[] = [];
+
+      for (const line of lines) {
+        if (line.startsWith("event:")) {
+          event = line.slice("event:".length).trim();
+        } else if (line.startsWith("data:")) {
+          dataLines.push(line.slice("data:".length).trimStart());
+        }
+      }
+
+      if (!event || dataLines.length === 0) return;
+
+      const data = dataLines.join("\n");
+
+      try {
+        if (event === "sources") {
+          callbacks.onSources(JSON.parse(data) as QueryResponse["sources"]);
+          return;
+        }
+        if (event === "token") {
+          callbacks.onToken(data);
+          return;
+        }
+        if (event === "meta") {
+          callbacks.onMeta(JSON.parse(data) as PipelineMeta);
+          return;
+        }
+        if (event === "done") {
+          callbacks.onDone(JSON.parse(data) as { message_id: number });
+          return;
+        }
+        if (event === "error") {
+          const parsed = JSON.parse(data) as { detail?: string };
+          callbacks.onError(parsed.detail || "Query failed");
+        }
+      } catch {
+        callbacks.onError("Failed to parse streaming event");
+      }
+    };
+
+    const flushFrames = () => {
+      let frameBoundary = buffer.indexOf("\n\n");
+      while (frameBoundary !== -1) {
+        const frame = buffer.slice(0, frameBoundary);
+        buffer = buffer.slice(frameBoundary + 2);
+        if (frame.trim()) {
+          parseFrame(frame);
+        }
+        frameBoundary = buffer.indexOf("\n\n");
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true }).replaceAll("\r\n", "\n");
+      flushFrames();
+    }
+
+    buffer += decoder.decode().replaceAll("\r\n", "\n");
+    flushFrames();
+    if (buffer.trim()) {
+      parseFrame(buffer);
+    }
   },
 
   /** Get chat history (user + assistant messages) for a document. */
