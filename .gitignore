@@ -52,6 +52,7 @@ Thumbs.db
 
 # Docker
 doc_intel_postgres_data/
+.monitor/
 
 # Terraform
 .terraform/

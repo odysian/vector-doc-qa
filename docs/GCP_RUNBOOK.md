@@ -56,7 +56,7 @@ Deploy workflow writes it to VM path `/opt/quaero/env/backend.env` on every depl
 Required values:
 
 ```bash
-DATABASE_URL=postgresql://postgres:<password>@<cloud-sql-ip>:5432/postgres?options=-c%20search_path=quaero,public
+DATABASE_URL=postgresql://quaero_app:<password>@<cloud-sql-ip>:5432/postgres?options=-c%20search_path=quaero,public
 APP_ENV=production
 SECRET_KEY=<strong-random-secret>
 OPENAI_API_KEY=<...>
@@ -84,6 +84,20 @@ Set/update secret from your local env file:
 
 ```bash
 base64 -w 0 /path/to/backend.env | gh secret set BACKEND_ENV_B64
+```
+
+Cloud SQL role grants for `quaero_app` (run in Cloud SQL Query Editor as admin):
+
+```sql
+GRANT CONNECT, CREATE ON DATABASE postgres TO quaero_app;
+GRANT USAGE, CREATE ON SCHEMA quaero TO quaero_app;
+GRANT USAGE ON SCHEMA public TO quaero_app;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA quaero TO quaero_app;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA quaero TO quaero_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA quaero
+  GRANT ALL PRIVILEGES ON TABLES TO quaero_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA quaero
+  GRANT ALL PRIVILEGES ON SEQUENCES TO quaero_app;
 ```
 
 ---
@@ -217,6 +231,20 @@ Actions:
    - `docker run --rm --env-file /opt/quaero/env/backend.env <image> alembic upgrade head`
 3. Fix root cause (DB connectivity, credentials, migration conflict).
 4. Re-run workflow.
+
+## Migration fails with `permission denied for database postgres`
+
+Symptoms:
+
+- deploy reaches `Running migrations`
+- Alembic fails on `CREATE SCHEMA IF NOT EXISTS quaero`
+- error contains `psycopg2.errors.InsufficientPrivilege`
+
+Actions:
+
+1. Ensure deploy is using `DATABASE_URL` with `quaero_app`.
+2. Run the `quaero_app` grant block from section 2 (must include `CREATE ON DATABASE postgres`).
+3. Re-run deploy.
 
 ## New container fails health check
 
