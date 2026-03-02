@@ -356,9 +356,26 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                   : "bg-zinc-800 text-zinc-100 rounded-tl-none border border-zinc-700"
               }`}
             >
-              <p className="whitespace-pre-wrap text-body-sm leading-relaxed">
-                {msg.content}
-              </p>
+              {msg.role === "assistant" && msg.streaming && !msg.content ? (
+                <div className="flex items-center gap-2 text-zinc-400">
+                  <div
+                    className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "0ms" }}
+                  />
+                  <div
+                    className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "150ms" }}
+                  />
+                  <div
+                    className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "300ms" }}
+                  />
+                </div>
+              ) : (
+                <p className="whitespace-pre-wrap text-body-sm leading-relaxed">
+                  {msg.content}
+                </p>
+              )}
             </div>
 
             {msg.role === "assistant" && msg.pipeline_meta && (
@@ -483,24 +500,6 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
           </div>
         ))}
 
-        {!loadingHistory && isStreaming && (
-          <div className="flex justify-start">
-            <div className="bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-2xl rounded-tl-none p-4 flex items-center gap-2">
-              <div
-                className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
-                style={{ animationDelay: "0ms" }}
-              />
-              <div
-                className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
-                style={{ animationDelay: "150ms" }}
-              />
-              <div
-                className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
-                style={{ animationDelay: "300ms" }}
-              />
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Input Area */}
