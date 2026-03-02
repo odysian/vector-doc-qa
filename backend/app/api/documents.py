@@ -1,6 +1,10 @@
+import json
+import time
+from collections.abc import AsyncGenerator
+
 from app.api.dependencies import get_current_user
-from app.database import get_db
-from app.models.base import Document, DocumentStatus
+from app.database import AsyncSessionLocal, get_db
+from app.models.base import Chunk, Document, DocumentStatus
 from app.models.message import Message
 from app.models.user import User
 from app.schemas.document import (
@@ -10,9 +14,10 @@ from app.schemas.document import (
     UploadResponse,
 )
 from app.schemas.message import MessageListResponse, MessageResponse
-from app.schemas.query import QueryRequest, QueryResponse
+from app.schemas.query import PipelineMeta, QueryRequest, QueryResponse
 from app.schemas.search import SearchRequest, SearchResponse, SearchResult
-from app.services.anthropic_service import generate_answer
+from app.services.anthropic_service import generate_answer, generate_answer_stream
+from app.services.embedding_service import generate_embedding
 from app.services.queue_service import enqueue_document_processing
 from app.services.search_service import search_chunks
 from app.services.storage_service import delete_file
@@ -20,13 +25,126 @@ from app.utils.file_utils import save_upload_file, validate_file_upload
 from app.utils.logging_config import get_logger
 from app.utils.rate_limit import get_user_or_ip_key, limiter
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
-from sqlalchemy import select
+from fastapi.responses import EventSourceResponse
+from fastapi.sse import ServerSentEvent, format_sse_event
+from sqlalchemy import literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+def _elapsed_ms(start_time: float) -> int:
+    """Convert elapsed perf-counter seconds to integer milliseconds."""
+    return int((time.perf_counter() - start_time) * 1000)
+
+
+def _encode_sse_event(event: ServerSentEvent) -> bytes:
+    """Encode a FastAPI ServerSentEvent instance into wire-format bytes."""
+    if event.raw_data is not None:
+        data_str: str | None = event.raw_data
+    elif event.data is not None:
+        data_str = json.dumps(event.data)
+    else:
+        data_str = None
+
+    return format_sse_event(
+        data_str=data_str,
+        event=event.event,
+        id=event.id,
+        retry=event.retry,
+        comment=event.comment,
+    )
+
+
+def _build_pipeline_meta(
+    *,
+    search_results: list[dict],
+    embed_ms: int,
+    retrieval_ms: int,
+    llm_ms: int,
+    total_ms: int,
+) -> PipelineMeta:
+    similarities = [result["similarity"] for result in search_results]
+    top_similarity = max(similarities) if similarities else 0.0
+    avg_similarity = (sum(similarities) / len(similarities)) if similarities else 0.0
+
+    return PipelineMeta(
+        embed_ms=embed_ms,
+        retrieval_ms=retrieval_ms,
+        llm_ms=llm_ms,
+        total_ms=total_ms,
+        top_similarity=round(top_similarity, 4),
+        avg_similarity=round(avg_similarity, 4),
+        chunks_retrieved=len(search_results),
+    )
+
+
+async def _search_chunks_from_embedding(
+    *,
+    db: AsyncSession,
+    document_id: int,
+    query_embedding: list[float],
+    top_k: int,
+) -> list[dict]:
+    """
+    Search document chunks using a precomputed query embedding.
+    """
+    distance_expr = Chunk.embedding.cosine_distance(query_embedding).label("distance")
+    stmt = (
+        select(Chunk.id, Chunk.content, Chunk.chunk_index, distance_expr)
+        .where(Chunk.document_id == document_id)
+        .where(Chunk.embedding.isnot(None))
+        .order_by(distance_expr)
+        .limit(top_k)
+    )
+
+    rows = (await db.execute(stmt)).all()
+
+    results: list[dict] = []
+    for chunk_id, content, chunk_index, distance in rows:
+        results.append(
+            {
+                "chunk_id": chunk_id,
+                "content": content,
+                "similarity": round(1 - distance, 4),
+                "chunk_index": chunk_index,
+            }
+        )
+    return results
+
+
+async def _validate_document_for_query(
+    *,
+    document_id: int,
+    current_user: User,
+    db: AsyncSession,
+) -> Document:
+    """
+    Validate ownership, processing status, and chunk existence for query/search endpoints.
+    """
+    document = await db.scalar(
+        select(Document).where(
+            Document.id == document_id,
+            Document.user_id == current_user.id,
+        )
+    )
+    if not document:
+        raise HTTPException(
+            status_code=404, detail=f"Document with ID {document_id} not found"
+        )
+
+    if document.status != DocumentStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail=f"Document {document_id} not processed yet")
+
+    chunk_exists = await db.scalar(
+        select(literal(1)).where(Chunk.document_id == document_id).limit(1)
+    )
+    if chunk_exists is None:
+        raise HTTPException(status_code=400, detail=f"Document {document_id} has no chunks")
+
+    return document
 
 
 @router.post("/upload", response_model=UploadResponse, status_code=201)
@@ -279,31 +397,11 @@ async def search_document(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-
-    # Eagerly load chunks to avoid lazy-loading MissingGreenlet in async
-    stmt = (
-        select(Document)
-        .options(selectinload(Document.chunks))
-        .where(Document.id == document_id)
-        .where(Document.user_id == current_user.id)
+    await _validate_document_for_query(
+        document_id=document_id,
+        current_user=current_user,
+        db=db,
     )
-    document = await db.scalar(stmt)
-
-    if not document:
-        raise HTTPException(
-            status_code=404, detail=f"Document with ID {document_id} not found"
-        )
-    if document.status != DocumentStatus.COMPLETED:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Document {document_id} not processed yet",
-        )
-
-    if not document.chunks:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Document {document_id} has no chunks",
-        )
 
     try:
         results = await search_chunks(
@@ -322,11 +420,12 @@ async def search_document(
         raise HTTPException(status_code=400, detail=str(e))
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        logger.error(f"Search failed for document_id={document_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Search failed")
 
 
 @router.post("/{document_id}/query", response_model=QueryResponse)
-@limiter.limit("10/hour", key_func=get_user_or_ip_key)
+@limiter.shared_limit("10/hour", scope="query", key_func=get_user_or_ip_key)
 async def query_document(
     request: Request,
     document_id: int,
@@ -344,31 +443,11 @@ async def query_document(
 
     logger.info(f"Query request for document_id={document_id}: '{body.query}'")
 
-    # Verify document exists and user owns it
-    # Eagerly load chunks to avoid lazy-loading MissingGreenlet in async
-    stmt = (
-        select(Document)
-        .options(selectinload(Document.chunks))
-        .where(Document.id == document_id)
-        .where(Document.user_id == current_user.id)
+    await _validate_document_for_query(
+        document_id=document_id,
+        current_user=current_user,
+        db=db,
     )
-    document = await db.scalar(stmt)
-
-    if not document:
-        raise HTTPException(
-            status_code=404, detail=f"Document with ID {document_id} not found"
-        )
-    if document.status != DocumentStatus.COMPLETED:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Document {document_id} not processed yet",
-        )
-
-    if not document.chunks:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Document {document_id} has no chunks",
-        )
 
     try:
         # Save user message to database
@@ -382,15 +461,35 @@ async def query_document(
         db.add(user_message)
         await db.flush()
 
-        # Perform RAG search and generate answer
-        search_results = await search_chunks(
-            query=body.query, document_id=document_id, top_k=5, db=db
-        )
+        pipeline_start = time.perf_counter()
 
+        embedding_start = time.perf_counter()
+        query_embedding = await generate_embedding(body.query)
+        embed_ms = _elapsed_ms(embedding_start)
+
+        retrieval_start = time.perf_counter()
+        search_results = await _search_chunks_from_embedding(
+            db=db,
+            document_id=document_id,
+            query_embedding=query_embedding,
+            top_k=5,
+        )
+        retrieval_ms = _elapsed_ms(retrieval_start)
+
+        llm_start = time.perf_counter()
         answer = await generate_answer(query=body.query, chunks=search_results)
+        llm_ms = _elapsed_ms(llm_start)
+        total_ms = _elapsed_ms(pipeline_start)
 
         # Format sources for response
         sources = [SearchResult(**result) for result in search_results]
+        pipeline_meta = _build_pipeline_meta(
+            search_results=search_results,
+            embed_ms=embed_ms,
+            retrieval_ms=retrieval_ms,
+            llm_ms=llm_ms,
+            total_ms=total_ms,
+        )
 
         # Save assistant message to database
         # Convert SearchResult objects to dicts for JSONB storage
@@ -409,7 +508,12 @@ async def query_document(
             f"Saved messages for document_id={document_id}: user_msg_id={user_message.id}, assistant_msg_id={assistant_message.id}"
         )
 
-        return QueryResponse(query=body.query, answer=answer, sources=sources)
+        return QueryResponse(
+            query=body.query,
+            answer=answer,
+            sources=sources,
+            pipeline_meta=pipeline_meta,
+        )
 
     except ValueError as e:
         await db.rollback()
@@ -418,7 +522,124 @@ async def query_document(
     except Exception as e:
         await db.rollback()
         logger.error(f"Query failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Query failed")
+
+
+@router.post("/{document_id}/query/stream")
+@limiter.shared_limit("10/hour", scope="query", key_func=get_user_or_ip_key)
+async def query_document_stream(
+    request: Request,
+    document_id: int,
+    body: QueryRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Stream an AI-generated answer over SSE for a document query.
+    """
+    logger.info(f"Streaming query request for document_id={document_id}: '{body.query}'")
+
+    await _validate_document_for_query(
+        document_id=document_id,
+        current_user=current_user,
+        db=db,
+    )
+
+    try:
+        # Transaction 1: persist user message + run retrieval, then commit.
+        user_message = Message(
+            document_id=document_id,
+            user_id=current_user.id,
+            role="user",
+            content=body.query,
+            sources=None,
+        )
+        db.add(user_message)
+        await db.flush()
+
+        pipeline_start = time.perf_counter()
+
+        embedding_start = time.perf_counter()
+        query_embedding = await generate_embedding(body.query)
+        embed_ms = _elapsed_ms(embedding_start)
+
+        retrieval_start = time.perf_counter()
+        search_results = await _search_chunks_from_embedding(
+            db=db,
+            document_id=document_id,
+            query_embedding=query_embedding,
+            top_k=5,
+        )
+        retrieval_ms = _elapsed_ms(retrieval_start)
+
+        sources = [SearchResult(**result) for result in search_results]
+        sources_dict = [source.model_dump() for source in sources]
+
+        await db.commit()
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Streaming query setup failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Query failed")
+
+    async def _stream_events() -> AsyncGenerator[ServerSentEvent, None]:
+        answer_tokens: list[str] = []
+        llm_start = time.perf_counter()
+
+        try:
+            yield ServerSentEvent(event="sources", raw_data=json.dumps(sources_dict))
+            async for token in generate_answer_stream(query=body.query, chunks=search_results):
+                answer_tokens.append(token)
+                yield ServerSentEvent(event="token", raw_data=token)
+        except Exception as e:
+            logger.error(f"Streaming query failed for document_id={document_id}: {e}", exc_info=True)
+            yield ServerSentEvent(event="error", raw_data=json.dumps({"detail": "Query failed"}))
+            return
+
+        llm_ms = _elapsed_ms(llm_start)
+        pipeline_meta = _build_pipeline_meta(
+            search_results=search_results,
+            embed_ms=embed_ms,
+            retrieval_ms=retrieval_ms,
+            llm_ms=llm_ms,
+            total_ms=_elapsed_ms(pipeline_start),
+        )
+        yield ServerSentEvent(event="meta", raw_data=pipeline_meta.model_dump_json())
+
+        answer = "".join(answer_tokens)
+        try:
+            # Transaction 2: open a new session and persist assistant response.
+            async with AsyncSessionLocal() as write_db:
+                assistant_message = Message(
+                    document_id=document_id,
+                    user_id=current_user.id,
+                    role="assistant",
+                    content=answer,
+                    sources=sources_dict,
+                )
+                write_db.add(assistant_message)
+                await write_db.commit()
+                await write_db.refresh(assistant_message)
+        except Exception as e:
+            logger.error(
+                f"Failed to persist streamed assistant message for document_id={document_id}: {e}",
+                exc_info=True,
+            )
+            yield ServerSentEvent(event="error", raw_data=json.dumps({"detail": "Query failed"}))
+            return
+
+        yield ServerSentEvent(
+            event="done",
+            raw_data=json.dumps({"message_id": assistant_message.id}),
+        )
+
+    async def _encoded_stream_events() -> AsyncGenerator[bytes, None]:
+        async for event in _stream_events():
+            yield _encode_sse_event(event)
+
+    return EventSourceResponse(_encoded_stream_events())
 
 
 @router.get("/{document_id}/messages", response_model=MessageListResponse)

@@ -5,11 +5,58 @@ Covers TESTPLAN.md "Feature: Document Search", "Document Query (RAG)",
 and "Chat History".
 """
 
+import json
+from collections.abc import AsyncGenerator
+from unittest.mock import patch
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.message import Message
 from app.models.user import User
+
+
+class _NoCloseSessionContext:
+    """Async context manager that reuses fixture session without closing it."""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def __aenter__(self) -> AsyncSession:
+        return self.session
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:  # type: ignore[no-untyped-def]
+        return False
+
+
+async def _read_sse_events(response) -> list[tuple[str, str]]:  # type: ignore[no-untyped-def]
+    """Collect SSE events until a terminal done/error event is reached."""
+    events: list[tuple[str, str]] = []
+    event_name: str | None = None
+    data_lines: list[str] = []
+
+    async for line in response.aiter_lines():
+        if line == "":
+            if event_name is not None:
+                data = "\n".join(data_lines)
+                events.append((event_name, data))
+                if event_name in {"done", "error"}:
+                    break
+            event_name = None
+            data_lines = []
+            continue
+
+        if line.startswith("event:"):
+            event_name = line[6:].strip()
+            continue
+
+        if line.startswith("data:"):
+            data = line[5:]
+            if data.startswith(" "):
+                data = data[1:]
+            data_lines.append(data)
+
+    return events
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +124,8 @@ class TestQuery:
         assert len(data["answer"]) > 0
         assert "sources" in data
         assert isinstance(data["sources"], list)
+        assert "pipeline_meta" in data
+        assert data["pipeline_meta"]["chunks_retrieved"] == len(data["sources"])
 
     async def test_query_saves_user_and_assistant_messages(
         self,
@@ -120,6 +169,97 @@ class TestQuery:
             json={"query": "test"},
         )
         assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Query Stream (SSE)
+# ---------------------------------------------------------------------------
+
+
+class TestQueryStream:
+    """POST /api/documents/{id}/query/stream"""
+
+    async def test_stream_query_returns_expected_sse_events(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        mock_embeddings,
+        db_session: AsyncSession,
+    ):
+        async def _fake_generate_answer_stream(
+            query: str,
+            chunks: list[dict],
+        ) -> AsyncGenerator[str, None]:
+            del query, chunks
+            yield "This "
+            yield "is "
+            yield "streamed."
+
+        with (
+            patch(
+                "app.api.documents.generate_answer_stream",
+                new=_fake_generate_answer_stream,
+            ),
+            patch(
+                "app.api.documents.AsyncSessionLocal",
+                new=lambda: _NoCloseSessionContext(db_session),
+            ),
+        ):
+            async with client.stream(
+                "POST",
+                f"/api/documents/{processed_document.id}/query/stream",
+                headers=auth_headers,
+                json={"query": "Summarize this document"},
+            ) as response:
+                assert response.status_code == 200
+                assert response.headers["content-type"].startswith("text/event-stream")
+                events = await _read_sse_events(response)
+
+        event_types = [event for event, _ in events]
+        assert event_types == ["sources", "token", "token", "token", "meta", "done"]
+
+        sources_payload = json.loads(events[0][1])
+        assert isinstance(sources_payload, list)
+        assert len(sources_payload) > 0
+        assert "similarity" in sources_payload[0]
+
+        token_payloads = [payload for event, payload in events if event == "token"]
+        assert "".join(token_payloads) == "This is streamed."
+
+        meta_payload = json.loads(events[4][1])
+        assert set(meta_payload.keys()) == {
+            "embed_ms",
+            "retrieval_ms",
+            "llm_ms",
+            "total_ms",
+            "top_similarity",
+            "avg_similarity",
+            "chunks_retrieved",
+        }
+
+        done_payload = json.loads(events[5][1])
+        assert isinstance(done_payload["message_id"], int)
+
+    async def test_stream_query_returns_404_for_other_users_document(
+        self, client, second_user_headers, processed_document
+    ):
+        response = await client.post(
+            f"/api/documents/{processed_document.id}/query/stream",
+            headers=second_user_headers,
+            json={"query": "test"},
+        )
+        assert response.status_code == 404
+
+    async def test_stream_query_returns_400_for_unprocessed_document(
+        self, client, auth_headers, test_document
+    ):
+        response = await client.post(
+            f"/api/documents/{test_document.id}/query/stream",
+            headers=auth_headers,
+            json={"query": "test"},
+        )
+        assert response.status_code == 400
 
 
 # ---------------------------------------------------------------------------

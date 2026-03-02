@@ -1,3 +1,5 @@
+from collections.abc import AsyncGenerator
+
 from anthropic import APIStatusError, AsyncAnthropic
 
 from app.config import settings
@@ -90,4 +92,34 @@ async def generate_answer(query: str, chunks: list[dict]) -> str:
 
     except Exception as e:
         logger.error(f"Unexpected error generating answer: {e}", exc_info=True)
+        raise
+
+
+async def generate_answer_stream(query: str, chunks: list[dict]) -> AsyncGenerator[str, None]:
+    """
+    Calls Claude streaming API and yields answer tokens as they arrive.
+    """
+    logger.info(f"Generating streaming answer for query: '{query}'")
+
+    prompt = _build_prompt(query, chunks)
+    logger.debug(f"Built prompt with {len(chunks)} chunks")
+
+    try:
+        client = _get_client()
+        async with client.messages.stream(
+            model="claude-3-haiku-20240307",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            async for token in stream.text_stream:
+                if token:
+                    yield token
+    except APIStatusError as e:
+        logger.error(
+            f"Anthropic streaming API returned an error: {e.status_code} - {e.message}",
+            exc_info=True,
+        )
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error generating streaming answer: {e}", exc_info=True)
         raise
