@@ -5,6 +5,14 @@ from app.constants import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
 from app.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+_client: AsyncOpenAI | None = None
+
+
+def _get_client() -> AsyncOpenAI:
+    global _client
+    if _client is None:
+        _client = AsyncOpenAI(api_key=settings.openai_api_key)
+    return _client
 
 
 async def generate_embedding(text: str) -> list[float]:
@@ -17,7 +25,7 @@ async def generate_embedding(text: str) -> list[float]:
     try:
         logger.debug(f"Generating embedding for text (length={len(text)})")
 
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        client = _get_client()
 
         response = await client.embeddings.create(
             model=EMBEDDING_MODEL, input=text, encoding_format="float"
@@ -64,7 +72,7 @@ async def generate_embeddings_batch(texts: list[str]) -> list[list[float]]:
     try:
         logger.info(f"Generating embeddings for {len(texts)} texts")
 
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        client = _get_client()
 
         response = await client.embeddings.create(
             model=EMBEDDING_MODEL, input=texts, encoding_format="float"

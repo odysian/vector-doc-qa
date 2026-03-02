@@ -4,6 +4,14 @@ from app.config import settings
 from app.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+_client: AsyncAnthropic | None = None
+
+
+def _get_client() -> AsyncAnthropic:
+    global _client
+    if _client is None:
+        _client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    return _client
 
 
 def _build_prompt(query: str, chunks: list[dict]) -> str:
@@ -59,7 +67,7 @@ async def generate_answer(query: str, chunks: list[dict]) -> str:
     logger.debug(f"Built prompt with {len(chunks)} chunks")
 
     try:
-        client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        client = _get_client()
         response = await client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=1024,
