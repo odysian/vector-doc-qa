@@ -41,6 +41,10 @@ interface QueryStreamCallbacks {
   onError: (detail: string) => void;
 }
 
+interface QueryStreamOptions {
+  signal?: AbortSignal;
+}
+
 // ---------------------------------------------------------------------------
 // Auth state helpers
 // ---------------------------------------------------------------------------
@@ -300,7 +304,8 @@ export const api = {
   queryDocumentStream: async (
     documentId: number,
     query: string,
-    callbacks: QueryStreamCallbacks
+    callbacks: QueryStreamCallbacks,
+    options: QueryStreamOptions = {}
   ): Promise<void> => {
     const buildHeaders = (csrfToken: string | null): HeadersInit => ({
       "Content-Type": "application/json",
@@ -312,6 +317,7 @@ export const api = {
       credentials: "include",
       headers: buildHeaders(getCsrfToken()),
       body: JSON.stringify({ query }),
+      signal: options.signal,
     });
 
     // On 401, attempt one silent refresh then retry
@@ -323,6 +329,7 @@ export const api = {
           credentials: "include",
           headers: buildHeaders(getCsrfToken()),
           body: JSON.stringify({ query }),
+          signal: options.signal,
         });
       } else {
         clearTokens();
@@ -345,6 +352,19 @@ export const api = {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let streamTerminated = false;
+
+    const emitDone = (data: { message_id: number }) => {
+      if (streamTerminated) return;
+      streamTerminated = true;
+      callbacks.onDone(data);
+    };
+
+    const emitError = (detail: string) => {
+      if (streamTerminated) return;
+      streamTerminated = true;
+      callbacks.onError(detail);
+    };
 
     const parseFrame = (frame: string) => {
       const lines = frame.split("\n");
@@ -379,15 +399,15 @@ export const api = {
           return;
         }
         if (event === "done") {
-          callbacks.onDone(JSON.parse(data) as { message_id: number });
+          emitDone(JSON.parse(data) as { message_id: number });
           return;
         }
         if (event === "error") {
           const parsed = JSON.parse(data) as { detail?: string };
-          callbacks.onError(parsed.detail || "Query failed");
+          emitError(parsed.detail || "Query failed");
         }
       } catch {
-        callbacks.onError("Failed to parse streaming event");
+        emitError("Failed to parse streaming event");
       }
     };
 
@@ -403,17 +423,30 @@ export const api = {
       }
     };
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true }).replaceAll("\r\n", "\n");
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true }).replaceAll("\r\n", "\n");
+        flushFrames();
+      }
+
+      buffer += decoder.decode().replaceAll("\r\n", "\n");
       flushFrames();
+      if (buffer.trim()) {
+        parseFrame(buffer);
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw err;
+      }
+      emitError("Stream connection failed");
+    } finally {
+      reader.releaseLock();
     }
 
-    buffer += decoder.decode().replaceAll("\r\n", "\n");
-    flushFrames();
-    if (buffer.trim()) {
-      parseFrame(buffer);
+    if (!streamTerminated && !options.signal?.aborted) {
+      emitError("Stream ended unexpectedly");
     }
   },
 

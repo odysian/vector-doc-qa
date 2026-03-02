@@ -42,7 +42,16 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
     new Set()
   );
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isMountedRef = useRef(true);
+  const activeStreamAbortRef = useRef<AbortController | null>(null);
   const isStreaming = messages.some((message) => message.streaming);
+
+  const isAbortError = (err: unknown): boolean => {
+    return (
+      (err instanceof DOMException && err.name === "AbortError")
+      || (typeof err === "object" && err !== null && "name" in err && err.name === "AbortError")
+    );
+  };
 
   /** Toggle whether the whole "Sources" block for a message is open or collapsed. */
   const toggleSources = (messageIndex: number) => {
@@ -111,6 +120,20 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
     });
   };
 
+  const stopStreamingPlaceholder = () => {
+    updateStreamingAssistant((message) => ({
+      ...message,
+      streaming: false,
+    }));
+  };
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      activeStreamAbortRef.current?.abort();
+    };
+  }, []);
+
 
   useEffect(() => {
     const loadHistory = async () => {
@@ -148,6 +171,10 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
     const trimmed = query.trim();
     if (!trimmed || isStreaming) return;
 
+    const streamController = new AbortController();
+    activeStreamAbortRef.current?.abort();
+    activeStreamAbortRef.current = streamController;
+
     setInput("");
     setMessages((prev) => [
       ...prev,
@@ -158,34 +185,46 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
     try {
       await api.queryDocumentStream(document.id, trimmed, {
         onSources: (sources) => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
           updateStreamingAssistant((message) => ({
             ...message,
             sources,
           }));
         },
         onToken: (token) => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
           updateStreamingAssistant((message) => ({
             ...message,
             content: `${message.content}${token}`,
           }));
         },
         onMeta: (pipelineMeta) => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
           updateStreamingAssistant((message) => ({
             ...message,
             pipeline_meta: pipelineMeta,
           }));
         },
         onDone: () => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
           updateStreamingAssistant((message) => ({
             ...message,
             streaming: false,
           }));
+          activeStreamAbortRef.current = null;
         },
         onError: (detail) => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
           appendStreamError(`Error: ${detail}`);
+          activeStreamAbortRef.current = null;
         },
-      });
+      }, { signal: streamController.signal });
     } catch (err) {
+      if (isAbortError(err)) {
+        if (isMountedRef.current) stopStreamingPlaceholder();
+        return;
+      }
+
       let errorMessage = "Error: Failed to get answer. Please try again.";
 
       if (err instanceof ApiError) {
@@ -201,6 +240,10 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
       }
 
       appendStreamError(errorMessage);
+    } finally {
+      if (activeStreamAbortRef.current === streamController) {
+        activeStreamAbortRef.current = null;
+      }
     }
   };
 
