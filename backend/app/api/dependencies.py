@@ -1,6 +1,6 @@
 import secrets
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -111,3 +111,21 @@ async def verify_csrf(request: Request) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="CSRF token mismatch",
         )
+
+
+async def csrf_header_for_docs(
+    x_csrf_token: str | None = Header(
+        default=None,
+        alias="X-CSRF-Token",
+        description=(
+            "Required for cookie-authenticated mutating requests. "
+            "Use csrf_token from login/refresh response or GET /api/auth/csrf."
+        ),
+    ),
+) -> None:
+    """
+    OpenAPI-only helper: expose X-CSRF-Token header in Swagger UI.
+
+    Runtime CSRF enforcement remains in verify_csrf().
+    """
+    del x_csrf_token

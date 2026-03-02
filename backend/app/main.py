@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 
 from app.api import auth, documents
-from app.api.dependencies import verify_csrf
+from app.api.dependencies import csrf_header_for_docs, verify_csrf
 from app.config import settings
 from app.database import async_engine, get_db, init_db
 from app.utils.logging_config import get_logger, setup_logging
@@ -68,13 +68,13 @@ app.include_router(
     documents.router,
     prefix="/api/documents",
     tags=["documents"],
-    dependencies=[Depends(verify_csrf)],
+    dependencies=[Depends(csrf_header_for_docs), Depends(verify_csrf)],
 )
 app.include_router(
     auth.router,
     prefix="/api/auth",
     tags=["auth"],
-    dependencies=[Depends(verify_csrf)],
+    dependencies=[Depends(csrf_header_for_docs), Depends(verify_csrf)],
 )
 
 

@@ -37,6 +37,12 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class CsrfTokenResponse(BaseModel):
+    """Response payload for CSRF token helper endpoint."""
+
+    csrf_token: str
+
+
 class RefreshRequest(BaseModel):
     """Request body for POST /api/auth/refresh and /api/auth/logout."""
 

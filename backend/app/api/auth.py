@@ -9,7 +9,14 @@ from app.crud.user import create_user, get_user_by_email, get_user_by_username
 from app.database import get_db
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
-from app.schemas.user import RefreshRequest, Token, UserCreate, UserLogin, UserResponse
+from app.schemas.user import (
+    CsrfTokenResponse,
+    RefreshRequest,
+    Token,
+    UserCreate,
+    UserLogin,
+    UserResponse,
+)
 from app.utils.cookies import clear_auth_cookies, set_auth_cookies
 from app.utils.rate_limit import get_ip_key, limiter
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
@@ -175,3 +182,21 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
     Accepts either an httpOnly access_token cookie or an Authorization: Bearer header.
     """
     return current_user
+
+
+@router.get("/csrf", response_model=CsrfTokenResponse)
+async def get_csrf_token(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return the current csrf_token cookie value for authenticated sessions.
+    """
+    del current_user
+    csrf_token = request.cookies.get("csrf_token")
+    if not csrf_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CSRF cookie not found. Login or refresh first.",
+        )
+    return {"csrf_token": csrf_token}

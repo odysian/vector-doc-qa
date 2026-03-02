@@ -235,6 +235,11 @@ back to socket peer IP to prevent header spoofing.
 - **Success (200):** `{ "message": "Logged out" }`
 - **Notes:** Deletes the refresh token row. Idempotent — returns 200 even if token doesn't exist.
 
+#### GET /api/auth/csrf
+- **Auth:** Required (cookie or Bearer)
+- **Success (200):** `{ "csrf_token": "opaque..." }`
+- **Notes:** Developer helper endpoint for tooling/Swagger/curl flows that need the current CSRF token value.
+
 #### GET /api/auth/me
 - **Auth:** Required (httpOnly access_token cookie or Bearer token)
 - **Success (200):** `{ "id": 1, "username": "chris", "email": "chris@example.com", "created_at": "..." }`
@@ -304,10 +309,22 @@ back to socket peer IP to prevent header spoofing.
 - **Auth:** Required
 - **Rate Limit:** 10/hour per user/IP
 - **Request Body:** `{ "query": "string" }`
-- **Success (200):** `{ "query": "...", "answer": "...", "sources": [...] }`
+- **Success (200):** `{ "query": "...", "answer": "...", "sources": [...], "pipeline_meta": { "embed_ms": 12, "retrieval_ms": 8, "llm_ms": 420, "total_ms": 440, "top_similarity": 0.91, "avg_similarity": 0.82, "chunks_retrieved": 5 } }`
 - **Notes:** Full RAG pipeline — embeds query, searches chunks, sends to Claude, saves messages
 - **Errors:**
   - 404: Document not found
+
+#### POST /api/documents/{document_id}/query/stream
+- **Auth:** Required
+- **Rate Limit:** 10/hour per user/IP (shared bucket with `/query`)
+- **Request Body:** `{ "query": "string" }`
+- **Success (200):** `text/event-stream` with ordered events:
+  - `sources`: JSON array of search results
+  - `token`: streamed answer token text
+  - `meta`: pipeline metadata (`embed_ms`, `retrieval_ms`, `llm_ms`, `total_ms`, `top_similarity`, `avg_similarity`, `chunks_retrieved`)
+  - `done`: `{ "message_id": <int> }`
+  - `error`: `{ "detail": "..." }` on failures
+- **Notes:** Uses a two-transaction pattern to avoid holding a DB session while streaming
 
 #### GET /api/documents/{document_id}/messages
 - **Auth:** Required

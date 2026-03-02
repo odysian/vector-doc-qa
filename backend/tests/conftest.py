@@ -301,6 +301,12 @@ FAKE_EMBEDDING = [0.1] * 1536
 def mock_embeddings():
     """Mock embedding functions at definition + runtime call sites."""
     with (
+        # documents API imports generate_embedding directly; patch runtime symbol
+        patch(
+            "app.api.documents.generate_embedding",
+            new_callable=AsyncMock,
+            return_value=FAKE_EMBEDDING,
+        ) as mock_api_single,
         # search_service imports generate_embedding directly, so patch that symbol
         patch(
             "app.services.search_service.generate_embedding",
@@ -321,6 +327,7 @@ def mock_embeddings():
         # Batch returns one embedding per input text
         mock_batch.side_effect = lambda texts: [FAKE_EMBEDDING] * len(texts)
         yield {
+            "api_single": mock_api_single,
             "single": mock_single,
             "search_single": mock_search_single,
             "batch": mock_batch,
