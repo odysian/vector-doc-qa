@@ -29,6 +29,32 @@ class _NoCloseSessionContext:
         return False
 
 
+class _FailingWriteSession:
+    """Minimal async session double that fails on commit."""
+
+    def add(self, _obj) -> None:  # type: ignore[no-untyped-def]
+        return None
+
+    async def commit(self) -> None:
+        raise RuntimeError("write failed")
+
+    async def refresh(self, _obj) -> None:  # type: ignore[no-untyped-def]
+        return None
+
+
+class _FailingSessionContext:
+    """Async context manager returning a failing write session."""
+
+    def __init__(self):
+        self.session = _FailingWriteSession()
+
+    async def __aenter__(self) -> _FailingWriteSession:
+        return self.session
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:  # type: ignore[no-untyped-def]
+        return False
+
+
 async def _read_sse_events(response) -> list[tuple[str, str]]:  # type: ignore[no-untyped-def]
     """Collect SSE events until a terminal done/error event is reached."""
     events: list[tuple[str, str]] = []
@@ -260,6 +286,67 @@ class TestQueryStream:
             json={"query": "test"},
         )
         assert response.status_code == 400
+
+    async def test_stream_query_emits_error_event_when_llm_stream_fails(
+        self, client, auth_headers, processed_document, mock_embeddings
+    ):
+        async def _failing_generate_answer_stream(
+            query: str,
+            chunks: list[dict],
+        ) -> AsyncGenerator[str, None]:
+            del query, chunks
+            yield "partial "
+            raise RuntimeError("anthropic stream failed")
+
+        with patch(
+            "app.api.documents.generate_answer_stream",
+            new=_failing_generate_answer_stream,
+        ):
+            async with client.stream(
+                "POST",
+                f"/api/documents/{processed_document.id}/query/stream",
+                headers=auth_headers,
+                json={"query": "Summarize this document"},
+            ) as response:
+                assert response.status_code == 200
+                events = await _read_sse_events(response)
+
+        event_types = [event for event, _ in events]
+        assert event_types == ["sources", "token", "error"]
+        assert json.loads(events[-1][1]) == {"detail": "Query failed"}
+
+    async def test_stream_query_emits_error_event_when_db_save_fails(
+        self, client, auth_headers, processed_document, mock_embeddings
+    ):
+        async def _fake_generate_answer_stream(
+            query: str,
+            chunks: list[dict],
+        ) -> AsyncGenerator[str, None]:
+            del query, chunks
+            yield "streamed token"
+
+        with (
+            patch(
+                "app.api.documents.generate_answer_stream",
+                new=_fake_generate_answer_stream,
+            ),
+            patch(
+                "app.api.documents.AsyncSessionLocal",
+                new=lambda: _FailingSessionContext(),
+            ),
+        ):
+            async with client.stream(
+                "POST",
+                f"/api/documents/{processed_document.id}/query/stream",
+                headers=auth_headers,
+                json={"query": "Summarize this document"},
+            ) as response:
+                assert response.status_code == 200
+                events = await _read_sse_events(response)
+
+        event_types = [event for event, _ in events]
+        assert event_types == ["sources", "token", "meta", "error"]
+        assert json.loads(events[-1][1]) == {"detail": "Query failed"}
 
 
 # ---------------------------------------------------------------------------
