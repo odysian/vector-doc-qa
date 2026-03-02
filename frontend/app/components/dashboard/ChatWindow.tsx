@@ -128,6 +128,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
   };
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
       activeStreamAbortRef.current?.abort();
