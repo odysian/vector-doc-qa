@@ -4,7 +4,15 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
+from app.services import embedding_service
 from app.services.embedding_service import generate_embeddings_batch
+
+
+@pytest.fixture(autouse=True)
+def reset_embedding_client_singleton():
+    embedding_service._client = None
+    yield
+    embedding_service._client = None
 
 
 class TestGenerateEmbeddingsBatch:
