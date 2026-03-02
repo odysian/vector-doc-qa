@@ -355,7 +355,9 @@ export const api = {
         if (line.startsWith("event:")) {
           event = line.slice("event:".length).trim();
         } else if (line.startsWith("data:")) {
-          dataLines.push(line.slice("data:".length).trimStart());
+          const rawValue = line.slice("data:".length);
+          // SSE field parsing drops one optional leading space after ":".
+          dataLines.push(rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue);
         }
       }
 
