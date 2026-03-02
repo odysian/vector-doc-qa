@@ -14,6 +14,7 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 - POST /api/auth/login with valid credentials returns 200 and JSON body with `csrf_token` (no auth tokens in body)
 - POST /api/auth/refresh with valid refresh credential returns 200 and JSON body with `csrf_token` (no auth tokens in body)
 - GET /api/auth/me with valid token returns current user data
+- GET /api/auth/csrf returns `csrf_token` for authenticated cookie sessions
 - Password is hashed (not stored as plaintext) in database
 
 ### Error Cases

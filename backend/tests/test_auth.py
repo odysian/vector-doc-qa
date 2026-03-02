@@ -220,6 +220,34 @@ class TestMe:
         assert response.status_code == 401
 
 
+class TestCsrfHelper:
+    """GET /api/auth/csrf"""
+
+    async def test_csrf_helper_returns_cookie_value_for_logged_in_user(
+        self, client: AsyncClient, test_user: User
+    ):
+        login_response = await client.post(
+            "/api/auth/login",
+            json={"username": test_user.username, "password": TEST_PASSWORD},
+        )
+        assert login_response.status_code == 200
+
+        response = await client.get("/api/auth/csrf")
+        assert response.status_code == 200
+        assert response.json()["csrf_token"] == login_response.json()["csrf_token"]
+
+    async def test_csrf_helper_requires_authentication(self, client: AsyncClient):
+        response = await client.get("/api/auth/csrf")
+        assert response.status_code == 401
+
+    async def test_csrf_helper_returns_400_for_bearer_without_cookie(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ):
+        response = await client.get("/api/auth/csrf", headers=auth_headers)
+        assert response.status_code == 400
+        assert "CSRF cookie not found" in response.json()["detail"]
+
+
 class TestLoginStoresRefreshToken:
     """POST /api/auth/login — refresh token persistence."""
 

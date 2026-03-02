@@ -235,6 +235,11 @@ back to socket peer IP to prevent header spoofing.
 - **Success (200):** `{ "message": "Logged out" }`
 - **Notes:** Deletes the refresh token row. Idempotent — returns 200 even if token doesn't exist.
 
+#### GET /api/auth/csrf
+- **Auth:** Required (cookie or Bearer)
+- **Success (200):** `{ "csrf_token": "opaque..." }`
+- **Notes:** Developer helper endpoint for tooling/Swagger/curl flows that need the current CSRF token value.
+
 #### GET /api/auth/me
 - **Auth:** Required (httpOnly access_token cookie or Bearer token)
 - **Success (200):** `{ "id": 1, "username": "chris", "email": "chris@example.com", "created_at": "..." }`
