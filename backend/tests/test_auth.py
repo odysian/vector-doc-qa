@@ -10,10 +10,18 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from jose import jwt
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import create_refresh_token, get_password_hash, validate_refresh_token
+from app.config import settings
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_access_token,
+    get_password_hash,
+    validate_refresh_token,
+)
 from app.database import get_db
 from app.main import app
 from app.models.refresh_token import RefreshToken
@@ -193,6 +201,44 @@ class TestLogin:
         assert response.status_code == 401
         assert "Incorrect username or password" in response.json()["detail"]
 
+
+class TestAccessTokenCreation:
+    """Access token expiration behavior."""
+
+    def test_access_token_omits_exp_when_configured_non_expiring(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.setattr(settings, "access_token_expire_minutes", 0)
+
+        token = create_access_token({"sub": "42"})
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.algorithm],
+            options={"verify_exp": False},
+        )
+
+        assert payload["sub"] == "42"
+        assert "exp" not in payload
+        assert decode_access_token(token) == "42"
+
+    def test_access_token_includes_exp_when_expiration_is_enabled(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.setattr(settings, "access_token_expire_minutes", 30)
+
+        token = create_access_token({"sub": "42"})
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.algorithm],
+            options={"verify_exp": False},
+        )
+
+        assert payload["sub"] == "42"
+        assert "exp" in payload
 
 class TestMe:
     """GET /api/auth/me"""
