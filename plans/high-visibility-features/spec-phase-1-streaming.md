@@ -42,6 +42,7 @@ Add streaming RAG responses and pipeline observability metadata to Quaero. Users
 - [ ] Task: Streaming frontend (SSE consumer + ChatWindow + pipeline meta UI)
 - [ ] Task: Streaming frontend test coverage (SSE parser + stream lifecycle regression tests)
 - [ ] Task: High-value frontend regression tests (#50) (core auth/dashboard API-contract hardening ahead of Phase 2 UI work)
+- [ ] Task: NGINX SSE proxy hardening (#52) (production token-stream buffering fix)
 
 Split rationale: Backend contract should land and be testable before frontend integration. Frontend test coverage is a dedicated hardening task so later P1 changes can move faster with lower regression risk.
 
