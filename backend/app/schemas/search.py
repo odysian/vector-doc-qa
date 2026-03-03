@@ -15,6 +15,8 @@ class SearchResult(BaseModel):
     content: str
     similarity: float = Field(...)
     chunk_index: int
+    page_start: int | None = None
+    page_end: int | None = None
 
 
 class SearchResponse(BaseModel):

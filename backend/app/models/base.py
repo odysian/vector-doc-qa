@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from app.database import Base
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, Integer
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -78,6 +78,8 @@ class Chunk(Base):
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), index=True)
     content: Mapped[str] = mapped_column(Text)
     chunk_index: Mapped[int]
+    page_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    page_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Vector embedding (nullable - added after chunk creation)
     embedding: Mapped[Vector | None] = mapped_column(Vector(1536), default=None)

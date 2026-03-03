@@ -115,6 +115,8 @@ class TestSearch:
             assert "content" in result
             assert "similarity" in result
             assert "chunk_index" in result
+            assert "page_start" in result
+            assert "page_end" in result
 
     async def test_search_returns_404_for_other_users_document(
         self, client, second_user_headers, processed_document

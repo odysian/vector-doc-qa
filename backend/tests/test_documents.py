@@ -215,6 +215,43 @@ class TestGetDocument:
         assert response.status_code == 404
 
 
+class TestGetDocumentFile:
+    """GET /api/documents/{id}/file"""
+
+    async def test_get_document_file_returns_pdf_bytes_with_expected_headers(
+        self, client, auth_headers, test_document
+    ):
+        pdf_bytes = b"%PDF-1.4 test payload"
+
+        with patch(
+            "app.api.documents.read_file_bytes",
+            new=AsyncMock(return_value=pdf_bytes),
+        ):
+            response = await client.get(
+                f"/api/documents/{test_document.id}/file",
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200
+        assert response.content == pdf_bytes
+        assert response.headers["content-type"].startswith("application/pdf")
+        assert response.headers["content-disposition"] == 'inline; filename="test.pdf"'
+        assert response.headers["cache-control"] == "private, max-age=3600"
+
+    async def test_get_document_file_returns_404_for_nonexistent_id(self, client, auth_headers):
+        response = await client.get("/api/documents/99999/file", headers=auth_headers)
+        assert response.status_code == 404
+
+    async def test_get_document_file_returns_404_for_other_users_document(
+        self, client, second_user_headers, test_document
+    ):
+        response = await client.get(
+            f"/api/documents/{test_document.id}/file",
+            headers=second_user_headers,
+        )
+        assert response.status_code == 404
+
+
 # ---------------------------------------------------------------------------
 # Delete
 # ---------------------------------------------------------------------------

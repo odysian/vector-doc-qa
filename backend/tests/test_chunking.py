@@ -1,7 +1,11 @@
 # tests/test_chunking.py
 """Tests for text chunking algorithm in pdf_utils.chunk_text."""
 
-from app.utils.pdf_utils import chunk_text
+from app.utils.pdf_utils import PageBoundary, chunk_text
+
+
+def _contents(chunks):
+    return [chunk.content for chunk in chunks]
 
 
 class TestChunkTextBasic:
@@ -16,12 +20,12 @@ class TestChunkTextBasic:
     def test_text_shorter_than_chunk_size_returns_single_chunk(self):
         text = "Hello world"
         result = chunk_text(text, chunk_size=100, overlap=10)
-        assert result == [text]
+        assert _contents(result) == [text]
 
     def test_text_equal_to_chunk_size_returns_single_chunk(self):
         text = "a" * 100
         result = chunk_text(text, chunk_size=100, overlap=10)
-        assert result == [text]
+        assert _contents(result) == [text]
 
     def test_all_text_is_covered(self):
         """Every character in the original text appears in at least one chunk."""
@@ -29,9 +33,9 @@ class TestChunkTextBasic:
         chunks = chunk_text(text, chunk_size=100, overlap=20)
         merged = set()
         for chunk in chunks:
-            idx = text.find(chunk)
-            assert idx != -1, f"Chunk not found in original text: {chunk!r}"
-            for i in range(idx, idx + len(chunk)):
+            idx = text.find(chunk.content)
+            assert idx != -1, f"Chunk not found in original text: {chunk.content!r}"
+            for i in range(idx, idx + len(chunk.content)):
                 merged.add(i)
         # Every non-whitespace position should be covered
         for i, ch in enumerate(text):
@@ -49,13 +53,13 @@ class TestChunkWordBoundaries:
         text = " ".join(f"word{i}" for i in range(200))
         chunks = chunk_text(text, chunk_size=100, overlap=20)
         for i, chunk in enumerate(chunks):
-            assert not chunk[0].isspace(), (
+            assert not chunk.content[0].isspace(), (
                 f"Chunk {i} starts with whitespace"
             )
             # First char should be the start of a word — verify the char
             # before this chunk in the original text is a space or this is
             # the first chunk
-            idx = text.find(chunk)
+            idx = text.find(chunk.content)
             if idx > 0:
                 assert text[idx - 1].isspace(), (
                     f"Chunk {i} starts mid-word: "
@@ -67,8 +71,8 @@ class TestChunkWordBoundaries:
         text = " ".join(f"word{i}" for i in range(200))
         chunks = chunk_text(text, chunk_size=100, overlap=20)
         for i, chunk in enumerate(chunks[:-1]):
-            idx = text.find(chunk)
-            end_pos = idx + len(chunk)
+            idx = text.find(chunk.content)
+            end_pos = idx + len(chunk.content)
             if end_pos < len(text):
                 assert text[end_pos].isspace(), (
                     f"Chunk {i} ends mid-word: "
@@ -87,9 +91,9 @@ class TestChunkOverlap:
         for i in range(len(chunks) - 1):
             # The end of chunk[i] should overlap with the start of chunk[i+1]
             # Find where chunk[i+1] starts in original text
-            idx_a = text.find(chunks[i])
-            idx_b = text.find(chunks[i + 1])
-            end_a = idx_a + len(chunks[i])
+            idx_a = text.find(chunks[i].content)
+            idx_b = text.find(chunks[i + 1].content)
+            end_a = idx_a + len(chunks[i].content)
             assert idx_b < end_a, (
                 f"Chunks {i} and {i+1} have no overlap: "
                 f"chunk {i} ends at {end_a}, chunk {i+1} starts at {idx_b}"
@@ -101,9 +105,9 @@ class TestChunkOverlap:
         chunks = chunk_text(text, chunk_size=100, overlap=0)
         assert len(chunks) > 1
         for i in range(len(chunks) - 1):
-            idx_a = text.find(chunks[i])
-            idx_b = text.find(chunks[i + 1])
-            end_a = idx_a + len(chunks[i])
+            idx_a = text.find(chunks[i].content)
+            idx_b = text.find(chunks[i + 1].content)
+            end_a = idx_a + len(chunks[i].content)
             assert idx_b >= end_a, (
                 f"Chunks {i} and {i+1} overlap with overlap=0"
             )
@@ -117,7 +121,7 @@ class TestChunkEdgeCases:
         text = "a" * 250
         chunks = chunk_text(text, chunk_size=100, overlap=20)
         # Should still produce chunks covering all text
-        combined = "".join(chunks)
+        combined = "".join(_contents(chunks))
         assert "a" * 250 in combined or len(combined) >= 250
 
     def test_tail_is_not_dropped(self):
@@ -127,7 +131,7 @@ class TestChunkEdgeCases:
         tail = " UNIQUETAIL"
         text = words + tail
         chunks = chunk_text(text, chunk_size=100, overlap=20)
-        last_chunk = chunks[-1]
+        last_chunk = chunks[-1].content
         assert "UNIQUETAIL" in last_chunk, (
             f"Tail was dropped. Last chunk: {last_chunk!r}"
         )
@@ -138,7 +142,7 @@ class TestChunkEdgeCases:
         chunks = chunk_text(text, chunk_size=100, overlap=90)
         assert len(chunks) > 0
         # Verify all text is covered
-        assert chunks[-1] in text
+        assert chunks[-1].content in text
 
     def test_single_space_separated_words(self):
         """Standard prose-like text."""
@@ -147,7 +151,7 @@ class TestChunkEdgeCases:
         assert len(chunks) > 1
         for chunk in chunks:
             # No chunk should start or end with a space
-            assert chunk == chunk.strip()
+            assert chunk.content == chunk.content.strip()
 
     def test_multiline_text_from_pdf(self):
         """Text with newlines (as produced by PDF page joins)."""
@@ -156,4 +160,36 @@ class TestChunkEdgeCases:
         assert len(chunks) > 1
         # All text should be recoverable
         for word in ["First", "Second", "Third", "end"]:
-            assert any(word in c for c in chunks), f"{word!r} missing from chunks"
+            assert any(word in c.content for c in chunks), f"{word!r} missing from chunks"
+
+
+class TestChunkPageTracking:
+    """Page boundary metadata assignment."""
+
+    def test_chunk_page_metadata_defaults_to_null_without_boundaries(self):
+        chunks = chunk_text("word1 word2 word3", chunk_size=8, overlap=2)
+        assert len(chunks) > 0
+        assert all(chunk.page_start is None for chunk in chunks)
+        assert all(chunk.page_end is None for chunk in chunks)
+
+    def test_chunk_page_metadata_maps_multi_page_ranges(self):
+        page_1 = "A" * 80
+        page_2 = "beta " * 20
+        text = page_1 + "\n\n" + page_2
+        page_boundaries = [
+            PageBoundary(page_number=1, end_char=len(page_1)),
+            PageBoundary(page_number=2, end_char=len(text)),
+        ]
+
+        chunks = chunk_text(
+            text,
+            chunk_size=120,
+            overlap=20,
+            page_boundaries=page_boundaries,
+        )
+
+        assert len(chunks) >= 2
+        assert chunks[0].page_start == 1
+        assert chunks[0].page_end == 2
+        assert chunks[-1].page_start == 2
+        assert chunks[-1].page_end == 2
