@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.models.base import Chunk, Document, DocumentStatus
 from app.services.document_service import process_document_text
+from app.utils.pdf_utils import ChunkWithPage, ExtractedPdfText
 
 
 async def _create_document(
@@ -37,12 +38,20 @@ class TestDocumentServiceProcessingIntegrity:
                 new=AsyncMock(return_value=b"%PDF-1.4 test"),
             ),
             patch(
-                "app.services.document_service.extract_text_from_pdf_bytes",
-                new=AsyncMock(return_value="alpha beta gamma"),
+                "app.services.document_service.extract_text_with_page_boundaries_from_pdf_bytes",
+                new=AsyncMock(
+                    return_value=ExtractedPdfText(
+                        text="alpha beta gamma",
+                        page_boundaries=[],
+                    )
+                ),
             ),
             patch(
                 "app.services.document_service.chunk_text",
-                return_value=["chunk-a", "chunk-b"],
+                return_value=[
+                    ChunkWithPage(content="chunk-a"),
+                    ChunkWithPage(content="chunk-b"),
+                ],
             ),
             patch(
                 "app.services.document_service.generate_embeddings_batch",
@@ -72,12 +81,20 @@ class TestDocumentServiceProcessingIntegrity:
                 new=AsyncMock(return_value=b"%PDF-1.4 test"),
             ),
             patch(
-                "app.services.document_service.extract_text_from_pdf_bytes",
-                new=AsyncMock(return_value="alpha beta gamma"),
+                "app.services.document_service.extract_text_with_page_boundaries_from_pdf_bytes",
+                new=AsyncMock(
+                    return_value=ExtractedPdfText(
+                        text="alpha beta gamma",
+                        page_boundaries=[],
+                    )
+                ),
             ),
             patch(
                 "app.services.document_service.chunk_text",
-                return_value=["chunk-a", "chunk-b"],
+                return_value=[
+                    ChunkWithPage(content="chunk-a"),
+                    ChunkWithPage(content="chunk-b"),
+                ],
             ),
             patch(
                 "app.services.document_service.generate_embeddings_batch",
@@ -119,12 +136,20 @@ class TestDocumentServiceProcessingIntegrity:
                 new=AsyncMock(return_value=b"%PDF-1.4 test"),
             ),
             patch(
-                "app.services.document_service.extract_text_from_pdf_bytes",
-                new=AsyncMock(return_value="new text for retry"),
+                "app.services.document_service.extract_text_with_page_boundaries_from_pdf_bytes",
+                new=AsyncMock(
+                    return_value=ExtractedPdfText(
+                        text="new text for retry",
+                        page_boundaries=[],
+                    )
+                ),
             ),
             patch(
                 "app.services.document_service.chunk_text",
-                return_value=["new-chunk-0", "new-chunk-1"],
+                return_value=[
+                    ChunkWithPage(content="new-chunk-0"),
+                    ChunkWithPage(content="new-chunk-1"),
+                ],
             ),
             patch(
                 "app.services.document_service.generate_embeddings_batch",
@@ -161,12 +186,20 @@ class TestDocumentServiceProcessingIntegrity:
                 new=AsyncMock(return_value=b"%PDF-1.4 test"),
             ),
             patch(
-                "app.services.document_service.extract_text_from_pdf_bytes",
-                new=AsyncMock(return_value="alpha beta gamma"),
+                "app.services.document_service.extract_text_with_page_boundaries_from_pdf_bytes",
+                new=AsyncMock(
+                    return_value=ExtractedPdfText(
+                        text="alpha beta gamma",
+                        page_boundaries=[],
+                    )
+                ),
             ),
             patch(
                 "app.services.document_service.chunk_text",
-                return_value=["chunk-a", "chunk-b"],
+                return_value=[
+                    ChunkWithPage(content="chunk-a"),
+                    ChunkWithPage(content="chunk-b"),
+                ],
             ),
             patch(
                 "app.services.document_service.generate_embeddings_batch",
@@ -186,3 +219,52 @@ class TestDocumentServiceProcessingIntegrity:
         await db_session.refresh(document)
         assert document.status == DocumentStatus.FAILED
         assert "Embedding count mismatch" in document.error_message
+
+    async def test_processing_persists_chunk_page_boundaries(
+        self, db_session, test_user
+    ):
+        document = await _create_document(
+            db_session, test_user.id, status=DocumentStatus.PENDING
+        )
+
+        with (
+            patch(
+                "app.services.document_service.read_file_bytes",
+                new=AsyncMock(return_value=b"%PDF-1.4 test"),
+            ),
+            patch(
+                "app.services.document_service.extract_text_with_page_boundaries_from_pdf_bytes",
+                new=AsyncMock(
+                    return_value=ExtractedPdfText(
+                        text="alpha beta gamma",
+                        page_boundaries=[],
+                    )
+                ),
+            ),
+            patch(
+                "app.services.document_service.chunk_text",
+                return_value=[
+                    ChunkWithPage(content="chunk-a", page_start=1, page_end=1),
+                    ChunkWithPage(content="chunk-b", page_start=1, page_end=2),
+                ],
+            ),
+            patch(
+                "app.services.document_service.generate_embeddings_batch",
+                new=AsyncMock(return_value=[[0.2] * 1536, [0.3] * 1536]),
+            ),
+        ):
+            await process_document_text(document_id=document.id, db=db_session)
+
+        chunks = (
+            await db_session.scalars(
+                select(Chunk)
+                .where(Chunk.document_id == document.id)
+                .order_by(Chunk.chunk_index)
+            )
+        ).all()
+
+        assert len(chunks) == 2
+        assert chunks[0].page_start == 1
+        assert chunks[0].page_end == 1
+        assert chunks[1].page_start == 1
+        assert chunks[1].page_end == 2

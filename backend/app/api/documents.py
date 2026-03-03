@@ -1,6 +1,7 @@
 import json
 import time
 from collections.abc import AsyncGenerator
+from urllib.parse import quote
 
 from app.api.dependencies import get_current_user
 from app.database import AsyncSessionLocal, get_db
@@ -20,12 +21,12 @@ from app.services.anthropic_service import generate_answer, generate_answer_stre
 from app.services.embedding_service import generate_embedding
 from app.services.queue_service import enqueue_document_processing
 from app.services.search_service import search_chunks
-from app.services.storage_service import delete_file
+from app.services.storage_service import delete_file, read_file_bytes
 from app.utils.file_utils import save_upload_file, validate_file_upload
 from app.utils.logging_config import get_logger
 from app.utils.rate_limit import get_user_or_ip_key, limiter
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
-from fastapi.responses import EventSourceResponse
+from fastapi.responses import EventSourceResponse, Response
 from fastapi.sse import ServerSentEvent, format_sse_event
 from sqlalchemy import literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -93,7 +94,14 @@ async def _search_chunks_from_embedding(
     """
     distance_expr = Chunk.embedding.cosine_distance(query_embedding).label("distance")
     stmt = (
-        select(Chunk.id, Chunk.content, Chunk.chunk_index, distance_expr)
+        select(
+            Chunk.id,
+            Chunk.content,
+            Chunk.chunk_index,
+            Chunk.page_start,
+            Chunk.page_end,
+            distance_expr,
+        )
         .where(Chunk.document_id == document_id)
         .where(Chunk.embedding.isnot(None))
         .order_by(distance_expr)
@@ -103,13 +111,15 @@ async def _search_chunks_from_embedding(
     rows = (await db.execute(stmt)).all()
 
     results: list[dict] = []
-    for chunk_id, content, chunk_index, distance in rows:
+    for chunk_id, content, chunk_index, page_start, page_end, distance in rows:
         results.append(
             {
                 "chunk_id": chunk_id,
                 "content": content,
                 "similarity": round(1 - distance, 4),
                 "chunk_index": chunk_index,
+                "page_start": page_start,
+                "page_end": page_end,
             }
         )
     return results
@@ -254,6 +264,53 @@ async def get_document(
         )
 
     return document
+
+
+@router.get("/{document_id}/file")
+@limiter.limit("30/hour", key_func=get_user_or_ip_key)
+async def get_document_file(
+    request: Request,
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return raw PDF bytes for a document the current user owns.
+    """
+    stmt = (
+        select(Document)
+        .where(Document.id == document_id)
+        .where(Document.user_id == current_user.id)
+    )
+    document = await db.scalar(stmt)
+
+    if not document:
+        raise HTTPException(
+            status_code=404, detail=f"Document with ID {document_id} not found"
+        )
+
+    try:
+        pdf_bytes = await read_file_bytes(document.file_path)
+    except (FileNotFoundError, OSError):
+        raise HTTPException(
+            status_code=404, detail="Document file not available"
+        )
+
+    # RFC 6266: ASCII-safe filename + UTF-8 extended filename for non-ASCII
+    safe_filename = document.filename.replace('"', "")
+    encoded_filename = quote(document.filename)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                f'inline; filename="{safe_filename}"; '
+                f"filename*=UTF-8''{encoded_filename}"
+            ),
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
 
 
 @router.get("/{document_id}/status", response_model=DocumentStatusResponse)

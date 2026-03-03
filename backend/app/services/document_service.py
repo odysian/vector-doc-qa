@@ -7,7 +7,10 @@ from app.models.base import Chunk, Document, DocumentStatus
 from app.services.embedding_service import generate_embeddings_batch
 from app.services.storage_service import read_file_bytes
 from app.utils.logging_config import get_logger
-from app.utils.pdf_utils import chunk_text, extract_text_from_pdf_bytes
+from app.utils.pdf_utils import (
+    chunk_text,
+    extract_text_with_page_boundaries_from_pdf_bytes,
+)
 
 logger = get_logger(__name__)
 
@@ -54,21 +57,30 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
         # Extract text from pdf (CPU-bound, offloaded to process pool)
         logger.info(f"Extracting text from {document.filename}")
         pdf_bytes = await read_file_bytes(document.file_path)
-        text = await extract_text_from_pdf_bytes(pdf_bytes)
-        logger.info(f"Extracted {len(text)} characters")
+        extracted_pdf = await extract_text_with_page_boundaries_from_pdf_bytes(pdf_bytes)
+        logger.info(f"Extracted {len(extracted_pdf.text)} characters")
 
-        if not text or not text.strip():
+        if not extracted_pdf.text or not extracted_pdf.text.strip():
             raise ValueError("No text could be extracted from PDF")
 
         # Break pdf text into chunks (CPU-bound, stays sync)
         logger.info("Chunking text")
-        chunks = chunk_text(text)
+        chunks = chunk_text(
+            extracted_pdf.text,
+            page_boundaries=extracted_pdf.page_boundaries,
+        )
         logger.info(f"Created {len(chunks)} chunks")
 
         # Build chunks and add to db, chunk_objects list preserves order for embeddings
         chunk_objects = []
-        for i, chunk_content in enumerate(chunks):
-            chunk = Chunk(document_id=document.id, content=chunk_content, chunk_index=i)
+        for i, chunk_payload in enumerate(chunks):
+            chunk = Chunk(
+                document_id=document.id,
+                content=chunk_payload.content,
+                chunk_index=i,
+                page_start=chunk_payload.page_start,
+                page_end=chunk_payload.page_end,
+            )
             chunk_objects.append(chunk)
             db.add(chunk)
 

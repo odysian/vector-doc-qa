@@ -21,7 +21,14 @@ async def search_chunks(query: str, document_id: int, top_k: int, db: AsyncSessi
     distance_expr = Chunk.embedding.cosine_distance(query_embedding).label("distance")
 
     stmt = (
-        select(Chunk.id, Chunk.content, Chunk.chunk_index, distance_expr)
+        select(
+            Chunk.id,
+            Chunk.content,
+            Chunk.chunk_index,
+            Chunk.page_start,
+            Chunk.page_end,
+            distance_expr,
+        )
         .where(Chunk.document_id == document_id)
         .where(Chunk.embedding.isnot(None))
         .order_by(distance_expr)
@@ -33,7 +40,7 @@ async def search_chunks(query: str, document_id: int, top_k: int, db: AsyncSessi
     logger.debug(f"Query returned {len(results)} results")
 
     search_results = []
-    for chunk_id, content, chunk_index, distance in results:
+    for chunk_id, content, chunk_index, page_start, page_end, distance in results:
         similarity = 1 - distance
         search_results.append(
             {
@@ -41,6 +48,8 @@ async def search_chunks(query: str, document_id: int, top_k: int, db: AsyncSessi
                 "content": content,
                 "similarity": round(similarity, 4),
                 "chunk_index": chunk_index,
+                "page_start": page_start,
+                "page_end": page_end,
             }
         )
 
