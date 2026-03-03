@@ -190,6 +190,7 @@ GHCR_TOKEN="<ghcr-token>" \
 3. Document flow:
    - upload PDF
    - status transitions from `pending/processing` to `completed`
+   - query stream renders token-by-token (not single buffered block)
    - query returns answer with sources
    - delete succeeds
 4. Worker:
@@ -204,6 +205,16 @@ GHCR_TOKEN="<ghcr-token>" \
 ```bash
 sudo nginx -t
 sudo systemctl status nginx --no-pager
+```
+
+## SSE proxy checks
+
+```bash
+# Confirm stream endpoint has anti-buffering directives
+sudo nginx -T | grep -E "query/stream|proxy_buffering off|X-Accel-Buffering|gzip off|proxy_read_timeout"
+
+# Apply config changes safely
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
 ## Certbot status
@@ -292,6 +303,32 @@ Actions:
 2. Confirm Redis URL and connectivity.
 3. Verify `run-web-and-worker.sh` is startup command in running image.
 4. Restart container and retest upload.
+
+## Streaming answer arrives as one full block (no incremental tokens)
+
+Symptoms:
+
+- Frontend shows final answer all at once in production
+- Local streaming works token-by-token
+- `/query/stream` succeeds with `200` but cadence is lost
+
+Actions:
+
+1. Check NGINX stream-path directives are present:
+   - `proxy_buffering off`
+   - `proxy_cache off`
+   - `gzip off`
+   - `proxy_read_timeout 3600s`
+   - `add_header X-Accel-Buffering "no" always`
+2. Reload NGINX:
+   - `sudo nginx -t && sudo systemctl reload nginx`
+3. Re-run streaming query and inspect response headers in browser network tab:
+   - `content-type: text/event-stream`
+   - `x-accel-buffering: no`
+4. If still buffered, capture:
+   - `/var/log/nginx/error.log`
+   - `/var/log/nginx/access.log`
+   - browser request/response headers for `/api/documents/{id}/query/stream`
 
 ---
 

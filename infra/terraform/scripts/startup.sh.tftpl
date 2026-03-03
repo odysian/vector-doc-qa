@@ -33,10 +33,33 @@ if [[ ! -f "$${BOOTSTRAP_MARKER}" ]]; then
     curl -fsSL https://get.docker.com | sh
   fi
 
-  cat > "$${NGINX_SITE}" <<EOF
+  systemctl enable --now docker
+  systemctl enable --now certbot.timer || true
+  touch "$${BOOTSTRAP_MARKER}"
+fi
+
+# Always render the NGINX site so proxy updates apply to existing VMs too.
+cat > "$${NGINX_SITE}" <<EOF
 server {
     listen 80;
     server_name $${API_DOMAIN};
+
+    # Keep SSE responses truly streaming for the query stream endpoint.
+    location ~ ^/api/documents/[0-9]+/query/stream$ {
+        proxy_pass http://127.0.0.1:$${BACKEND_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        gzip off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        send_timeout 3600s;
+        add_header X-Accel-Buffering "no" always;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:$${BACKEND_PORT};
@@ -49,16 +72,11 @@ server {
 }
 EOF
 
-  ln -sf "$${NGINX_SITE}" /etc/nginx/sites-enabled/quaero-backend
-  rm -f /etc/nginx/sites-enabled/default
-  nginx -t
-  systemctl enable --now nginx
-  systemctl restart nginx
-
-  systemctl enable --now docker
-  systemctl enable --now certbot.timer || true
-  touch "$${BOOTSTRAP_MARKER}"
-fi
+ln -sf "$${NGINX_SITE}" /etc/nginx/sites-enabled/quaero-backend
+rm -f /etc/nginx/sites-enabled/default
+nginx -t
+systemctl enable --now nginx
+systemctl restart nginx
 
 if [[ "$${ENABLE_TLS_BOOTSTRAP}" == "true" ]] && [[ -n "$${CERTBOT_EMAIL}" ]] && [[ ! -f "/etc/letsencrypt/live/$${API_DOMAIN}/fullchain.pem" ]]; then
   certbot --nginx --non-interactive --agree-tos \
