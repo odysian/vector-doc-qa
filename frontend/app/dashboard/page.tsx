@@ -280,7 +280,7 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col">
+    <div className="h-screen overflow-hidden bg-zinc-950 flex flex-col">
       {/* Header */}
       <header className="shrink-0 border-b border-zinc-800 bg-zinc-900/50">
         <div className="flex items-center justify-between h-14 px-4">
@@ -342,7 +342,7 @@ export default function DashboardPage() {
         )}
 
         {/* Main: chat or empty state */}
-        <main className="flex-1 min-w-0 flex flex-col p-4 lg:p-6">
+        <main className="flex-1 min-w-0 min-h-0 flex flex-col p-4 lg:p-6">
           {loading ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-6">
               <h2

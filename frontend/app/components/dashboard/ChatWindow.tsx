@@ -7,13 +7,15 @@
 
 import { useState, useRef, useEffect, SyntheticEvent } from "react";
 import { ArrowLeft } from "lucide-react";
-import { type Document, api, type QueryResponse, ApiError } from "@/lib/api";
+import { type Document, api, type QueryResponse, type PipelineMeta, ApiError } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   sources?: QueryResponse["sources"];
+  pipeline_meta?: PipelineMeta;
+  streaming?: boolean;
 }
 
 interface ChatWindowProps {
@@ -33,11 +35,23 @@ const SUGGESTED_PROMPTS = [
 export function ChatWindow({ document, onBack }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [expandedSourceIndices, setExpandedSourceIndices] = useState<Set<number>>(new Set());
   const [expandedSourceCards, setExpandedSourceCards] = useState<Set<string>>(new Set());
+  const [expandedPipelineMetaIndices, setExpandedPipelineMetaIndices] = useState<Set<number>>(
+    new Set()
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isMountedRef = useRef(true);
+  const activeStreamAbortRef = useRef<AbortController | null>(null);
+  const isStreaming = messages.some((message) => message.streaming);
+
+  const isAbortError = (err: unknown): boolean => {
+    return (
+      (err instanceof DOMException && err.name === "AbortError")
+      || (typeof err === "object" && err !== null && "name" in err && err.name === "AbortError")
+    );
+  };
 
   /** Toggle whether the whole "Sources" block for a message is open or collapsed. */
   const toggleSources = (messageIndex: number) => {
@@ -62,6 +76,64 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
       return next;
     });
   };
+
+  /** Toggle pipeline timing metadata for an assistant message. */
+  const togglePipelineMeta = (messageIndex: number) => {
+    setExpandedPipelineMetaIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageIndex)) next.delete(messageIndex);
+      else next.add(messageIndex);
+      return next;
+    });
+  };
+
+  const updateStreamingAssistant = (updater: (message: Message) => Message) => {
+    setMessages((prev) => {
+      const streamingIndex = prev.findIndex(
+        (message) => message.role === "assistant" && message.streaming
+      );
+      if (streamingIndex === -1) return prev;
+
+      const next = [...prev];
+      next[streamingIndex] = updater(next[streamingIndex]);
+      return next;
+    });
+  };
+
+  const appendStreamError = (errorMessage: string) => {
+    setMessages((prev) => {
+      const streamingIndex = prev.findIndex(
+        (message) => message.role === "assistant" && message.streaming
+      );
+      if (streamingIndex === -1) {
+        return [...prev, { role: "assistant", content: errorMessage }];
+      }
+
+      const next = [...prev];
+      const current = next[streamingIndex];
+      next[streamingIndex] = {
+        ...current,
+        content: current.content ? `${current.content}\n\n${errorMessage}` : errorMessage,
+        streaming: false,
+      };
+      return next;
+    });
+  };
+
+  const stopStreamingPlaceholder = () => {
+    updateStreamingAssistant((message) => ({
+      ...message,
+      streaming: false,
+    }));
+  };
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      activeStreamAbortRef.current?.abort();
+    };
+  }, []);
 
 
   useEffect(() => {
@@ -98,24 +170,62 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
 
   const submitQuery = async (query: string) => {
     const trimmed = query.trim();
-    if (!trimmed || loading) return;
+    if (!trimmed || isStreaming) return;
+
+    const streamController = new AbortController();
+    activeStreamAbortRef.current?.abort();
+    activeStreamAbortRef.current = streamController;
 
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
-    setLoading(true);
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: trimmed },
+      { role: "assistant", content: "", streaming: true },
+    ]);
 
     try {
-      const response = await api.queryDocument(document.id, trimmed);
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: response.answer,
-          sources: response.sources,
+      await api.queryDocumentStream(document.id, trimmed, {
+        onSources: (sources) => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
+          updateStreamingAssistant((message) => ({
+            ...message,
+            sources,
+          }));
         },
-      ]);
+        onToken: (token) => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
+          updateStreamingAssistant((message) => ({
+            ...message,
+            content: `${message.content}${token}`,
+          }));
+        },
+        onMeta: (pipelineMeta) => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
+          updateStreamingAssistant((message) => ({
+            ...message,
+            pipeline_meta: pipelineMeta,
+          }));
+        },
+        onDone: () => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
+          updateStreamingAssistant((message) => ({
+            ...message,
+            streaming: false,
+          }));
+          activeStreamAbortRef.current = null;
+        },
+        onError: (detail) => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
+          appendStreamError(`Error: ${detail}`);
+          activeStreamAbortRef.current = null;
+        },
+      }, { signal: streamController.signal });
     } catch (err) {
+      if (isAbortError(err)) {
+        if (isMountedRef.current) stopStreamingPlaceholder();
+        return;
+      }
+
       let errorMessage = "Error: Failed to get answer. Please try again.";
 
       if (err instanceof ApiError) {
@@ -130,15 +240,11 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
         }
       }
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: errorMessage,
-        },
-      ]);
+      appendStreamError(errorMessage);
     } finally {
-      setLoading(false);
+      if (activeStreamAbortRef.current === streamController) {
+        activeStreamAbortRef.current = null;
+      }
     }
   };
 
@@ -148,9 +254,9 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
   };
 
   return (
-    <div className="flex flex-col h-full min-h-[280px] bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shadow-xl">
+    <div className="flex flex-col h-full min-h-0 max-h-full bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shadow-xl">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50 backdrop-blur">
+      <div className="shrink-0 flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50 backdrop-blur">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <button
             type="button"
@@ -176,7 +282,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
       {/* Messages Area */}
       <div
         ref={scrollRef}
-        className="messages-scroll flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth"
+        className="messages-scroll min-h-0 flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth"
       >
         {loadingHistory && (
           <div className="h-full flex items-center justify-center">
@@ -224,7 +330,7 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                   key={prompt}
                   type="button"
                   onClick={() => submitQuery(prompt)}
-                  disabled={loading}
+                  disabled={isStreaming}
                   className="px-3 py-2 rounded-lg bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700 text-zinc-300 text-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
                 >
                   {prompt}
@@ -250,10 +356,73 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                   : "bg-zinc-800 text-zinc-100 rounded-tl-none border border-zinc-700"
               }`}
             >
-              <p className="whitespace-pre-wrap text-body-sm leading-relaxed">
-                {msg.content}
-              </p>
+              {msg.role === "assistant" && msg.streaming && !msg.content ? (
+                <div className="flex items-center gap-2 text-zinc-400">
+                  <div
+                    className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "0ms" }}
+                  />
+                  <div
+                    className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "150ms" }}
+                  />
+                  <div
+                    className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "300ms" }}
+                  />
+                </div>
+              ) : (
+                <p className="whitespace-pre-wrap text-body-sm leading-relaxed">
+                  {msg.content}
+                </p>
+              )}
             </div>
+
+            {msg.role === "assistant" && msg.pipeline_meta && (
+              <div className="mt-2 ml-2 max-w-[85%] text-xs text-zinc-500">
+                <button
+                  type="button"
+                  onClick={() => togglePipelineMeta(i)}
+                  className="flex items-center gap-2 hover:text-zinc-300 transition-colors cursor-pointer"
+                >
+                  <svg
+                    className={`w-3 h-3 shrink-0 transition-transform ${expandedPipelineMetaIndices.has(i) ? "rotate-90" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
+                  <span>
+                    {(msg.pipeline_meta.total_ms / 1000).toFixed(1)}s ·{" "}
+                    {(msg.pipeline_meta.avg_similarity * 100).toFixed(0)}% retrieval ·{" "}
+                    {msg.pipeline_meta.chunks_retrieved}{" "}
+                    {msg.pipeline_meta.chunks_retrieved === 1 ? "source" : "sources"}
+                  </span>
+                </button>
+
+                {expandedPipelineMetaIndices.has(i) && (
+                  <div className="mt-2 ml-5 space-y-1">
+                    <p>Embedding: {msg.pipeline_meta.embed_ms}ms</p>
+                    <p>
+                      Retrieval: {msg.pipeline_meta.retrieval_ms}ms (
+                      {msg.pipeline_meta.chunks_retrieved} chunks,{" "}
+                      {(msg.pipeline_meta.avg_similarity * 100).toFixed(0)}% avg)
+                    </p>
+                    <p>Generation: {msg.pipeline_meta.llm_ms}ms</p>
+                    <div className="border-t border-zinc-700/50 pt-1 mt-1">
+                      <p>Total: {msg.pipeline_meta.total_ms}ms</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Citations / Sources (collapsed by default, expand on click) */}
             {msg.sources && msg.sources.length > 0 && (
@@ -331,28 +500,10 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
           </div>
         ))}
 
-        {!loadingHistory && loading && (
-          <div className="flex justify-start">
-            <div className="bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-2xl rounded-tl-none p-4 flex items-center gap-2">
-              <div
-                className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
-                style={{ animationDelay: "0ms" }}
-              />
-              <div
-                className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
-                style={{ animationDelay: "150ms" }}
-              />
-              <div
-                className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
-                style={{ animationDelay: "300ms" }}
-              />
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Input Area */}
-      <div className="p-4 border-t border-zinc-800 bg-zinc-900">
+      <div className="shrink-0 p-4 border-t border-zinc-800 bg-zinc-900">
         <form onSubmit={handleSubmit} className="flex gap-3">
           <input
             type="text"
@@ -363,10 +514,10 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
           />
           <button
             type="submit"
-            disabled={loading || !input.trim()}
+            disabled={isStreaming || !input.trim()}
             className="bg-lapis-600 hover:bg-lapis-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white px-6 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-lapis-900/20 flex items-center cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
           >
-            {loading ? "Sending..." : "Send"}
+            {isStreaming ? "Sending..." : "Send"}
           </button>
         </form>
       </div>
