@@ -496,6 +496,17 @@ export interface PipelineMeta {
 Add `pipeline_meta?: PipelineMeta` to `QueryResponse` for the non-streaming
 endpoint, and to the local `Message` interface in ChatWindow.
 
+#### P1 follow-up: frontend streaming regression tests
+
+Add a dedicated frontend test task immediately after the streaming UI task:
+
+- Validate SSE frame parsing and event ordering in `queryDocumentStream`
+- Validate stream terminal states in ChatWindow (`done`, `error`,
+  unexpected close, abort/unmount)
+- Prevent regressions in send-button locking and single-placeholder behavior
+
+This keeps later Phase 1 changes safer without reopening stream lifecycle bugs.
+
 ### CORS note
 
 SSE over POST works with the existing CORS config — it's a standard fetch

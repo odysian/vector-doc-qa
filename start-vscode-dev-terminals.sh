@@ -95,12 +95,26 @@ ensure_dev_stack_task() {
       "problemMatcher": []
     },
     {
+      "label": "dev:db-shell",
+      "type": "shell",
+      "command": "bash -lc 'docker compose up -d db >/dev/null; for i in {1..60}; do docker compose exec -T db pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done; docker compose exec -T db pg_isready -U postgres >/dev/null 2>&1 || { echo \"Database did not become ready in time.\"; exit 1; }; exec docker compose exec db psql -U postgres -d document_intelligence'",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "dev:stack",
       "dependsOn": [
         "dev:db",
         "dev:backend",
         "dev:worker",
-        "dev:frontend"
+        "dev:frontend",
+        "dev:db-shell"
       ],
       "dependsOrder": "parallel",
       "group": {

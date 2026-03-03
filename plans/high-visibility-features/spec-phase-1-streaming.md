@@ -40,8 +40,9 @@ Add streaming RAG responses and pipeline observability metadata to Quaero. Users
 
 - [ ] Task: Streaming backend (endpoint + service + P2 fixes)
 - [ ] Task: Streaming frontend (SSE consumer + ChatWindow + pipeline meta UI)
+- [ ] Task: Streaming frontend test coverage (SSE parser + stream lifecycle regression tests)
 
-Split rationale: Backend contract should land and be testable before frontend integration. The backend task includes P2-8/P2-9 fixes since they're on the direct implementation path.
+Split rationale: Backend contract should land and be testable before frontend integration. Frontend test coverage is a dedicated hardening task so later P1 changes can move faster with lower regression risk.
 
 ## Verification
 
