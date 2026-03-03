@@ -133,6 +133,9 @@ cd frontend
 # Type check
 npx tsc --noEmit
 
+# Run tests
+npm test
+
 # Lint
 npx next lint
 

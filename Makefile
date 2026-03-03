@@ -13,8 +13,9 @@ backend-verify: ## Lint, type-check, test, and security-scan the backend
 		.venv/bin/pytest -v && \
 		.venv/bin/bandit -r app/ -ll
 
-frontend-verify: ## Type-check, lint, and build the frontend
+frontend-verify: ## Type-check, test, lint, and build the frontend
 	@cd frontend && \
 		npx tsc --noEmit && \
+		npm test && \
 		npm run lint && \
 		npm run build

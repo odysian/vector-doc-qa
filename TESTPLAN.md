@@ -164,6 +164,24 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 
 ---
 
+## Feature: Frontend Streaming Chat Lifecycle
+
+### Happy Path
+
+- `queryDocumentStream()` assembles SSE frames across multiple chunks and dispatches events in order (`sources` -> `token` -> `meta` -> `done`)
+- ChatWindow send controls enter streaming state during an active stream and return to normal after `done`
+
+### Error Cases
+
+- `queryDocumentStream()` emits terminal fallback error when stream ends without `done`/`error`
+- ChatWindow `error` event appends error text to the current assistant stream bubble without creating a second assistant bubble
+
+### Edge Cases
+
+- ChatWindow unmount aborts active stream and does not retain stale streaming state on cleanup
+
+---
+
 ## Feature: Document Search
 
 ### Happy Path
