@@ -84,6 +84,7 @@ async def extract_text_with_page_boundaries_from_pdf(pdf_path: str) -> Extracted
             "This PDF may contain complex graphics or be image-based."
         )
 
+
 async def extract_text_from_pdf(pdf_path: str) -> str:
     """
     Extract all text from a PDF file with timeout protection.

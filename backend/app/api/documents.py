@@ -1,6 +1,7 @@
 import json
 import time
 from collections.abc import AsyncGenerator
+from urllib.parse import quote
 
 from app.api.dependencies import get_current_user
 from app.database import AsyncSessionLocal, get_db
@@ -288,14 +289,25 @@ async def get_document_file(
             status_code=404, detail=f"Document with ID {document_id} not found"
         )
 
-    pdf_bytes = await read_file_bytes(document.file_path)
+    try:
+        pdf_bytes = await read_file_bytes(document.file_path)
+    except (FileNotFoundError, OSError):
+        raise HTTPException(
+            status_code=404, detail="Document file not available"
+        )
+
+    # RFC 6266: ASCII-safe filename + UTF-8 extended filename for non-ASCII
     safe_filename = document.filename.replace('"', "")
+    encoded_filename = quote(document.filename)
 
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'inline; filename="{safe_filename}"',
+            "Content-Disposition": (
+                f'inline; filename="{safe_filename}"; '
+                f"filename*=UTF-8''{encoded_filename}"
+            ),
             "Cache-Control": "private, max-age=3600",
         },
     )

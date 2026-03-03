@@ -235,7 +235,9 @@ class TestGetDocumentFile:
         assert response.status_code == 200
         assert response.content == pdf_bytes
         assert response.headers["content-type"].startswith("application/pdf")
-        assert response.headers["content-disposition"] == 'inline; filename="test.pdf"'
+        assert response.headers["content-disposition"] == (
+            "inline; filename=\"test.pdf\"; filename*=UTF-8''test.pdf"
+        )
         assert response.headers["cache-control"] == "private, max-age=3600"
 
     async def test_get_document_file_returns_404_for_nonexistent_id(self, client, auth_headers):
