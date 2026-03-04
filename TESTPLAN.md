@@ -55,12 +55,16 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 ### Happy Path
 
 - Strict environments (`APP_ENV=production` or similar) start successfully with a strong `SECRET_KEY` and non-dev `DATABASE_URL`
+- Startup succeeds when `chunk_size > 0`, `chunk_overlap >= 0`, and `chunk_overlap < chunk_size`
 
 ### Error Cases
 
 - Strict environments fail startup when `SECRET_KEY` is a known dev/default value
 - Strict environments fail startup when `SECRET_KEY` is too short or placeholder-shaped
 - Strict environments fail startup when `DATABASE_URL` uses loopback host, default dev credentials, or default dev DB name
+- Startup fails when `chunk_size <= 0`
+- Startup fails when `chunk_overlap < 0`
+- Startup fails when `chunk_overlap >= chunk_size`
 
 ### Edge Cases
 

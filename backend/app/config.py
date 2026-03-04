@@ -97,6 +97,18 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_runtime_security_guardrails(self) -> "Settings":
         """Fail startup in strict environments when security config is unsafe."""
+        chunk_errors: list[str] = []
+        if self.chunk_size <= 0:
+            chunk_errors.append("CHUNK_SIZE must be greater than 0")
+        if self.chunk_overlap < 0:
+            chunk_errors.append("CHUNK_OVERLAP must be greater than or equal to 0")
+        if self.chunk_overlap >= self.chunk_size:
+            chunk_errors.append("CHUNK_OVERLAP must be smaller than CHUNK_SIZE")
+        if chunk_errors:
+            raise ValueError(
+                "Invalid chunking configuration: " + "; ".join(chunk_errors)
+            )
+
         if not self.is_strict_environment:
             return self
 

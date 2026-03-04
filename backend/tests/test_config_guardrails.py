@@ -12,7 +12,7 @@ SAFE_DATABASE_URL = (
 )
 
 
-def _make_settings(**overrides: str) -> Settings:
+def _make_settings(**overrides: object) -> Settings:
     """Build Settings from explicit values without reading env files."""
     return Settings.model_validate(overrides)
 
@@ -71,3 +71,30 @@ def test_app_env_is_case_insensitive_for_strict_mode() -> None:
             secret_key="dev-secret-key-change-in-production",
             database_url=SAFE_DATABASE_URL,
         )
+
+
+def test_rejects_non_positive_chunk_size() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        _make_settings(chunk_size=0)
+
+    assert "CHUNK_SIZE must be greater than 0" in str(exc_info.value)
+
+
+def test_rejects_negative_chunk_overlap() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        _make_settings(chunk_overlap=-1)
+
+    assert "CHUNK_OVERLAP must be greater than or equal to 0" in str(exc_info.value)
+
+
+def test_rejects_chunk_overlap_gte_chunk_size() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        _make_settings(chunk_size=100, chunk_overlap=100)
+
+    assert "CHUNK_OVERLAP must be smaller than CHUNK_SIZE" in str(exc_info.value)
+
+
+def test_accepts_valid_chunk_config_bounds() -> None:
+    settings = _make_settings(chunk_size=1, chunk_overlap=0)
+    assert settings.chunk_size == 1
+    assert settings.chunk_overlap == 0
