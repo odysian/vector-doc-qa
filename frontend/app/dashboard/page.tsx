@@ -17,6 +17,10 @@ import { DeleteDocumentModal } from "../components/dashboard/DeleteDocumentModal
 const SIDEBAR_WIDTH = "w-72";
 const SPLIT_LAYOUT_MIN_WIDTH = 1120;
 const SPLIT_LAYOUT_RESTORE_WIDTH = 1240;
+const getInitialUseTabLayout = (): boolean => {
+  if (typeof window === "undefined") return true;
+  return window.innerWidth < SPLIT_LAYOUT_MIN_WIDTH;
+};
 const PdfViewer = dynamic(
   () => import("../components/dashboard/PdfViewer").then((mod) => mod.PdfViewer),
   { ssr: false }
@@ -32,10 +36,10 @@ export default function DashboardPage() {
   const [deletingInProgress, setDeletingInProgress] = useState(false);
   const [highlightPage, setHighlightPage] = useState<number | null>(null);
   const [mobileTab, setMobileTab] = useState<"pdf" | "chat">("chat");
-  const [useTabLayout, setUseTabLayout] = useState(true);
+  const [useTabLayout, setUseTabLayout] = useState(getInitialUseTabLayout);
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
+  const [workspaceElement, setWorkspaceElement] = useState<HTMLDivElement | null>(null);
   const documentsRef = useRef<Document[]>([]);
-  const workspaceRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const hasActiveDocuments = documents.some(
     (doc) => doc.status === "pending" || doc.status === "processing"
@@ -191,8 +195,7 @@ export default function DashboardPage() {
   }, [hasActiveDocuments, loading, handleSessionExpired, isSessionExpired]);
 
   useEffect(() => {
-    const workspace = workspaceRef.current;
-    if (!workspace) return;
+    if (!workspaceElement) return;
 
     let frameId: number | null = null;
 
@@ -205,7 +208,7 @@ export default function DashboardPage() {
       });
     };
 
-    updateLayoutMode(Math.floor(workspace.clientWidth));
+    updateLayoutMode(Math.floor(workspaceElement.clientWidth));
 
     const observer = new ResizeObserver((entries) => {
       const [entry] = entries;
@@ -217,13 +220,13 @@ export default function DashboardPage() {
       });
     });
 
-    observer.observe(workspace);
+    observer.observe(workspaceElement);
 
     return () => {
       if (frameId !== null) window.cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, [selectedDocument?.id]);
+  }, [workspaceElement]);
 
   const handleUpload = async (file: File) => {
     setError("");
@@ -423,31 +426,31 @@ export default function DashboardPage() {
               <p className="text-empty">Loading your documents...</p>
             </div>
           ) : selectedDocument ? (
-            <div ref={workspaceRef} className="flex-1 min-h-0 flex flex-col">
+            <div ref={setWorkspaceElement} className="flex-1 min-h-0 flex flex-col">
               {useTabLayout && (
                 <div className="mb-3 inline-flex w-full max-w-md self-center rounded-lg border border-zinc-800 bg-zinc-900 p-1">
-                <button
-                  type="button"
-                  onClick={() => setMobileTab("pdf")}
-                  className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 ${
-                    mobileTab === "pdf"
-                      ? "bg-lapis-600 text-white"
-                      : "text-zinc-300 hover:bg-zinc-800"
-                  }`}
-                >
-                  PDF
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMobileTab("chat")}
-                  className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 ${
-                    mobileTab === "chat"
-                      ? "bg-lapis-600 text-white"
-                      : "text-zinc-300 hover:bg-zinc-800"
-                  }`}
-                >
-                  Chat
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileTab("pdf")}
+                    className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 ${
+                      mobileTab === "pdf"
+                        ? "bg-lapis-600 text-white"
+                        : "text-zinc-300 hover:bg-zinc-800"
+                    }`}
+                  >
+                    PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileTab("chat")}
+                    className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 ${
+                      mobileTab === "chat"
+                        ? "bg-lapis-600 text-white"
+                        : "text-zinc-300 hover:bg-zinc-800"
+                    }`}
+                  >
+                    Chat
+                  </button>
                 </div>
               )}
 

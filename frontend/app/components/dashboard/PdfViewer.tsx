@@ -197,7 +197,7 @@ export function PdfViewer({ documentId, highlightPage, onSessionExpired }: PdfVi
               </div>
             }
           >
-            <div ref={pagesContainerRef} className="mx-auto w-full space-y-4 pb-4">
+            <div ref={pagesContainerRef} className="mx-auto w-full max-w-6xl space-y-4 pb-4">
               {Array.from({ length: numPages }, (_, index) => {
                 const pageNumber = index + 1;
                 const isHighlighted = activeHighlightPage === pageNumber;
