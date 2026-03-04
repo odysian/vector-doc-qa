@@ -7,7 +7,14 @@
 
 import { useState, useRef, useEffect, SyntheticEvent } from "react";
 import { ArrowLeft } from "lucide-react";
-import { type Document, api, type QueryResponse, type PipelineMeta, ApiError } from "@/lib/api";
+import {
+  type Document,
+  api,
+  type QueryResponse,
+  type PipelineMeta,
+  ApiError,
+  SessionExpiredError,
+} from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 
 interface Message {
@@ -22,6 +29,7 @@ interface ChatWindowProps {
   document: Document;
   onBack: () => void;
   onCitationClick?: (page: number) => void;
+  onSessionExpired?: () => void;
 }
 
 const SUGGESTED_PROMPTS = [
@@ -33,7 +41,12 @@ const SUGGESTED_PROMPTS = [
 /**
  * Renders the pop up window with query input and message history.
  */
-export function ChatWindow({ document, onBack, onCitationClick }: ChatWindowProps) {
+export function ChatWindow({
+  document,
+  onBack,
+  onCitationClick,
+  onSessionExpired,
+}: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loadingHistory, setLoadingHistory] = useState(true);
@@ -150,6 +163,10 @@ export function ChatWindow({ document, onBack, onCitationClick }: ChatWindowProp
         }));
         setMessages(loadedMessages);
       } catch (err) {
+        if (err instanceof SessionExpiredError) {
+          onSessionExpired?.();
+          return;
+        }
         console.error("Failed to load message history:", err);
       } finally {
         setLoadingHistory(false);
@@ -157,7 +174,7 @@ export function ChatWindow({ document, onBack, onCitationClick }: ChatWindowProp
     };
 
     loadHistory();
-  }, [document.id]);
+  }, [document.id, onSessionExpired]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -234,6 +251,9 @@ export function ChatWindow({ document, onBack, onCitationClick }: ChatWindowProp
           errorMessage = "This document hasn't been processed yet. Please process it first before asking questions.";
         } else if (err.status === 404) {
           errorMessage = "Document not found.";
+        } else if (err instanceof SessionExpiredError) {
+          onSessionExpired?.();
+          return;
         } else if (err.status === 401) {
           errorMessage = "Your session has expired. Please log in again.";
         } else {

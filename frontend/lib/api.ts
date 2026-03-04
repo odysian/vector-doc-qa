@@ -17,12 +17,13 @@ import type {
   MessageListResponse,
   PipelineMeta,
 } from "./api.types";
-import { ApiError } from "./api.types";
+import { ApiError, SessionExpiredError } from "./api.types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // Re-export so components can do: import { api, Document, ApiError } from "@/lib/api"
 export { ApiError } from "./api.types";
+export { SessionExpiredError } from "./api.types";
 export type {
   Document,
   DocumentStatusResponse,
@@ -146,8 +147,8 @@ async function doRefresh(): Promise<boolean> {
  * Sends a request to the backend with cookies included.
  * Adds X-CSRF-Token header for CSRF protection (double-submit pattern).
  * On 401, attempts a silent token refresh once and retries the request.
- * If the refresh also fails, clears leftover localStorage tokens and
- * redirects to /login.
+ * If the refresh also fails, clears leftover localStorage tokens and throws
+ * a typed session error for the UI boundary to handle.
  */
 async function apiRequest(path: string, options: RequestInit = {}) {
   const csrf = getCsrfToken();
@@ -185,8 +186,7 @@ async function apiRequest(path: string, options: RequestInit = {}) {
     } else {
       // Refresh failed — session is dead; clear any stale localStorage values
       clearTokens();
-      window.location.href = "/login";
-      throw new ApiError(401, "Session expired");
+      throw new SessionExpiredError();
     }
   }
 
@@ -301,8 +301,7 @@ export const api = {
         });
       } else {
         clearTokens();
-        window.location.href = "/login";
-        throw new ApiError(401, "Session expired");
+        throw new SessionExpiredError();
       }
     }
 
@@ -368,8 +367,7 @@ export const api = {
         });
       } else {
         clearTokens();
-        window.location.href = "/login";
-        throw new ApiError(401, "Session expired");
+        throw new SessionExpiredError();
       }
     }
 

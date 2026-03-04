@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api } from "@/lib/api";
+import { api, SessionExpiredError } from "@/lib/api";
 import type { PipelineMeta, QueryResponse } from "@/lib/api";
 
 function makeStreamingResponse(chunks: string[]): Response {
@@ -113,5 +113,32 @@ describe("api.queryDocumentStream", () => {
     expect(onDone).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onError).toHaveBeenCalledWith("Stream ended unexpectedly");
+  });
+
+  it("throws SessionExpiredError when stream auth refresh fails", async () => {
+    localStorage.setItem("csrf_token", "csrf-old");
+    localStorage.setItem("access_token", "legacy-access");
+    localStorage.setItem("refresh_token", "legacy-refresh");
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: "Unauthorized" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: "Refresh failed" }), { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      api.queryDocumentStream(42, "question", {
+        onSources: vi.fn(),
+        onToken: vi.fn(),
+        onMeta: vi.fn(),
+        onDone: vi.fn(),
+        onError: vi.fn(),
+      })
+    ).rejects.toBeInstanceOf(SessionExpiredError);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem("csrf_token")).toBeNull();
+    expect(localStorage.getItem("access_token")).toBeNull();
+    expect(localStorage.getItem("refresh_token")).toBeNull();
   });
 });

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Document as ReactPdfDocument, Page, pdfjs } from "react-pdf";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, SessionExpiredError } from "@/lib/api";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -12,6 +12,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 interface PdfViewerProps {
   documentId: number;
   highlightPage?: number | null;
+  onSessionExpired?: () => void;
 }
 
 const MAX_RENDERED_PAGE_WIDTH = 760;
@@ -19,7 +20,7 @@ const MAX_RENDERED_PAGE_WIDTH = 760;
 /**
  * In-app PDF viewer that supports page-level deep links from chat citations.
  */
-export function PdfViewer({ documentId, highlightPage }: PdfViewerProps) {
+export function PdfViewer({ documentId, highlightPage, onSessionExpired }: PdfViewerProps) {
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [loadingFile, setLoadingFile] = useState(true);
@@ -57,6 +58,10 @@ export function PdfViewer({ documentId, highlightPage }: PdfViewerProps) {
         setPdfData(new Uint8Array(buffer));
       } catch (err) {
         if (cancelled) return;
+        if (err instanceof SessionExpiredError) {
+          onSessionExpired?.();
+          return;
+        }
         if (err instanceof ApiError) {
           setError(err.detail);
         } else {
@@ -74,7 +79,7 @@ export function PdfViewer({ documentId, highlightPage }: PdfViewerProps) {
     return () => {
       cancelled = true;
     };
-  }, [documentId]);
+  }, [documentId, onSessionExpired]);
 
   useEffect(() => {
     const pagesContainer = pagesContainerRef.current;

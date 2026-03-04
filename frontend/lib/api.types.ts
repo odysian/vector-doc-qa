@@ -15,6 +15,13 @@ export class ApiError extends Error {
   }
 }
 
+export class SessionExpiredError extends ApiError {
+  constructor(detail = "Session expired") {
+    super(401, detail);
+    this.name = "SessionExpiredError";
+  }
+}
+
 // Auth
 export interface LoginCredentials {
   username: string;

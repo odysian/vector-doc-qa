@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, ApiError } from "@/lib/api";
+import { api, SessionExpiredError } from "@/lib/api";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -69,18 +69,8 @@ describe("apiRequest auth refresh contract", () => {
       .mockResolvedValueOnce(jsonResponse(401, { detail: "Unauthorized" }))
       .mockResolvedValueOnce(jsonResponse(401, { detail: "Refresh failed" }));
     vi.stubGlobal("fetch", fetchMock);
-    const consoleErrorMock = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
 
-    try {
-      await expect(api.getDocuments()).rejects.toMatchObject({
-        status: 401,
-        detail: "Session expired",
-      } satisfies Pick<ApiError, "status" | "detail">);
-    } finally {
-      consoleErrorMock.mockRestore();
-    }
+    await expect(api.getDocuments()).rejects.toBeInstanceOf(SessionExpiredError);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1]?.[0]).toBe("http://localhost:8000/api/auth/refresh");
