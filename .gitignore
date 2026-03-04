@@ -73,3 +73,13 @@ frontend/build/
 notes/
 scratch.txt
 COMMANDS.md
+
+# Generated eval reports
+backend/reports/
+
+# Local logs
+logs/
+
+# Personal docs
+docs/DEEP_DIVE.md
+docs/INTERVIEW_BRIEF.md
