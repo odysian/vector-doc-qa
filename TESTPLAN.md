@@ -56,6 +56,7 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 
 - Strict environments (`APP_ENV=production` or similar) start successfully with a strong `SECRET_KEY` and non-dev `DATABASE_URL`
 - Startup succeeds when `chunk_size > 0`, `chunk_overlap >= 0`, and `chunk_overlap < chunk_size`
+- Startup succeeds when `chunk_size` and `chunk_overlap` are set at configured upper bounds
 
 ### Error Cases
 
@@ -65,6 +66,8 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 - Startup fails when `chunk_size <= 0`
 - Startup fails when `chunk_overlap < 0`
 - Startup fails when `chunk_overlap >= chunk_size`
+- Startup fails when `chunk_size` exceeds configured max bound
+- Startup fails when `chunk_overlap` exceeds configured max bound
 
 ### Edge Cases
 
@@ -180,6 +183,7 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 
 - Rate limit: 10/hour shared bucket across /query and /query/stream per user
 - Cannot query another user's documents
+- Query/search/stream error logs include structured context only (IDs + error class) without raw exception-message interpolation
 
 ---
 

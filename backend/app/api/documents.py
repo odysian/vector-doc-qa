@@ -477,7 +477,13 @@ async def search_document(
         raise HTTPException(status_code=400, detail=str(e))
 
     except Exception as e:
-        logger.error(f"Search failed for document_id={document_id}: {e}", exc_info=True)
+        logger.error(
+            "Search failed for document_id=%s, user_id=%s, error_class=%s",
+            document_id,
+            current_user.id,
+            type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Search failed")
 
 
@@ -580,7 +586,13 @@ async def query_document(
 
     except Exception as e:
         await db.rollback()
-        logger.error(f"Query failed: {e}", exc_info=True)
+        logger.error(
+            "Query failed for document_id=%s, user_id=%s, error_class=%s",
+            document_id,
+            current_user.id,
+            type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Query failed")
 
 
@@ -642,7 +654,13 @@ async def query_document_stream(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         await db.rollback()
-        logger.error(f"Streaming query setup failed: {e}", exc_info=True)
+        logger.error(
+            "Streaming query setup failed for document_id=%s, user_id=%s, error_class=%s",
+            document_id,
+            current_user.id,
+            type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Query failed")
 
     async def _stream_events() -> AsyncGenerator[ServerSentEvent, None]:
@@ -667,7 +685,10 @@ async def query_document_stream(
                     return message_id
             except Exception as e:
                 logger.error(
-                    f"Failed to persist streamed assistant message for document_id={document_id}: {e}",
+                    "Failed to persist streamed assistant message for document_id=%s, user_id=%s, error_class=%s",
+                    document_id,
+                    current_user.id,
+                    type(e).__name__,
                     exc_info=True,
                 )
                 return None
@@ -681,7 +702,13 @@ async def query_document_stream(
                 answer_tokens.append(token)
                 yield ServerSentEvent(event="token", raw_data=token)
         except Exception as e:
-            logger.error(f"Streaming query failed for document_id={document_id}: {e}", exc_info=True)
+            logger.error(
+                "Streaming query failed for document_id=%s, user_id=%s, error_class=%s",
+                document_id,
+                current_user.id,
+                type(e).__name__,
+                exc_info=True,
+            )
             partial_answer = "".join(answer_tokens).strip()
             assistant_content = (
                 partial_answer

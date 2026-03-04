@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from app.constants import MAX_CHUNK_OVERLAP, MAX_CHUNK_SIZE
 from app.config import Settings
 
 SAFE_SECRET_KEY = "0123456789abcdef0123456789abcdef"
@@ -98,3 +99,38 @@ def test_accepts_valid_chunk_config_bounds() -> None:
     settings = _make_settings(chunk_size=1, chunk_overlap=0)
     assert settings.chunk_size == 1
     assert settings.chunk_overlap == 0
+
+
+def test_rejects_chunk_size_above_max() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        _make_settings(
+            chunk_size=MAX_CHUNK_SIZE + 1,
+            chunk_overlap=MAX_CHUNK_OVERLAP,
+        )
+
+    assert f"CHUNK_SIZE must be less than or equal to {MAX_CHUNK_SIZE}" in str(
+        exc_info.value
+    )
+
+
+def test_rejects_chunk_overlap_above_max() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        _make_settings(
+            chunk_size=MAX_CHUNK_SIZE,
+            chunk_overlap=MAX_CHUNK_OVERLAP + 1,
+        )
+
+    assert (
+        f"CHUNK_OVERLAP must be less than or equal to {MAX_CHUNK_OVERLAP}"
+        in str(exc_info.value)
+    )
+
+
+def test_accepts_chunk_config_at_upper_bounds() -> None:
+    settings = _make_settings(
+        chunk_size=MAX_CHUNK_SIZE,
+        chunk_overlap=MAX_CHUNK_OVERLAP,
+    )
+
+    assert settings.chunk_size == MAX_CHUNK_SIZE
+    assert settings.chunk_overlap == MAX_CHUNK_OVERLAP

@@ -144,6 +144,40 @@ class TestSearch:
         assert any("query_chars=" in message for message in info_messages)
         assert all(raw_query not in message for message in info_messages)
 
+    async def test_search_error_log_uses_structured_context(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        test_user: User,
+    ):
+        with (
+            patch(
+                "app.api.documents.search_chunks",
+                side_effect=RuntimeError("sensitive search payload"),
+            ),
+            patch("app.api.documents.logger.error") as mock_error,
+        ):
+            response = await client.post(
+                f"/api/documents/{processed_document.id}/search",
+                headers=auth_headers,
+                json={"query": "how much?"},
+            )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Search failed"
+        assert mock_error.call_count == 1
+        error_call = mock_error.call_args
+        assert error_call is not None
+        assert error_call.args == (
+            "Search failed for document_id=%s, user_id=%s, error_class=%s",
+            processed_document.id,
+            test_user.id,
+            "RuntimeError",
+        )
+        assert error_call.kwargs["exc_info"] is True
+        assert "sensitive search payload" not in str(error_call)
+
 
 # ---------------------------------------------------------------------------
 # Query (RAG)
@@ -238,6 +272,40 @@ class TestQuery:
             for message in info_messages
         )
         assert all(raw_query not in message for message in info_messages)
+
+    async def test_query_error_log_uses_structured_context(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        test_user: User,
+    ):
+        with (
+            patch(
+                "app.api.documents.generate_embedding",
+                side_effect=RuntimeError("sensitive query payload"),
+            ),
+            patch("app.api.documents.logger.error") as mock_error,
+        ):
+            response = await client.post(
+                f"/api/documents/{processed_document.id}/query",
+                headers=auth_headers,
+                json={"query": "where is the budget?"},
+            )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Query failed"
+        assert mock_error.call_count == 1
+        error_call = mock_error.call_args
+        assert error_call is not None
+        assert error_call.args == (
+            "Query failed for document_id=%s, user_id=%s, error_class=%s",
+            processed_document.id,
+            test_user.id,
+            "RuntimeError",
+        )
+        assert error_call.kwargs["exc_info"] is True
+        assert "sensitive query payload" not in str(error_call)
 
 
 # ---------------------------------------------------------------------------
@@ -375,6 +443,40 @@ class TestQueryStream:
         )
         assert all(raw_query not in message for message in info_messages)
 
+    async def test_stream_query_setup_error_log_uses_structured_context(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        test_user: User,
+    ):
+        with (
+            patch(
+                "app.api.documents.generate_embedding",
+                side_effect=RuntimeError("sensitive stream setup payload"),
+            ),
+            patch("app.api.documents.logger.error") as mock_error,
+        ):
+            response = await client.post(
+                f"/api/documents/{processed_document.id}/query/stream",
+                headers=auth_headers,
+                json={"query": "summarize"},
+            )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Query failed"
+        assert mock_error.call_count == 1
+        error_call = mock_error.call_args
+        assert error_call is not None
+        assert error_call.args == (
+            "Streaming query setup failed for document_id=%s, user_id=%s, error_class=%s",
+            processed_document.id,
+            test_user.id,
+            "RuntimeError",
+        )
+        assert error_call.kwargs["exc_info"] is True
+        assert "sensitive stream setup payload" not in str(error_call)
+
     async def test_stream_query_emits_error_event_when_llm_stream_fails(
         self,
         client,
@@ -423,6 +525,64 @@ class TestQueryStream:
         assert messages[0].role == "user"
         assert messages[1].role == "assistant"
         assert "partial" in messages[1].content.lower()
+
+    async def test_stream_query_runtime_error_log_uses_structured_context(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        mock_embeddings,
+        db_session: AsyncSession,
+        test_user: User,
+    ):
+        async def _failing_generate_answer_stream(
+            query: str,
+            chunks: list[dict],
+        ) -> AsyncGenerator[str, None]:
+            del query, chunks
+            yield "partial "
+            raise RuntimeError("sensitive stream runtime payload")
+
+        with (
+            patch(
+                "app.api.documents.generate_answer_stream",
+                new=_failing_generate_answer_stream,
+            ),
+            patch(
+                "app.api.documents.AsyncSessionLocal",
+                new=lambda: _NoCloseSessionContext(db_session),
+            ),
+            patch("app.api.documents.logger.error") as mock_error,
+        ):
+            async with client.stream(
+                "POST",
+                f"/api/documents/{processed_document.id}/query/stream",
+                headers=auth_headers,
+                json={"query": "Summarize this document"},
+            ) as response:
+                assert response.status_code == 200
+                events = await _read_sse_events(response)
+
+        event_types = [event for event, _ in events]
+        assert event_types == ["sources", "token", "error"]
+        assert json.loads(events[-1][1]) == {"detail": "Query failed"}
+
+        matching_calls = [
+            call
+            for call in mock_error.call_args_list
+            if call.args
+            and call.args[0]
+            == "Streaming query failed for document_id=%s, user_id=%s, error_class=%s"
+        ]
+        assert len(matching_calls) == 1
+        error_call = matching_calls[0]
+        assert error_call.args[1:] == (
+            processed_document.id,
+            test_user.id,
+            "RuntimeError",
+        )
+        assert error_call.kwargs["exc_info"] is True
+        assert "sensitive stream runtime payload" not in str(error_call)
 
     async def test_stream_query_emits_error_event_when_db_save_fails(
         self,
