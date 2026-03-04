@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  cat <<'EOF'
+  cat <<'USAGE'
 Usage:
   API_BASE_URL=<https://api-host> DEMO_USERNAME=<user> DEMO_PASSWORD=<pass> bash scripts/demo_smoke.sh
 
@@ -18,7 +18,7 @@ Optional environment variables:
   CURL_TIMEOUT_SECONDS    Per-request timeout for JSON endpoints (default: 45)
   STREAM_TIMEOUT_SECONDS  Per-request timeout for stream endpoint (default: 90)
   ALLOW_INSECURE_HTTP     Set to 1 to allow non-HTTPS API_BASE_URL
-EOF
+USAGE
 }
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
@@ -71,6 +71,8 @@ cookie_jar="$tmp_dir/cookies.txt"
 
 passes=0
 failures=0
+skipped=0
+CURL_LAST_ERROR=""
 
 pass() {
   local step="$1"
@@ -85,6 +87,12 @@ fail() {
   printf '[FAIL] %s -> %s\n' "$step" "$detail"
 }
 
+skip() {
+  local step="$1"
+  skipped=$((skipped + 1))
+  printf '[SKIP] %s\n' "$step"
+}
+
 read_json_field() {
   local expression="$1"
   local file_path="$2"
@@ -95,7 +103,16 @@ run_curl() {
   local status_var="$1"
   shift
   local status
-  status="$(curl -sS --connect-timeout 10 --max-time "$CURL_TIMEOUT_SECONDS" "$@" -w "%{http_code}" || true)"
+  local err_file="$tmp_dir/curl.err"
+  CURL_LAST_ERROR=""
+
+  if status="$(curl -sS --connect-timeout 10 --max-time "$CURL_TIMEOUT_SECONDS" "$@" -w "%{http_code}" 2>"$err_file")"; then
+    printf -v "$status_var" "%s" "$status"
+    return
+  fi
+
+  CURL_LAST_ERROR="$(tr '\n' ' ' <"$err_file" | sed 's/[[:space:]]\+$//')"
+  status="CURL_ERROR"
   printf -v "$status_var" "%s" "$status"
 }
 
@@ -103,7 +120,16 @@ run_curl_stream() {
   local status_var="$1"
   shift
   local status
-  status="$(curl -sS -N --connect-timeout 10 --max-time "$STREAM_TIMEOUT_SECONDS" "$@" -w "%{http_code}" || true)"
+  local err_file="$tmp_dir/curl_stream.err"
+  CURL_LAST_ERROR=""
+
+  if status="$(curl -sS -N --connect-timeout 10 --max-time "$STREAM_TIMEOUT_SECONDS" "$@" -w "%{http_code}" 2>"$err_file")"; then
+    printf -v "$status_var" "%s" "$status"
+    return
+  fi
+
+  CURL_LAST_ERROR="$(tr '\n' ' ' <"$err_file" | sed 's/[[:space:]]\+$//')"
+  status="CURL_ERROR"
   printf -v "$status_var" "%s" "$status"
 }
 
@@ -117,7 +143,7 @@ run_curl health_status \
 if [[ "$health_status" == "200" && "$(read_json_field '.status // empty' "$health_body")" == "healthy" ]]; then
   pass "HEALTH GET /health"
 else
-  fail "HEALTH GET /health" "status=$health_status body=$(cat "$health_body" 2>/dev/null)"
+  fail "HEALTH GET /health" "status=$health_status curl_error=${CURL_LAST_ERROR:-none} body=$(cat "$health_body" 2>/dev/null)"
 fi
 
 login_payload="$(jq -nc --arg username "$DEMO_USERNAME" --arg password "$DEMO_PASSWORD" '{username:$username,password:$password}')"
@@ -139,7 +165,7 @@ fi
 if [[ "$login_status" == "200" && -n "$csrf_token" ]]; then
   pass "AUTH LOGIN POST /api/auth/login"
 else
-  fail "AUTH LOGIN POST /api/auth/login" "status=$login_status body=$(cat "$login_body" 2>/dev/null)"
+  fail "AUTH LOGIN POST /api/auth/login" "status=$login_status curl_error=${CURL_LAST_ERROR:-none} body=$(cat "$login_body" 2>/dev/null)"
 fi
 
 if ! grep -q $'\taccess_token\t' "$cookie_jar" || ! grep -q $'\trefresh_token\t' "$cookie_jar"; then
@@ -159,7 +185,7 @@ me_username="$(read_json_field '.username // empty' "$me_body")"
 if [[ "$me_status" == "200" && "$me_username" == "$DEMO_USERNAME" ]]; then
   pass "AUTH ME GET /api/auth/me"
 else
-  fail "AUTH ME GET /api/auth/me" "status=$me_status username=$me_username body=$(cat "$me_body" 2>/dev/null)"
+  fail "AUTH ME GET /api/auth/me" "status=$me_status curl_error=${CURL_LAST_ERROR:-none} username=$me_username body=$(cat "$me_body" 2>/dev/null)"
 fi
 
 refresh_body="$tmp_dir/refresh.json"
@@ -178,7 +204,7 @@ if [[ "$refresh_status" == "200" ]]; then
   fi
   pass "AUTH REFRESH POST /api/auth/refresh"
 else
-  fail "AUTH REFRESH POST /api/auth/refresh" "status=$refresh_status body=$(cat "$refresh_body" 2>/dev/null)"
+  fail "AUTH REFRESH POST /api/auth/refresh" "status=$refresh_status curl_error=${CURL_LAST_ERROR:-none} body=$(cat "$refresh_body" 2>/dev/null)"
 fi
 
 docs_body="$tmp_dir/documents.json"
@@ -189,7 +215,7 @@ run_curl docs_status \
   "$API_BASE_URL/api/documents/"
 
 if [[ "$docs_status" != "200" ]]; then
-  fail "DOCS LIST GET /api/documents/" "status=$docs_status body=$(cat "$docs_body" 2>/dev/null)"
+  fail "DOCS LIST GET /api/documents/" "status=$docs_status curl_error=${CURL_LAST_ERROR:-none} body=$(cat "$docs_body" 2>/dev/null)"
 else
   pass "DOCS LIST GET /api/documents/"
 fi
@@ -201,6 +227,7 @@ fi
 
 if [[ -z "$document_id" ]]; then
   fail "DOC SELECT" "No completed document found. Set SMOKE_DOCUMENT_ID to a completed document ID."
+  skip "Document-dependent checks skipped: /status, /query, /query/stream, citation prereq, /file"
 fi
 
 if [[ -n "$document_id" ]]; then
@@ -215,7 +242,7 @@ if [[ -n "$document_id" ]]; then
   if [[ "$doc_status" == "200" && "$doc_state" == "completed" ]]; then
     pass "DOC STATUS GET /api/documents/${document_id}/status"
   else
-    fail "DOC STATUS GET /api/documents/${document_id}/status" "status=$doc_status doc_status=$doc_state body=$(cat "$status_body" 2>/dev/null)"
+    fail "DOC STATUS GET /api/documents/${document_id}/status" "status=$doc_status curl_error=${CURL_LAST_ERROR:-none} doc_status=$doc_state body=$(cat "$status_body" 2>/dev/null)"
   fi
 fi
 
@@ -236,7 +263,7 @@ if [[ -n "$document_id" ]]; then
   if [[ "$query_status" == "200" && "${answer_len:-0}" -gt 0 && "${sources_count:-0}" -gt 0 ]]; then
     pass "QUERY POST /api/documents/${document_id}/query"
   else
-    fail "QUERY POST /api/documents/${document_id}/query" "status=$query_status answer_len=${answer_len:-0} sources=${sources_count:-0} body=$(cat "$query_body" 2>/dev/null)"
+    fail "QUERY POST /api/documents/${document_id}/query" "status=$query_status curl_error=${CURL_LAST_ERROR:-none} answer_len=${answer_len:-0} sources=${sources_count:-0} body=$(cat "$query_body" 2>/dev/null)"
   fi
 
   page_sources_count="$(read_json_field '[.sources[] | select(.page_start != null or .page_end != null)] | length' "$query_body")"
@@ -274,7 +301,7 @@ if [[ -n "$document_id" ]]; then
     pass "STREAM QUERY POST /api/documents/${document_id}/query/stream"
   else
     fail "STREAM QUERY POST /api/documents/${document_id}/query/stream" \
-      "status=$stream_status content-type=$stream_content_type events(token=$token_events,sources=$sources_events,meta=$meta_events,done=$done_events,error=$error_events)"
+      "status=$stream_status curl_error=${CURL_LAST_ERROR:-none} content-type=$stream_content_type events(token=$token_events,sources=$sources_events,meta=$meta_events,done=$done_events,error=$error_events)"
   fi
 fi
 
@@ -294,13 +321,13 @@ if [[ -n "$document_id" ]]; then
     pass "PDF FILE GET /api/documents/${document_id}/file"
   else
     fail "PDF FILE GET /api/documents/${document_id}/file" \
-      "status=$pdf_status content-type=$pdf_content_type magic=$pdf_magic"
+      "status=$pdf_status curl_error=${CURL_LAST_ERROR:-none} content-type=$pdf_content_type magic=$pdf_magic"
   fi
 fi
 
 if [[ "$failures" -gt 0 ]]; then
-  echo "Smoke result: FAILED ($failures failure(s), $passes pass(es))."
+  echo "Smoke result: FAILED ($failures failure(s), $passes pass(es), $skipped skipped)."
   exit 1
 fi
 
-echo "Smoke result: PASSED ($passes checks)."
+echo "Smoke result: PASSED ($passes checks, $skipped skipped)."
