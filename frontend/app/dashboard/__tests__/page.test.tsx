@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import DashboardPage from "@/app/dashboard/page";
-import { api, ApiError, isLoggedIn, type Document } from "@/lib/api";
+import { api, ApiError, SessionExpiredError, isLoggedIn, type Document } from "@/lib/api";
 
 const pushMock = vi.fn();
 const routerMock = { push: pushMock };
@@ -110,6 +110,16 @@ describe("DashboardPage regression behavior", () => {
     expect(
       await screen.findByText("Failed to load documents from API")
     ).toBeInTheDocument();
+  });
+
+  it("redirects to login when session refresh fails", async () => {
+    getDocumentsMock.mockRejectedValueOnce(new SessionExpiredError());
+
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/login");
+    });
   });
 
   it("uploads a document and reloads the list on success", async () => {

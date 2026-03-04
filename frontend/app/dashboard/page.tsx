@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { PanelLeft, X, FileUp } from "lucide-react";
-import { api, isLoggedIn, type Document, ApiError } from "@/lib/api";
+import { api, isLoggedIn, type Document, ApiError, SessionExpiredError } from "@/lib/api";
 import { UploadZone } from "../components/dashboard/UploadZone";
 import { DocumentList } from "../components/dashboard/DocumentList";
 import { ChatWindow } from "../components/dashboard/ChatWindow";
@@ -36,30 +36,46 @@ export default function DashboardPage() {
   const hasActiveDocuments = documents.some(
     (doc) => doc.status === "pending" || doc.status === "processing"
   );
+  const handleSessionExpired = useCallback(() => {
+    router.push("/login");
+  }, [router]);
+
+  const isSessionExpired = useCallback((err: unknown): boolean => {
+    return err instanceof SessionExpiredError || (err instanceof ApiError && err.status === 401);
+  }, []);
+
+  const handleApiError = useCallback(
+    (err: unknown, fallbackMessage: string): boolean => {
+      if (isSessionExpired(err)) {
+        handleSessionExpired();
+        return true;
+      }
+
+      if (err instanceof ApiError) {
+        setError(err.detail);
+      } else {
+        setError(fallbackMessage);
+      }
+      return false;
+    },
+    [handleSessionExpired, isSessionExpired]
+  );
 
   const loadDocuments = useCallback(async () => {
     try {
       const response = await api.getDocuments();
       setDocuments(response.documents);
     } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.status === 401) {
-          router.push("/login");
-          return;
-        }
-        setError(err.detail);
-      } else {
-        setError("Failed to load documents");
-      }
+      handleApiError(err, "Failed to load documents");
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [handleApiError]);
 
   useEffect(() => {
-    if (!isLoggedIn()) return router.push("/login");
+    if (!isLoggedIn()) return handleSessionExpired();
     loadDocuments();
-  }, [router, loadDocuments]);
+  }, [handleSessionExpired, loadDocuments]);
 
   useEffect(() => {
     documentsRef.current = documents;
@@ -118,22 +134,21 @@ export default function DashboardPage() {
         }
 
         const reason = result.reason;
-        if (reason instanceof ApiError) {
-          if (reason.status === 401) {
-            shouldRedirectToLogin = true;
-            return;
-          }
-          if (reason.status === 404) {
-            missingIds.add(documentId);
-            return;
-          }
+        if (isSessionExpired(reason)) {
+          shouldRedirectToLogin = true;
+          return;
+        }
+
+        if (reason instanceof ApiError && reason.status === 404) {
+          missingIds.add(documentId);
+          return;
         }
 
         hadPollFailures = true;
       });
 
       if (shouldRedirectToLogin) {
-        router.push("/login");
+        handleSessionExpired();
         return;
       }
 
@@ -169,7 +184,7 @@ export default function DashboardPage() {
       cancelled = true;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [hasActiveDocuments, loading, router]);
+  }, [hasActiveDocuments, loading, handleSessionExpired, isSessionExpired]);
 
   const handleUpload = async (file: File) => {
     setError("");
@@ -177,22 +192,16 @@ export default function DashboardPage() {
       await api.uploadDocument(file);
       await loadDocuments();
     } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.status === 401) {
-          router.push("/login");
-          return;
-        }
-        setError(err.detail);
-      } else {
-        setError("Upload failed");
+      const redirected = handleApiError(err, "Upload failed");
+      if (!redirected) {
+        throw err;
       }
-      throw err;
     }
   };
 
   const handleLogout = async () => {
     await api.logout();
-    router.push("/login");
+    handleSessionExpired();
   };
 
   const handleDocumentClick = (document: Document) => {
@@ -226,15 +235,7 @@ export default function DashboardPage() {
       await api.processDocument(doc.id);
       await loadDocuments();
     } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.status === 401) {
-          router.push("/login");
-          return;
-        }
-        setError(err.detail);
-      } else {
-        setError("Failed to queue processing");
-      }
+      handleApiError(err, "Failed to queue processing");
     }
   };
 
@@ -253,15 +254,7 @@ export default function DashboardPage() {
       if (selectedDocument?.id === doc.id) setSelectedDocument(null);
       await loadDocuments();
     } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.status === 401) {
-          router.push("/login");
-          return;
-        }
-        setError(err.detail);
-      } else {
-        setError("Failed to delete document");
-      }
+      handleApiError(err, "Failed to delete document");
     } finally {
       setDeletingInProgress(false);
     }
@@ -419,6 +412,7 @@ export default function DashboardPage() {
                   <PdfViewer
                     documentId={selectedDocument.id}
                     highlightPage={highlightPage}
+                    onSessionExpired={handleSessionExpired}
                   />
                 </section>
 
@@ -427,6 +421,7 @@ export default function DashboardPage() {
                     document={selectedDocument}
                     onBack={handleBackToDocuments}
                     onCitationClick={handleCitationClick}
+                    onSessionExpired={handleSessionExpired}
                   />
                 </section>
               </div>

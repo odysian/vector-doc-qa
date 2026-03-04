@@ -226,7 +226,7 @@ Login/refresh JSON bodies must not include `access_token` or `refresh_token`; th
 
 Because frontend and backend are on different domains, the frontend reads `csrf_token` from login/refresh JSON responses and stores it in `localStorage`. `getCsrfToken()` in `lib/api.ts` reads this value and echoes it as `X-CSRF-Token` on mutating requests (double-submit CSRF pattern). `isLoggedIn()` checks for the presence of this `localStorage` value as a fast client-side session indicator.
 
-All `fetch` calls use `credentials: "include"` so httpOnly cookies are sent cross-origin. The API client handles 401s by attempting a silent token refresh (POST `/api/auth/refresh` — no body required, cookie is the credential) before redirecting to `/login`.
+All `fetch` calls use `credentials: "include"` so httpOnly cookies are sent cross-origin. The API client handles 401s by attempting a silent token refresh (POST `/api/auth/refresh` — no body required, cookie is the credential). If refresh fails, the API client throws `SessionExpiredError` and route/page-level UI boundaries perform the redirect to `/login`.
 
 ### TypeScript Types
 

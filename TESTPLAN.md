@@ -202,17 +202,19 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 ### Happy Path
 
 - `apiRequest()` retries the original request once after a successful refresh (`401 -> /auth/refresh -> retry`)
+- `queryDocumentStream()` throws a typed `SessionExpiredError` when refresh fails during stream setup
 - Dashboard loads the document list successfully and renders document rows
 - Dashboard renders the empty-state message when the document list is empty
 - Dashboard upload success path calls upload API and reloads the document list
 - Dashboard process trigger path calls process API and reloads the document list
 - Dashboard delete success path calls delete API and reloads the document list
+- Dashboard route boundary redirects to `/login` when API calls surface `SessionExpiredError`
 - Login form disables submit while request is in flight and re-enables after completion
 - Register form disables submit while request is in flight and re-enables after completion
 
 ### Error Cases
 
-- `apiRequest()` refresh failure clears client auth storage and surfaces session-expired behavior
+- `apiRequest()` refresh failure clears client auth storage and throws typed `SessionExpiredError` (no API-client redirect side effect)
 - Dashboard shows API error text when initial document load fails
 - Login shows API error text after failed submit
 - Register shows API error text after failed submit
