@@ -14,6 +14,8 @@ interface PdfViewerProps {
   highlightPage?: number | null;
 }
 
+const MAX_RENDERED_PAGE_WIDTH = 760;
+
 /**
  * In-app PDF viewer that supports page-level deep links from chat citations.
  */
@@ -26,6 +28,7 @@ export function PdfViewer({ documentId, highlightPage }: PdfViewerProps) {
   const [pageWidth, setPageWidth] = useState(720);
   const [activeHighlightPage, setActiveHighlightPage] = useState<number | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const pagesContainerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   const pdfFile = useMemo(() => {
@@ -74,16 +77,21 @@ export function PdfViewer({ documentId, highlightPage }: PdfViewerProps) {
   }, [documentId]);
 
   useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
+    const pagesContainer = pagesContainerRef.current;
+    if (!pagesContainer) return;
 
     const updateWidth = () => {
-      setPageWidth(Math.max(container.clientWidth - 24, 260));
+      // Keep a stable canvas width to prevent resize oscillation loops.
+      const nextWidth = Math.min(
+        Math.max(Math.floor(pagesContainer.clientWidth) - 2, 260),
+        MAX_RENDERED_PAGE_WIDTH
+      );
+      setPageWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
     };
 
     updateWidth();
     const observer = new ResizeObserver(updateWidth);
-    observer.observe(container);
+    observer.observe(pagesContainer);
 
     return () => observer.disconnect();
   }, []);
@@ -133,7 +141,7 @@ export function PdfViewer({ documentId, highlightPage }: PdfViewerProps) {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-lg border border-zinc-800 bg-zinc-900 shadow-xl overflow-hidden">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col rounded-lg border border-zinc-800 bg-zinc-900 shadow-xl overflow-hidden">
       <div className="shrink-0 border-b border-zinc-800 px-4 py-3">
         <h3 className="text-sm font-medium text-zinc-200">PDF Viewer</h3>
       </div>
@@ -170,7 +178,7 @@ export function PdfViewer({ documentId, highlightPage }: PdfViewerProps) {
               </div>
             }
           >
-            <div className="space-y-4 pb-4">
+            <div ref={pagesContainerRef} className="mx-auto w-full max-w-4xl space-y-4 pb-4">
               {Array.from({ length: numPages }, (_, index) => {
                 const pageNumber = index + 1;
                 const isHighlighted = activeHighlightPage === pageNumber;
@@ -182,20 +190,24 @@ export function PdfViewer({ documentId, highlightPage }: PdfViewerProps) {
                       if (node) pageRefs.current.set(pageNumber, node);
                       else pageRefs.current.delete(pageNumber);
                     }}
-                    className={`rounded-lg border bg-zinc-950/70 p-3 transition-all duration-300 ${
+                    className={`mx-auto w-fit overflow-hidden rounded-lg border bg-zinc-950/70 transition-all duration-300 ${
                       isHighlighted
-                        ? "border-lapis-400 ring-2 ring-lapis-400/80 animate-pulse"
+                        ? "border-lapis-400/70 ring-1 ring-lapis-400/45 bg-lapis-900/10"
                         : "border-zinc-800"
                     }`}
                   >
-                    <p className="mb-2 text-meta">Page {pageNumber}</p>
-                    <Page
-                      pageNumber={pageNumber}
-                      width={pageWidth}
-                      renderAnnotationLayer={false}
-                      renderTextLayer={false}
-                      loading={null}
-                    />
+                    <div className="border-b border-zinc-800 px-3 py-2">
+                      <p className="text-meta">Page {pageNumber}</p>
+                    </div>
+                    <div className="flex justify-center">
+                      <Page
+                        pageNumber={pageNumber}
+                        width={pageWidth}
+                        renderAnnotationLayer={false}
+                        renderTextLayer={false}
+                        loading={null}
+                      />
+                    </div>
                   </div>
                 );
               })}
