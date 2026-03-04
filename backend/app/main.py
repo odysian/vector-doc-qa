@@ -106,7 +106,6 @@ async def health_check():
         return {
             "status": "healthy",
             "database": "connected",
-            "upload_dir": str(settings.get_upload_path()),
             "max_file_size_mb": settings.max_file_size / 1024 / 1024,
         }
     else:
@@ -115,7 +114,6 @@ async def health_check():
             content={
                 "status": "unhealthy",
                 "database": "error",
-                "upload_dir": str(settings.get_upload_path()),
                 "max_file_size_mb": settings.max_file_size / 1024 / 1024,
             },
         )

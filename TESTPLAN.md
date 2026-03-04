@@ -69,6 +69,21 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 
 ---
 
+## Feature: Health Endpoint Redaction
+
+### Happy Path
+
+- GET `/health` returns 200 with `status=healthy` and `database=connected` when DB check succeeds
+- Health payload includes `max_file_size_mb` for operational visibility
+- Health payload does not expose filesystem path fields (`upload_dir`)
+
+### Error Cases
+
+- GET `/health` returns 503 with `status=unhealthy` and `database=error` when DB check fails
+- Unhealthy payload still omits filesystem path fields (`upload_dir`)
+
+---
+
 ## Feature: Document Upload
 
 ### Happy Path
