@@ -128,6 +128,22 @@ class TestSearch:
         )
         assert response.status_code == 404
 
+    async def test_search_info_logs_redact_raw_query(
+        self, client, auth_headers, processed_document, mock_embeddings
+    ):
+        raw_query = "salary details for q4"
+        with patch("app.services.search_service.logger.info") as mock_info:
+            response = await client.post(
+                f"/api/documents/{processed_document.id}/search",
+                headers=auth_headers,
+                json={"query": raw_query, "top_k": 3},
+            )
+
+        assert response.status_code == 200
+        info_messages = [call.args[0] for call in mock_info.call_args_list]
+        assert any("query_chars=" in message for message in info_messages)
+        assert all(raw_query not in message for message in info_messages)
+
 
 # ---------------------------------------------------------------------------
 # Query (RAG)
@@ -197,6 +213,31 @@ class TestQuery:
             json={"query": "test"},
         )
         assert response.status_code == 404
+
+    async def test_query_info_logs_redact_raw_query(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        mock_embeddings,
+        mock_anthropic,
+        test_user: User,
+    ):
+        raw_query = "sensitive compensation details"
+        with patch("app.api.documents.logger.info") as mock_info:
+            response = await client.post(
+                f"/api/documents/{processed_document.id}/query",
+                headers=auth_headers,
+                json={"query": raw_query},
+            )
+
+        assert response.status_code == 200
+        info_messages = [call.args[0] for call in mock_info.call_args_list]
+        assert any(
+            f"user_id={test_user.id}" in message and "query_chars=" in message
+            for message in info_messages
+        )
+        assert all(raw_query not in message for message in info_messages)
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +329,51 @@ class TestQueryStream:
             json={"query": "test"},
         )
         assert response.status_code == 400
+
+    async def test_stream_query_info_logs_redact_raw_query(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        mock_embeddings,
+        db_session: AsyncSession,
+        test_user: User,
+    ):
+        raw_query = "tell me internal budget notes"
+
+        async def _fake_generate_answer_stream(
+            query: str,
+            chunks: list[dict],
+        ) -> AsyncGenerator[str, None]:
+            del query, chunks
+            yield "streamed answer"
+
+        with (
+            patch("app.api.documents.logger.info") as mock_info,
+            patch(
+                "app.api.documents.generate_answer_stream",
+                new=_fake_generate_answer_stream,
+            ),
+            patch(
+                "app.api.documents.AsyncSessionLocal",
+                new=lambda: _NoCloseSessionContext(db_session),
+            ),
+        ):
+            async with client.stream(
+                "POST",
+                f"/api/documents/{processed_document.id}/query/stream",
+                headers=auth_headers,
+                json={"query": raw_query},
+            ) as response:
+                assert response.status_code == 200
+                await _read_sse_events(response)
+
+        info_messages = [call.args[0] for call in mock_info.call_args_list]
+        assert any(
+            f"user_id={test_user.id}" in message and "query_chars=" in message
+            for message in info_messages
+        )
+        assert all(raw_query not in message for message in info_messages)
 
     async def test_stream_query_emits_error_event_when_llm_stream_fails(
         self,
