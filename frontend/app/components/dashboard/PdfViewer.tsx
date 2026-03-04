@@ -1,0 +1,214 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Document as ReactPdfDocument, Page, pdfjs } from "react-pdf";
+import { api, ApiError } from "@/lib/api";
+
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
+
+interface PdfViewerProps {
+  documentId: number;
+  highlightPage?: number | null;
+}
+
+/**
+ * In-app PDF viewer that supports page-level deep links from chat citations.
+ */
+export function PdfViewer({ documentId, highlightPage }: PdfViewerProps) {
+  const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
+  const [numPages, setNumPages] = useState<number>(0);
+  const [loadingFile, setLoadingFile] = useState(true);
+  const [loadingPages, setLoadingPages] = useState(true);
+  const [error, setError] = useState<string>("");
+  const [pageWidth, setPageWidth] = useState(720);
+  const [activeHighlightPage, setActiveHighlightPage] = useState<number | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  const pdfFile = useMemo(() => {
+    if (!pdfData) return null;
+    return { data: pdfData };
+  }, [pdfData]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPdf = async () => {
+      setLoadingFile(true);
+      setLoadingPages(true);
+      setError("");
+      setPdfData(null);
+      setNumPages(0);
+      pageRefs.current.clear();
+
+      try {
+        const blob = await api.getDocumentFile(documentId);
+        if (cancelled) return;
+
+        const buffer = await blob.arrayBuffer();
+        if (cancelled) return;
+
+        setPdfData(new Uint8Array(buffer));
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof ApiError) {
+          setError(err.detail);
+        } else {
+          setError("Failed to load PDF file");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingFile(false);
+        }
+      }
+    };
+
+    loadPdf();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId]);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const updateWidth = () => {
+      setPageWidth(Math.max(container.clientWidth - 24, 260));
+    };
+
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!highlightPage || !numPages) return;
+
+    const targetPage = Math.max(1, Math.min(highlightPage, numPages));
+    let frameId: number | null = null;
+    let highlightTimer: number | null = null;
+    let attempts = 0;
+
+    // Citations can arrive before page wrappers mount, so retry briefly.
+    const scrollToTarget = () => {
+      const target = pageRefs.current.get(targetPage);
+      if (!target) {
+        if (attempts < 20) {
+          attempts += 1;
+          frameId = window.requestAnimationFrame(scrollToTarget);
+        }
+        return;
+      }
+
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      setActiveHighlightPage(targetPage);
+      highlightTimer = window.setTimeout(() => {
+        setActiveHighlightPage((current) => (current === targetPage ? null : current));
+      }, 1500);
+    };
+
+    scrollToTarget();
+
+    return () => {
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      if (highlightTimer !== null) window.clearTimeout(highlightTimer);
+    };
+  }, [highlightPage, numPages]);
+
+  const onDocumentLoadSuccess = ({ numPages: loadedPages }: { numPages: number }) => {
+    setNumPages(loadedPages);
+    setLoadingPages(false);
+  };
+
+  const onDocumentLoadError = (err: Error) => {
+    setError(err.message || "Failed to render PDF");
+    setLoadingPages(false);
+  };
+
+  return (
+    <div className="flex h-full min-h-0 flex-col rounded-lg border border-zinc-800 bg-zinc-900 shadow-xl overflow-hidden">
+      <div className="shrink-0 border-b border-zinc-800 px-4 py-3">
+        <h3 className="text-sm font-medium text-zinc-200">PDF Viewer</h3>
+      </div>
+
+      <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto p-3">
+        {loadingFile && (
+          <div className="h-full min-h-48 flex items-center justify-center text-zinc-400">
+            <div className="flex items-center gap-3">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-600 border-t-lapis-400" />
+              <span className="text-body-sm">Loading PDF...</span>
+            </div>
+          </div>
+        )}
+
+        {!loadingFile && error && (
+          <div className="h-full min-h-48 flex items-center justify-center">
+            <div className="max-w-sm rounded-lg border border-red-900/50 bg-red-900/20 p-4 text-center">
+              <p className="text-error text-body-sm">{error}</p>
+            </div>
+          </div>
+        )}
+
+        {!loadingFile && !error && pdfFile && (
+          <ReactPdfDocument
+            file={pdfFile}
+            onLoadSuccess={onDocumentLoadSuccess}
+            onLoadError={onDocumentLoadError}
+            loading={
+              <div className="h-full min-h-48 flex items-center justify-center text-zinc-400">
+                <div className="flex items-center gap-3">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-600 border-t-lapis-400" />
+                  <span className="text-body-sm">Rendering pages...</span>
+                </div>
+              </div>
+            }
+          >
+            <div className="space-y-4 pb-4">
+              {Array.from({ length: numPages }, (_, index) => {
+                const pageNumber = index + 1;
+                const isHighlighted = activeHighlightPage === pageNumber;
+
+                return (
+                  <div
+                    key={pageNumber}
+                    ref={(node) => {
+                      if (node) pageRefs.current.set(pageNumber, node);
+                      else pageRefs.current.delete(pageNumber);
+                    }}
+                    className={`rounded-lg border bg-zinc-950/70 p-3 transition-all duration-300 ${
+                      isHighlighted
+                        ? "border-lapis-400 ring-2 ring-lapis-400/80 animate-pulse"
+                        : "border-zinc-800"
+                    }`}
+                  >
+                    <p className="mb-2 text-meta">Page {pageNumber}</p>
+                    <Page
+                      pageNumber={pageNumber}
+                      width={pageWidth}
+                      renderAnnotationLayer={false}
+                      renderTextLayer={false}
+                      loading={null}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </ReactPdfDocument>
+        )}
+
+        {!loadingFile && !error && pdfFile && !loadingPages && numPages === 0 && (
+          <div className="h-full min-h-48 flex items-center justify-center text-zinc-400">
+            <p className="text-body-sm">No pages found in this PDF.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

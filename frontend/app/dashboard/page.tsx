@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { PanelLeft, X, FileUp } from "lucide-react";
 import { api, isLoggedIn, type Document, ApiError } from "@/lib/api";
 import { UploadZone } from "../components/dashboard/UploadZone";
@@ -14,6 +15,10 @@ import { ChatWindow } from "../components/dashboard/ChatWindow";
 import { DeleteDocumentModal } from "../components/dashboard/DeleteDocumentModal";
 
 const SIDEBAR_WIDTH = "w-72";
+const PdfViewer = dynamic(
+  () => import("../components/dashboard/PdfViewer").then((mod) => mod.PdfViewer),
+  { ssr: false }
+);
 
 export default function DashboardPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -23,6 +28,8 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
   const [deletingInProgress, setDeletingInProgress] = useState(false);
+  const [highlightPage, setHighlightPage] = useState<number | null>(null);
+  const [mobileTab, setMobileTab] = useState<"pdf" | "chat">("chat");
   const documentsRef = useRef<Document[]>([]);
   const router = useRouter();
   const hasActiveDocuments = documents.some(
@@ -190,12 +197,26 @@ export default function DashboardPage() {
   const handleDocumentClick = (document: Document) => {
     if (document.status !== "completed") return;
     setSelectedDocument(document);
+    setHighlightPage(null);
+    setMobileTab("chat");
     setSidebarOpen(false);
   };
 
   const handleBackToDocuments = () => {
     setSelectedDocument(null);
+    setHighlightPage(null);
     setSidebarOpen(true);
+  };
+
+  const handleCitationClick = (page: number) => {
+    setMobileTab("pdf");
+    setHighlightPage((current) => {
+      if (current === page) {
+        window.setTimeout(() => setHighlightPage(page), 0);
+        return null;
+      }
+      return page;
+    });
   };
 
   const handleProcessDocument = async (doc: Document) => {
@@ -355,10 +376,47 @@ export default function DashboardPage() {
             </div>
           ) : selectedDocument ? (
             <div className="flex-1 min-h-0 flex flex-col">
-              <ChatWindow
-                document={selectedDocument}
-                onBack={handleBackToDocuments}
-              />
+              <div className="mb-3 lg:hidden inline-flex w-full rounded-lg border border-zinc-800 bg-zinc-900 p-1">
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("pdf")}
+                  className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 ${
+                    mobileTab === "pdf"
+                      ? "bg-lapis-600 text-white"
+                      : "text-zinc-300 hover:bg-zinc-800"
+                  }`}
+                >
+                  PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("chat")}
+                  className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 ${
+                    mobileTab === "chat"
+                      ? "bg-lapis-600 text-white"
+                      : "text-zinc-300 hover:bg-zinc-800"
+                  }`}
+                >
+                  Chat
+                </button>
+              </div>
+
+              <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4">
+                <section className={`${mobileTab === "pdf" ? "flex" : "hidden"} lg:flex flex-1 min-h-0`}>
+                  <PdfViewer
+                    documentId={selectedDocument.id}
+                    highlightPage={highlightPage}
+                  />
+                </section>
+
+                <section className={`${mobileTab === "chat" ? "flex" : "hidden"} lg:flex flex-1 min-h-0`}>
+                  <ChatWindow
+                    document={selectedDocument}
+                    onBack={handleBackToDocuments}
+                    onCitationClick={handleCitationClick}
+                  />
+                </section>
+              </div>
             </div>
           ) : documents.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto">

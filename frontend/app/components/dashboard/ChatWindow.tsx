@@ -21,6 +21,7 @@ interface Message {
 interface ChatWindowProps {
   document: Document;
   onBack: () => void;
+  onCitationClick?: (page: number) => void;
 }
 
 const SUGGESTED_PROMPTS = [
@@ -32,7 +33,7 @@ const SUGGESTED_PROMPTS = [
 /**
  * Renders the pop up window with query input and message history.
  */
-export function ChatWindow({ document, onBack }: ChatWindowProps) {
+export function ChatWindow({ document, onBack, onCitationClick }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loadingHistory, setLoadingHistory] = useState(true);
@@ -253,6 +254,14 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
     submitQuery(input);
   };
 
+  const getSourcePageLabel = (pageStart?: number | null, pageEnd?: number | null): string => {
+    if (pageStart === null || pageStart === undefined) return "";
+    if (pageEnd === null || pageEnd === undefined || pageEnd === pageStart) {
+      return `Page ${pageStart}`;
+    }
+    return `Pages ${pageStart}-${pageEnd}`;
+  };
+
   return (
     <div className="flex flex-col h-full min-h-0 max-h-full bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shadow-xl">
       {/* Header */}
@@ -456,11 +465,34 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                       const previewLength = 250;
                       const preview = source.content.substring(0, previewLength).trim();
                       const remainder = source.content.substring(previewLength).trim();
+                      const canJumpToPage = (
+                        source.page_start !== null
+                        && source.page_start !== undefined
+                        && onCitationClick !== undefined
+                      );
+                      const pageLabel = getSourcePageLabel(source.page_start, source.page_end);
 
                       return (
                         <div
                           key={idx}
-                          className="bg-zinc-950/50 border border-zinc-800/50 p-3 rounded-lg hover:border-lapis-500/30 transition-colors"
+                          onClick={() => {
+                            if (!canJumpToPage || source.page_start === null || source.page_start === undefined) return;
+                            onCitationClick(source.page_start);
+                          }}
+                          onKeyDown={(event) => {
+                            if (!canJumpToPage || source.page_start === null || source.page_start === undefined) return;
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              onCitationClick(source.page_start);
+                            }
+                          }}
+                          role={canJumpToPage ? "button" : undefined}
+                          tabIndex={canJumpToPage ? 0 : undefined}
+                          className={`bg-zinc-950/50 border border-zinc-800/50 p-3 rounded-lg transition-colors ${
+                            canJumpToPage
+                              ? "cursor-pointer hover:border-lapis-500/60 hover:bg-zinc-900/70"
+                              : "hover:border-lapis-500/30"
+                          }`}
                         >
                           <div className="flex items-center gap-2 mb-2">
                             <span className="badge-sm bg-lapis-600 text-white px-2 py-0.5 rounded">
@@ -472,6 +504,11 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                             <span className="text-meta-bright">
                               Excerpt {source.chunk_index}
                             </span>
+                            {pageLabel && (
+                              <span className="text-meta-bright">
+                                {pageLabel}
+                              </span>
+                            )}
                           </div>
 
                           <p className="text-caption">
@@ -484,7 +521,10 @@ export function ChatWindow({ document, onBack }: ChatWindowProps) {
                           {source.content.length > previewLength && (
                             <button
                               type="button"
-                              onClick={() => toggleSourceCard(i, idx)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                toggleSourceCard(i, idx);
+                              }}
                               className="mt-2 text-link-sm hover:text-lapis-300 transition-colors cursor-pointer"
                             >
                               {isExpanded ? "Show less ▲" : "Show full context ▼"}

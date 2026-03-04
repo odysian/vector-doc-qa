@@ -279,6 +279,41 @@ export const api = {
     return apiRequest(`/api/documents/${documentId}/status`);
   },
 
+  /** Download a document PDF for in-app viewing. */
+  getDocumentFile: async (documentId: number): Promise<Blob> => {
+    const buildHeaders = (csrfToken: string | null): HeadersInit => ({
+      ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+    });
+
+    let response = await fetch(fullUrl(`/api/documents/${documentId}/file`), {
+      method: "GET",
+      credentials: "include",
+      headers: buildHeaders(getCsrfToken()),
+    });
+
+    if (response.status === 401) {
+      const refreshed = await refreshAccessToken();
+      if (refreshed) {
+        response = await fetch(fullUrl(`/api/documents/${documentId}/file`), {
+          method: "GET",
+          credentials: "include",
+          headers: buildHeaders(getCsrfToken()),
+        });
+      } else {
+        clearTokens();
+        window.location.href = "/login";
+        throw new ApiError(401, "Session expired");
+      }
+    }
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: "Failed to load document" }));
+      throw new ApiError(response.status, error.detail || "Failed to load document");
+    }
+
+    return response.blob();
+  },
+
   /** Delete a document and its file. */
   deleteDocument: async (documentId: number): Promise<{ message: string }> => {
     return apiRequest(`/api/documents/${documentId}`, {
