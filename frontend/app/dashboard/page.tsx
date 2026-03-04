@@ -15,6 +15,8 @@ import { ChatWindow } from "../components/dashboard/ChatWindow";
 import { DeleteDocumentModal } from "../components/dashboard/DeleteDocumentModal";
 
 const SIDEBAR_WIDTH = "w-72";
+const SPLIT_LAYOUT_MIN_WIDTH = 1120;
+const SPLIT_LAYOUT_RESTORE_WIDTH = 1240;
 const PdfViewer = dynamic(
   () => import("../components/dashboard/PdfViewer").then((mod) => mod.PdfViewer),
   { ssr: false }
@@ -30,8 +32,10 @@ export default function DashboardPage() {
   const [deletingInProgress, setDeletingInProgress] = useState(false);
   const [highlightPage, setHighlightPage] = useState<number | null>(null);
   const [mobileTab, setMobileTab] = useState<"pdf" | "chat">("chat");
+  const [useTabLayout, setUseTabLayout] = useState(true);
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   const documentsRef = useRef<Document[]>([]);
+  const workspaceRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const hasActiveDocuments = documents.some(
     (doc) => doc.status === "pending" || doc.status === "processing"
@@ -186,6 +190,41 @@ export default function DashboardPage() {
     };
   }, [hasActiveDocuments, loading, handleSessionExpired, isSessionExpired]);
 
+  useEffect(() => {
+    const workspace = workspaceRef.current;
+    if (!workspace) return;
+
+    let frameId: number | null = null;
+
+    const updateLayoutMode = (width: number) => {
+      setUseTabLayout((current) => {
+        if (current) {
+          return width < SPLIT_LAYOUT_RESTORE_WIDTH;
+        }
+        return width < SPLIT_LAYOUT_MIN_WIDTH;
+      });
+    };
+
+    updateLayoutMode(Math.floor(workspace.clientWidth));
+
+    const observer = new ResizeObserver((entries) => {
+      const [entry] = entries;
+      if (!entry) return;
+
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        updateLayoutMode(Math.floor(entry.contentRect.width));
+      });
+    });
+
+    observer.observe(workspace);
+
+    return () => {
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, [selectedDocument?.id]);
+
   const handleUpload = async (file: File) => {
     setError("");
     try {
@@ -259,6 +298,9 @@ export default function DashboardPage() {
       setDeletingInProgress(false);
     }
   };
+
+  const showPdfPane = !useTabLayout || mobileTab === "pdf";
+  const showChatPane = !useTabLayout || mobileTab === "chat";
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
@@ -381,8 +423,9 @@ export default function DashboardPage() {
               <p className="text-empty">Loading your documents...</p>
             </div>
           ) : selectedDocument ? (
-            <div className="flex-1 min-h-0 flex flex-col">
-              <div className="mb-3 xl:hidden inline-flex w-full rounded-lg border border-zinc-800 bg-zinc-900 p-1">
+            <div ref={workspaceRef} className="flex-1 min-h-0 flex flex-col">
+              {useTabLayout && (
+                <div className="mb-3 inline-flex w-full max-w-md self-center rounded-lg border border-zinc-800 bg-zinc-900 p-1">
                 <button
                   type="button"
                   onClick={() => setMobileTab("pdf")}
@@ -405,10 +448,15 @@ export default function DashboardPage() {
                 >
                   Chat
                 </button>
-              </div>
+                </div>
+              )}
 
-              <div className="flex-1 min-h-0 flex flex-col xl:flex-row gap-4">
-                <section className={`${mobileTab === "pdf" ? "flex" : "hidden"} xl:flex flex-1 min-h-0 min-w-0`}>
+              <div className={`flex-1 min-h-0 flex gap-4 ${useTabLayout ? "flex-col items-center" : "flex-row"}`}>
+                <section
+                  className={`${showPdfPane ? "flex" : "hidden"} min-h-0 min-w-0 w-full ${
+                    useTabLayout ? "flex-1 max-w-5xl" : "flex-[1.15] basis-[56%]"
+                  }`}
+                >
                   <PdfViewer
                     documentId={selectedDocument.id}
                     highlightPage={highlightPage}
@@ -416,7 +464,11 @@ export default function DashboardPage() {
                   />
                 </section>
 
-                <section className={`${mobileTab === "chat" ? "flex" : "hidden"} xl:flex flex-1 min-h-0 min-w-0`}>
+                <section
+                  className={`${showChatPane ? "flex" : "hidden"} min-h-0 min-w-0 w-full ${
+                    useTabLayout ? "flex-1 max-w-5xl" : "flex-[0.95] basis-[44%]"
+                  }`}
+                >
                   <ChatWindow
                     document={selectedDocument}
                     onBack={handleBackToDocuments}

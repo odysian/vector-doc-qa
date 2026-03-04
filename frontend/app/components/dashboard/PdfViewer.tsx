@@ -15,7 +15,8 @@ interface PdfViewerProps {
   onSessionExpired?: () => void;
 }
 
-const MAX_RENDERED_PAGE_WIDTH = 760;
+const MAX_RENDERED_PAGE_WIDTH = 840;
+const PAGE_WIDTH_STEP = 8;
 
 /**
  * In-app PDF viewer that supports page-level deep links from chat citations.
@@ -85,20 +86,33 @@ export function PdfViewer({ documentId, highlightPage, onSessionExpired }: PdfVi
     const pagesContainer = pagesContainerRef.current;
     if (!pagesContainer) return;
 
-    const updateWidth = () => {
-      // Keep a stable canvas width to prevent resize oscillation loops.
-      const nextWidth = Math.min(
-        Math.max(Math.floor(pagesContainer.clientWidth) - 2, 260),
-        MAX_RENDERED_PAGE_WIDTH
+    let frameId: number | null = null;
+
+    const updateWidth = (containerWidth: number) => {
+      // Snap to a small width grid to avoid noisy resize loops and repaint flashes.
+      const boundedWidth = Math.min(Math.max(containerWidth - 2, 260), MAX_RENDERED_PAGE_WIDTH);
+      const nextWidth = Math.round(boundedWidth / PAGE_WIDTH_STEP) * PAGE_WIDTH_STEP;
+      setPageWidth((current) =>
+        Math.abs(current - nextWidth) >= PAGE_WIDTH_STEP ? nextWidth : current
       );
-      setPageWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
     };
 
-    updateWidth();
-    const observer = new ResizeObserver(updateWidth);
+    updateWidth(Math.floor(pagesContainer.clientWidth));
+    const observer = new ResizeObserver((entries) => {
+      const [entry] = entries;
+      if (!entry) return;
+
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        updateWidth(Math.floor(entry.contentRect.width));
+      });
+    });
     observer.observe(pagesContainer);
 
-    return () => observer.disconnect();
+    return () => {
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
   }, []);
 
   useEffect(() => {
@@ -183,7 +197,7 @@ export function PdfViewer({ documentId, highlightPage, onSessionExpired }: PdfVi
               </div>
             }
           >
-            <div ref={pagesContainerRef} className="mx-auto w-full max-w-4xl space-y-4 pb-4">
+            <div ref={pagesContainerRef} className="mx-auto w-full space-y-4 pb-4">
               {Array.from({ length: numPages }, (_, index) => {
                 const pageNumber = index + 1;
                 const isHighlighted = activeHighlightPage === pageNumber;
@@ -195,7 +209,7 @@ export function PdfViewer({ documentId, highlightPage, onSessionExpired }: PdfVi
                       if (node) pageRefs.current.set(pageNumber, node);
                       else pageRefs.current.delete(pageNumber);
                     }}
-                    className={`mx-auto w-fit overflow-hidden rounded-lg border bg-zinc-950/70 transition-all duration-300 ${
+                    className={`mx-auto w-fit overflow-hidden rounded-lg border bg-zinc-950/70 transition-colors duration-200 ${
                       isHighlighted
                         ? "border-lapis-400/70 ring-1 ring-lapis-400/45 bg-lapis-900/10"
                         : "border-zinc-800"
