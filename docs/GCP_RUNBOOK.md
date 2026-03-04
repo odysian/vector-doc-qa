@@ -179,22 +179,65 @@ GHCR_TOKEN="<ghcr-token>" \
 
 ---
 
-## 6. Post-Deploy Smoke Checklist
+## 6. Demo Readiness Checklist + Smoke Script
 
-1. Health endpoint:
-   - `GET /health` returns healthy
-2. Auth:
-   - login succeeds
-   - `/api/auth/me` succeeds
-   - refresh succeeds
-3. Document flow:
-   - upload PDF
-   - status transitions from `pending/processing` to `completed`
-   - query stream renders token-by-token (not single buffered block)
-   - query returns answer with sources
-   - delete succeeds
-4. Worker:
-   - background processing starts automatically after upload
+Run this flow before live demos. It is designed for staging/prod safety:
+
+- no upload/process/delete endpoints are called
+- only auth + read paths are exercised, plus query endpoints (which append chat history rows)
+
+### Required environment variables
+
+```bash
+export API_BASE_URL="https://api.quaero.odysian.dev"
+export DEMO_USERNAME="<demo-username>"
+export DEMO_PASSWORD="<demo-password>"
+```
+
+Optional:
+
+```bash
+export SMOKE_DOCUMENT_ID="<completed-document-id>"  # if omitted, auto-picks first completed doc
+export SMOKE_QUERY="What is the main topic of this document?"
+export STREAM_SMOKE_QUERY="Give a concise one-sentence summary with one source citation."
+```
+
+### One-command smoke run
+
+```bash
+bash scripts/demo_smoke.sh
+```
+
+The script validates these endpoints/behaviors with step-level pass/fail output:
+
+1. `GET /health` is healthy.
+2. Auth flow:
+   - `POST /api/auth/login`
+   - `GET /api/auth/me`
+   - `POST /api/auth/refresh`
+3. Document readiness:
+   - `GET /api/documents/`
+   - `GET /api/documents/{id}/status` is `completed`
+4. Query readiness:
+   - `POST /api/documents/{id}/query` returns non-empty answer + sources
+5. Stream readiness:
+   - `POST /api/documents/{id}/query/stream` returns SSE with `sources`, `token`, `meta`, and `done` events
+6. Citation prerequisites:
+   - query sources include at least one `page_start`/`page_end`
+7. PDF endpoint:
+   - `GET /api/documents/{id}/file` returns `application/pdf`
+   - response payload starts with `%PDF-`
+
+Failures include the exact step and endpoint, and the script exits non-zero.
+
+### Manual UI checklist (post-script)
+
+1. Login in frontend with demo account.
+2. Open the same document used by smoke script.
+3. Ask a question and confirm token-by-token stream rendering in chat.
+4. Click a citation source chip/card in the response.
+5. Verify PDF panel jumps to the cited page and displays the relevant section.
+6. Confirm the PDF viewer remains responsive on desktop and mobile viewport sizes.
 
 ---
 
