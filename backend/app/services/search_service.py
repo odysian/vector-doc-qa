@@ -12,7 +12,9 @@ async def search_chunks(query: str, document_id: int, top_k: int, db: AsyncSessi
     """
     Search for chunks semantically similar to the query.
     """
-    logger.info(f"Searching for: '{query}' in document_id={document_id}, top_k={top_k}")
+    logger.info(
+        f"Searching chunks for document_id={document_id}, top_k={top_k}, query_chars={len(query)}"
+    )
 
     query_embedding = await generate_embedding(query)
     logger.debug(f"Generated query embedding with {len(query_embedding)} dimensions")

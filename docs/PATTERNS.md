@@ -151,6 +151,11 @@ raise HTTPException(status_code=404, detail="Document not found")
 raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 ```
 
+### Query Logging Redaction
+
+In query/search/LLM paths, INFO logs must not include raw user query text.
+Log metadata only (for example `document_id`, `user_id`, `query_chars`, `chunk_count`, `top_k`) and keep detailed exception context in error logs.
+
 ### Refresh Token Rotation
 
 The refresh endpoint consumes tokens with a single SQL statement (`DELETE ... RETURNING`) and commits exactly once after staging the replacement token.
