@@ -40,6 +40,7 @@ export default function DashboardPage() {
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   const [workspaceElement, setWorkspaceElement] = useState<HTMLDivElement | null>(null);
   const documentsRef = useRef<Document[]>([]);
+  const workspaceRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const hasActiveDocuments = documents.some(
     (doc) => doc.status === "pending" || doc.status === "processing"
