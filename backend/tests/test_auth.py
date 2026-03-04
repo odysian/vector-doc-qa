@@ -607,6 +607,26 @@ class TestCookieAuth:
         assert "refresh_token" in response.cookies
         assert "csrf_token" in response.cookies
 
+    async def test_login_clears_legacy_root_path_auth_cookies(
+        self, client: AsyncClient, test_user: User
+    ):
+        """Login also expires legacy root-path auth cookies from older builds."""
+        response = await client.post(
+            "/api/auth/login",
+            json={"username": test_user.username, "password": TEST_PASSWORD},
+        )
+        assert response.status_code == 200
+
+        set_cookie_headers = response.headers.get_list("set-cookie")
+        assert any(
+            "access_token=" in header and "Path=/" in header and "Max-Age=0" in header
+            for header in set_cookie_headers
+        )
+        assert any(
+            "refresh_token=" in header and "Path=/" in header and "Max-Age=0" in header
+            for header in set_cookie_headers
+        )
+
     async def test_me_works_via_access_token_cookie(
         self, client: AsyncClient, test_user: User
     ):

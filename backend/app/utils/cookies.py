@@ -33,6 +33,27 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
     access_max_age: int | None = settings.access_token_expire_minutes * 60 or None
     refresh_max_age: int = settings.refresh_token_expire_days * 86400
 
+    # Clear legacy cookie paths first so stale root-path cookies can't shadow
+    # the current /api-scoped cookies when duplicate names are sent.
+    response.set_cookie(
+        key="access_token",
+        value="",
+        max_age=0,
+        httponly=True,
+        secure=secure,
+        samesite=samesite,
+        path="/",
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value="",
+        max_age=0,
+        httponly=True,
+        secure=secure,
+        samesite=samesite,
+        path="/",
+    )
+
     # httpOnly: cannot be read by JS — protects against XSS token theft
     response.set_cookie(
         key="access_token",
@@ -80,6 +101,8 @@ def clear_auth_cookies(response: Response) -> None:
     samesite: Literal["lax", "strict", "none"] = "none" if prod else "lax"
 
     cookie_attrs: list[tuple[str, str, bool]] = [
+        ("access_token", "/", True),  # legacy path cleanup
+        ("refresh_token", "/", True),  # legacy path cleanup
         ("access_token", "/api/", True),
         ("refresh_token", "/api/auth/", True),
         ("csrf_token", "/", False),
