@@ -10,6 +10,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => routerMock,
 }));
 
+vi.mock("@/app/components/dashboard/PdfViewer", () => ({
+  PdfViewer: () => <div>PDF Viewer</div>,
+}));
+
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return {

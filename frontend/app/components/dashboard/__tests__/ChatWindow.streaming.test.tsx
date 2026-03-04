@@ -149,4 +149,47 @@ describe("ChatWindow streaming lifecycle", () => {
       expect(capturedSignal?.aborted).toBe(true);
     });
   });
+
+  it("shows source page ranges and deep-links on citation click", async () => {
+    getMessagesMock.mockResolvedValueOnce({
+      messages: [
+        {
+          id: 1,
+          document_id: documentFixture.id,
+          user_id: documentFixture.user_id,
+          role: "assistant",
+          content: "The answer is supported by this excerpt.",
+          sources: [
+            {
+              chunk_id: 11,
+              content: "Cited section content for pages three and four.",
+              similarity: 0.98,
+              chunk_index: 2,
+              page_start: 3,
+              page_end: 4,
+            },
+          ],
+          created_at: "2026-03-02T12:02:00Z",
+        },
+      ],
+      total: 1,
+    });
+
+    const onCitationClick = vi.fn();
+    render(
+      <ChatWindow
+        document={documentFixture}
+        onBack={vi.fn()}
+        onCitationClick={onCitationClick}
+      />
+    );
+
+    await screen.findByText("The answer is supported by this excerpt.");
+    fireEvent.click(screen.getByRole("button", { name: "Sources (1)" }));
+
+    const pageRangeLabel = await screen.findByText("Pages 3-4");
+    fireEvent.click(pageRangeLabel);
+
+    expect(onCitationClick).toHaveBeenCalledWith(3);
+  });
 });

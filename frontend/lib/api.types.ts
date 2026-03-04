@@ -69,6 +69,8 @@ export interface SearchResult {
   content: string;
   similarity: number;
   chunk_index: number;
+  page_start?: number | null;
+  page_end?: number | null;
 }
 
 export interface QueryResponse {
@@ -95,12 +97,7 @@ export interface MessageResponse {
   user_id: number;
   role: "user" | "assistant";
   content: string;
-  sources?: Array<{
-    chunk_id: number;
-    content: string;
-    chunk_index: number;
-    similarity: number;
-  }>;
+  sources?: SearchResult[];
   created_at: string;
 }
 

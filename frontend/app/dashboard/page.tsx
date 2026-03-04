@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { PanelLeft, X, FileUp } from "lucide-react";
 import { api, isLoggedIn, type Document, ApiError } from "@/lib/api";
 import { UploadZone } from "../components/dashboard/UploadZone";
@@ -14,6 +15,10 @@ import { ChatWindow } from "../components/dashboard/ChatWindow";
 import { DeleteDocumentModal } from "../components/dashboard/DeleteDocumentModal";
 
 const SIDEBAR_WIDTH = "w-72";
+const PdfViewer = dynamic(
+  () => import("../components/dashboard/PdfViewer").then((mod) => mod.PdfViewer),
+  { ssr: false }
+);
 
 export default function DashboardPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -23,6 +28,9 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
   const [deletingInProgress, setDeletingInProgress] = useState(false);
+  const [highlightPage, setHighlightPage] = useState<number | null>(null);
+  const [mobileTab, setMobileTab] = useState<"pdf" | "chat">("chat");
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   const documentsRef = useRef<Document[]>([]);
   const router = useRouter();
   const hasActiveDocuments = documents.some(
@@ -190,12 +198,26 @@ export default function DashboardPage() {
   const handleDocumentClick = (document: Document) => {
     if (document.status !== "completed") return;
     setSelectedDocument(document);
+    setHighlightPage(null);
+    setMobileTab("chat");
     setSidebarOpen(false);
   };
 
   const handleBackToDocuments = () => {
     setSelectedDocument(null);
+    setHighlightPage(null);
     setSidebarOpen(true);
+  };
+
+  const handleCitationClick = (page: number) => {
+    setMobileTab("pdf");
+    setHighlightPage((current) => {
+      if (current === page) {
+        window.setTimeout(() => setHighlightPage(page), 0);
+        return null;
+      }
+      return page;
+    });
   };
 
   const handleProcessDocument = async (doc: Document) => {
@@ -247,12 +269,12 @@ export default function DashboardPage() {
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between p-3 border-b border-zinc-800 lg:border-b-0">
+      <div className="flex items-center justify-between p-3 border-b border-zinc-800 xl:border-b-0">
         <h2 className="text-section">Documents</h2>
         <button
           type="button"
           onClick={() => setSidebarOpen(false)}
-          className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 lg:hidden cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+          className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 xl:hidden cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
           aria-label="Close sidebar"
         >
           <X className="w-5 h-5" />
@@ -288,12 +310,23 @@ export default function DashboardPage() {
             <button
               type="button"
               onClick={() => setSidebarOpen((o) => !o)}
-              className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 lg:hidden cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+              className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 xl:hidden cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
               aria-label="Toggle sidebar"
             >
               <PanelLeft className="w-5 h-5" />
             </button>
-            <h1 className="text-2xl font-bold font-cormorant italic text-lapis-400">
+            <button
+              type="button"
+              onClick={() => setDesktopSidebarCollapsed((collapsed) => !collapsed)}
+              className="hidden xl:inline-flex p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+              aria-label={desktopSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={desktopSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              <PanelLeft
+                className={`w-5 h-5 transition-transform ${desktopSidebarCollapsed ? "rotate-180" : ""}`}
+              />
+            </button>
+            <h1 className="text-3xl leading-none font-bold font-cormorant italic text-lapis-400">
               Quaero
             </h1>
           </div>
@@ -312,9 +345,10 @@ export default function DashboardPage() {
         <aside
           className={`
             ${SIDEBAR_WIDTH} shrink-0 flex flex-col bg-zinc-900 border-r border-zinc-800
-            fixed left-0 top-14 bottom-0 lg:relative lg:top-0 z-40 lg:z-auto
-            transform transition-transform duration-200 ease-out
-            ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
+            fixed left-0 top-14 bottom-0 xl:relative xl:top-0 z-40 xl:z-auto
+            transform transition-[transform,width] duration-200 ease-out
+            ${sidebarOpen ? "translate-x-0" : "-translate-x-full xl:translate-x-0"}
+            ${desktopSidebarCollapsed ? "xl:w-0 xl:border-r-0 xl:overflow-hidden xl:pointer-events-none" : "xl:w-72"}
           `}
         >
           {sidebarContent}
@@ -325,7 +359,7 @@ export default function DashboardPage() {
           type="button"
           onClick={() => setSidebarOpen(false)}
           className={`
-            fixed inset-0 bg-black/50 z-30 lg:hidden
+            fixed inset-0 bg-black/50 z-30 xl:hidden
             ${sidebarOpen ? "block" : "hidden"}
           `}
           aria-label="Close sidebar"
@@ -342,7 +376,7 @@ export default function DashboardPage() {
         )}
 
         {/* Main: chat or empty state */}
-        <main className="flex-1 min-w-0 min-h-0 flex flex-col p-4 lg:p-6">
+        <main className="flex-1 min-w-0 min-h-0 flex flex-col p-4 xl:p-6">
           {loading ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-6">
               <h2
@@ -355,10 +389,47 @@ export default function DashboardPage() {
             </div>
           ) : selectedDocument ? (
             <div className="flex-1 min-h-0 flex flex-col">
-              <ChatWindow
-                document={selectedDocument}
-                onBack={handleBackToDocuments}
-              />
+              <div className="mb-3 xl:hidden inline-flex w-full rounded-lg border border-zinc-800 bg-zinc-900 p-1">
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("pdf")}
+                  className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 ${
+                    mobileTab === "pdf"
+                      ? "bg-lapis-600 text-white"
+                      : "text-zinc-300 hover:bg-zinc-800"
+                  }`}
+                >
+                  PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("chat")}
+                  className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 ${
+                    mobileTab === "chat"
+                      ? "bg-lapis-600 text-white"
+                      : "text-zinc-300 hover:bg-zinc-800"
+                  }`}
+                >
+                  Chat
+                </button>
+              </div>
+
+              <div className="flex-1 min-h-0 flex flex-col xl:flex-row gap-4">
+                <section className={`${mobileTab === "pdf" ? "flex" : "hidden"} xl:flex flex-1 min-h-0 min-w-0`}>
+                  <PdfViewer
+                    documentId={selectedDocument.id}
+                    highlightPage={highlightPage}
+                  />
+                </section>
+
+                <section className={`${mobileTab === "chat" ? "flex" : "hidden"} xl:flex flex-1 min-h-0 min-w-0`}>
+                  <ChatWindow
+                    document={selectedDocument}
+                    onBack={handleBackToDocuments}
+                    onCitationClick={handleCitationClick}
+                  />
+                </section>
+              </div>
             </div>
           ) : documents.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto">
@@ -391,7 +462,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => setSidebarOpen(true)}
-                className="mt-6 lg:hidden px-4 py-2 rounded-lg bg-lapis-600 hover:bg-lapis-500 text-white text-sm font-medium cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+                className="mt-6 xl:hidden px-4 py-2 rounded-lg bg-lapis-600 hover:bg-lapis-500 text-white text-sm font-medium cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
               >
                 Open documents
               </button>
