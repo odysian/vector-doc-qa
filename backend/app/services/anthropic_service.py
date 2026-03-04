@@ -63,7 +63,9 @@ async def generate_answer(query: str, chunks: list[dict]) -> str:
         "Based on the document, Q4 revenue was $5M..."
     """
 
-    logger.info(f"Generating answer for query: '{query}'")
+    logger.info(
+        f"Generating answer with query_chars={len(query)}, chunk_count={len(chunks)}"
+    )
 
     prompt = _build_prompt(query, chunks)
     logger.debug(f"Built prompt with {len(chunks)} chunks")
@@ -99,7 +101,9 @@ async def generate_answer_stream(query: str, chunks: list[dict]) -> AsyncGenerat
     """
     Calls Claude streaming API and yields answer tokens as they arrive.
     """
-    logger.info(f"Generating streaming answer for query: '{query}'")
+    logger.info(
+        f"Generating streaming answer with query_chars={len(query)}, chunk_count={len(chunks)}"
+    )
 
     prompt = _build_prompt(query, chunks)
     logger.debug(f"Built prompt with {len(chunks)} chunks")

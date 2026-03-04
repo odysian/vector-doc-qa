@@ -498,7 +498,9 @@ async def query_document(
     messages to the database for chat history.
     """
 
-    logger.info(f"Query request for document_id={document_id}: '{body.query}'")
+    logger.info(
+        f"Query request for document_id={document_id}, user_id={current_user.id}, query_chars={len(body.query)}"
+    )
 
     await _validate_document_for_query(
         document_id=document_id,
@@ -594,7 +596,9 @@ async def query_document_stream(
     """
     Stream an AI-generated answer over SSE for a document query.
     """
-    logger.info(f"Streaming query request for document_id={document_id}: '{body.query}'")
+    logger.info(
+        f"Streaming query request for document_id={document_id}, user_id={current_user.id}, query_chars={len(body.query)}"
+    )
 
     await _validate_document_for_query(
         document_id=document_id,
