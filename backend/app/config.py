@@ -5,6 +5,8 @@ from app.constants import (
     ALLOWED_EXTENSIONS,
     DEFAULT_CHUNK_OVERLAP,
     DEFAULT_CHUNK_SIZE,
+    MAX_CHUNK_OVERLAP,
+    MAX_CHUNK_SIZE,
     MAX_FILE_SIZE_BYTES,
 )
 from pydantic import model_validator
@@ -100,8 +102,16 @@ class Settings(BaseSettings):
         chunk_errors: list[str] = []
         if self.chunk_size <= 0:
             chunk_errors.append("CHUNK_SIZE must be greater than 0")
+        if self.chunk_size > MAX_CHUNK_SIZE:
+            chunk_errors.append(
+                f"CHUNK_SIZE must be less than or equal to {MAX_CHUNK_SIZE}"
+            )
         if self.chunk_overlap < 0:
             chunk_errors.append("CHUNK_OVERLAP must be greater than or equal to 0")
+        if self.chunk_overlap > MAX_CHUNK_OVERLAP:
+            chunk_errors.append(
+                f"CHUNK_OVERLAP must be less than or equal to {MAX_CHUNK_OVERLAP}"
+            )
         if self.chunk_overlap >= self.chunk_size:
             chunk_errors.append("CHUNK_OVERLAP must be smaller than CHUNK_SIZE")
         if chunk_errors:
