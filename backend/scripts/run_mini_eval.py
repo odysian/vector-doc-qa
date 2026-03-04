@@ -77,26 +77,33 @@ def load_eval_cases(path: Path) -> list[EvalCase]:
     return sorted(cases, key=lambda case: case.case_id)
 
 
-async def _resolve_document_id(db: AsyncSession, target_document: str) -> int:
-    stmt = (
-        select(Document.id)
-        .where(
-            Document.filename == target_document,
-            Document.status == DocumentStatus.COMPLETED,
-        )
-        .order_by(Document.id.asc())
+async def _resolve_document_id(
+    db: AsyncSession,
+    target_document: str,
+    user_id: int | None,
+) -> int:
+    stmt = select(Document.id).where(
+        Document.filename == target_document,
+        Document.status == DocumentStatus.COMPLETED,
     )
+    if user_id is not None:
+        stmt = stmt.where(Document.user_id == user_id)
+
+    stmt = stmt.order_by(Document.id.asc())
     matches = (await db.scalars(stmt)).all()
 
     if not matches:
+        scoped_to_user = f" for user_id={user_id}" if user_id is not None else ""
         raise ValueError(
-            f"No completed document found for target_document='{target_document}'. "
+            f"No completed document found for target_document='{target_document}'{scoped_to_user}. "
             "Upload and process the target document before running eval."
         )
     if len(matches) > 1:
+        scoped_to_user = f" for user_id={user_id}" if user_id is not None else ""
         raise ValueError(
             f"Multiple completed documents found for target_document='{target_document}' "
-            f"(ids={matches}). Use a unique filename in fixtures."
+            f"{scoped_to_user} (ids={matches}). "
+            "Use --user-id to scope the run or use unique filenames."
         )
     return matches[0]
 
@@ -114,8 +121,6 @@ async def _search_chunks_from_embedding(
             Chunk.id,
             Chunk.content,
             Chunk.chunk_index,
-            Chunk.page_start,
-            Chunk.page_end,
             distance_expr,
         )
         .where(Chunk.document_id == document_id)
@@ -126,7 +131,7 @@ async def _search_chunks_from_embedding(
 
     rows = (await db.execute(stmt)).all()
     results: list[dict[str, Any]] = []
-    for chunk_id, content, chunk_index, page_start, page_end, distance in rows:
+    for chunk_id, content, chunk_index, distance in rows:
         similarity = round(1 - float(distance), 4)
         results.append(
             {
@@ -134,8 +139,6 @@ async def _search_chunks_from_embedding(
                 "content": content,
                 "similarity": similarity,
                 "chunk_index": chunk_index,
-                "page_start": page_start,
-                "page_end": page_end,
             }
         )
     return results
@@ -168,8 +171,13 @@ async def _run_case(
     db: AsyncSession,
     eval_case: EvalCase,
     top_k: int,
+    user_id: int | None,
 ) -> dict[str, Any]:
-    document_id = await _resolve_document_id(db=db, target_document=eval_case.target_document)
+    document_id = await _resolve_document_id(
+        db=db,
+        target_document=eval_case.target_document,
+        user_id=user_id,
+    )
 
     pipeline_start = time.perf_counter()
 
@@ -348,6 +356,12 @@ def _parse_args() -> argparse.Namespace:
         default=60.0,
         help="Timeout for each eval case run.",
     )
+    parser.add_argument(
+        "--user-id",
+        type=int,
+        default=None,
+        help="Optional document owner scope when resolving target_document filenames.",
+    )
     return parser.parse_args()
 
 
@@ -355,63 +369,63 @@ async def _run_eval(args: argparse.Namespace) -> dict[str, Any]:
     cases = load_eval_cases(path=args.fixture)
     case_results: list[dict[str, Any]] = []
 
-    async with AsyncSessionLocal() as db:
-        try:
+    try:
+        async with AsyncSessionLocal() as db:
             await asyncio.wait_for(
                 db.execute(select(1)),
                 timeout=args.db_connect_timeout_seconds,
             )
-        except TimeoutError:
-            error = (
-                "Database connectivity check timed out after "
-                f"{args.db_connect_timeout_seconds} seconds."
-            )
-            case_results = [
-                {
-                    "case_id": eval_case.case_id,
-                    "question": eval_case.question,
-                    "target_document": eval_case.target_document,
-                    "status": "error",
-                    "error": error,
-                }
-                for eval_case in cases
-            ]
-            return {
-                "generated_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
-                "fixture_path": str(args.fixture),
-                "cases": case_results,
-                "summary": _build_summary(case_results),
+    except TimeoutError:
+        error = (
+            "Database connectivity check timed out after "
+            f"{args.db_connect_timeout_seconds} seconds."
+        )
+        case_results = [
+            {
+                "case_id": eval_case.case_id,
+                "question": eval_case.question,
+                "target_document": eval_case.target_document,
+                "status": "error",
+                "error": error,
             }
+            for eval_case in cases
+        ]
+        return {
+            "generated_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
+            "fixture_path": str(args.fixture),
+            "cases": case_results,
+            "summary": _build_summary(case_results),
+        }
 
-        for eval_case in cases:
-            try:
+    for eval_case in cases:
+        try:
+            async with AsyncSessionLocal() as db:
                 case_result = await asyncio.wait_for(
                     _run_case(
                         db=db,
                         eval_case=eval_case,
                         top_k=args.top_k,
+                        user_id=args.user_id,
                     ),
                     timeout=args.case_timeout_seconds,
                 )
-            except TimeoutError:
-                case_result = {
-                    "case_id": eval_case.case_id,
-                    "question": eval_case.question,
-                    "target_document": eval_case.target_document,
-                    "status": "error",
-                    "error": (
-                        f"Case timed out after {args.case_timeout_seconds} seconds."
-                    ),
-                }
-            except Exception as exc:
-                case_result = {
-                    "case_id": eval_case.case_id,
-                    "question": eval_case.question,
-                    "target_document": eval_case.target_document,
-                    "status": "error",
-                    "error": str(exc),
-                }
-            case_results.append(case_result)
+        except TimeoutError:
+            case_result = {
+                "case_id": eval_case.case_id,
+                "question": eval_case.question,
+                "target_document": eval_case.target_document,
+                "status": "error",
+                "error": f"Case timed out after {args.case_timeout_seconds} seconds.",
+            }
+        except Exception as exc:
+            case_result = {
+                "case_id": eval_case.case_id,
+                "question": eval_case.question,
+                "target_document": eval_case.target_document,
+                "status": "error",
+                "error": str(exc),
+            }
+        case_results.append(case_result)
 
     generated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
     return {

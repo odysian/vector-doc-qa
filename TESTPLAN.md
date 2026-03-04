@@ -258,6 +258,21 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 
 ---
 
+## Feature: Mini Eval Harness
+
+### Happy Path
+
+- Fixture loader validates shape and returns deterministic case ordering by `case_id`
+- Fact matching reports expected hit/miss counts and recall
+- Summary builder aggregates averages from successful cases only
+
+### Error Cases
+
+- Fixture loader raises clear errors for missing or invalid required fields
+- Summary builder returns zeroed aggregates when all cases fail
+
+---
+
 ## Feature: Document Deletion
 
 ### Happy Path

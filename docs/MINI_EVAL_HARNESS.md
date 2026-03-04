@@ -25,6 +25,7 @@ PYTHONPATH=. .venv/bin/python scripts/run_mini_eval.py \
   --fixture scripts/fixtures/mini_eval_cases.json \
   --output-dir reports/mini_eval \
   --top-k 5 \
+  --user-id 1 \
   --db-connect-timeout-seconds 10 \
   --case-timeout-seconds 60
 ```
@@ -71,4 +72,7 @@ Example:
 
 - The harness is deterministic in case order and retrieval config (`top_k=5` by default).
 - It does not change production schema or runtime API contracts.
+- Use `--user-id` when multiple users may have documents with the same filename.
+- Fact matching is case-insensitive substring matching; keep `expected_facts` specific enough to avoid accidental partial matches.
+- Each case runs in a separate database session for isolation.
 - If a target document is missing or ambiguous, that case is marked as `error` in the report.
