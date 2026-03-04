@@ -25,3 +25,12 @@ uvicorn app.main:app --reload
 ### API Documentation
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
+
+### Mini Eval Harness
+Run fixed quality/latency eval snapshots:
+
+```bash
+make backend-mini-eval
+```
+
+See `docs/MINI_EVAL_HARNESS.md` for fixture format and how to add cases.

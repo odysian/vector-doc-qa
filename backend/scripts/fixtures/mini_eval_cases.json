@@ -1,0 +1,33 @@
+{
+  "description": "Fixed prompt set for mini retrieval/answer eval snapshots.",
+  "cases": [
+    {
+      "case_id": "case-001-q4-revenue",
+      "question": "What was the Q4 revenue in this report?",
+      "target_document": "acme-q4-report.pdf",
+      "expected_facts": [
+        "Q4 revenue",
+        "$5M"
+      ]
+    },
+    {
+      "case_id": "case-002-customer-growth",
+      "question": "How much did customer growth increase year over year?",
+      "target_document": "acme-q4-report.pdf",
+      "expected_facts": [
+        "customer growth",
+        "12%"
+      ]
+    },
+    {
+      "case_id": "case-003-security-policy",
+      "question": "What is the password rotation requirement?",
+      "target_document": "security-policy-2025.pdf",
+      "expected_facts": [
+        "password",
+        "rotation",
+        "90 days"
+      ]
+    }
+  ]
+}
