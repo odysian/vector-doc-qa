@@ -86,7 +86,10 @@ async def _run(user_id: int, *, include_file_bytes: bool) -> None:
         include_file_bytes=include_file_bytes,
     )
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    OUTPUT_PATH.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
 
     print(f"Wrote {len(documents)} document(s) to {OUTPUT_PATH}")
     if include_file_bytes:
