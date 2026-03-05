@@ -6,11 +6,16 @@ import base64
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.main as app_main
+from app.core.security import create_access_token
+from app.database import get_db
 from app.models.base import Chunk, Document, DocumentStatus
 from app.models.user import User
 from app.services import demo_seed_service
@@ -222,3 +227,97 @@ class TestDemoSeedService:
         )
         assert document_count == 0
         assert "skipping document seeding" in caplog.text.lower()
+
+    async def test_startup_seeded_demo_file_is_fetchable_via_api(
+        self,
+        db_session: AsyncSession,
+        monkeypatch,
+        tmp_path: Path,
+    ):
+        unique_suffix = uuid4().hex[:8]
+        fixture_path = tmp_path / "demo_seed_data.json"
+        payload = {
+            "documents": [
+                {
+                    "filename": f"startup-seed-{unique_suffix}.pdf",
+                    "file_path": f"uploads/startup-seed-{unique_suffix}.pdf",
+                    "file_size": 0,
+                    "status": "completed",
+                    "chunks": [
+                        {
+                            "content": "Demo startup chunk",
+                            "chunk_index": 0,
+                            "embedding": [0.1] * 1536,
+                        }
+                    ],
+                }
+            ]
+        }
+        fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        monkeypatch.setattr(demo_seed_service, "DEMO_FIXTURE_PATH", fixture_path)
+        monkeypatch.setattr(app_main, "init_db", AsyncMock(return_value=None))
+        monkeypatch.setattr(
+            app_main,
+            "_cleanup_expired_refresh_tokens",
+            AsyncMock(return_value=None),
+        )
+
+        class _SessionContext:
+            def __init__(self, session: AsyncSession):
+                self._session = session
+
+            async def __aenter__(self) -> AsyncSession:
+                return self._session
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:  # type: ignore[no-untyped-def]
+                return False
+
+        monkeypatch.setattr(
+            app_main,
+            "AsyncSessionLocal",
+            lambda: _SessionContext(db_session),
+        )
+
+        async def _override_get_db():
+            yield db_session
+
+        app_main.app.dependency_overrides[get_db] = _override_get_db
+        app_main.app.state.limiter.enabled = False
+
+        try:
+            async with app_main.app.router.lifespan_context(app_main.app):
+                demo_user = await db_session.scalar(
+                    select(User).where(User.username == demo_seed_service.DEMO_USERNAME)
+                )
+                assert demo_user is not None
+
+                headers = {
+                    "Authorization": (
+                        f"Bearer {create_access_token(data={'sub': str(demo_user.id)})}"
+                    )
+                }
+
+                transport = ASGITransport(app=app_main.app)
+                async with AsyncClient(
+                    transport=transport,
+                    base_url="http://test",
+                ) as client:
+                    list_response = await client.get("/api/documents/", headers=headers)
+                    assert list_response.status_code == 200
+                    documents = list_response.json()["documents"]
+                    assert len(documents) == 1
+
+                    document_id = int(documents[0]["id"])
+                    file_response = await client.get(
+                        f"/api/documents/{document_id}/file",
+                        headers=headers,
+                    )
+                    assert file_response.status_code == 200
+                    assert file_response.headers["content-type"].startswith(
+                        "application/pdf"
+                    )
+                    assert file_response.content.startswith(b"%PDF-")
+        finally:
+            app_main.app.dependency_overrides.clear()
+            app_main.app.state.limiter.enabled = True
