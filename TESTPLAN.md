@@ -13,7 +13,7 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 - POST /api/auth/register with valid username, email, password returns 201 and user object
 - POST /api/auth/login with valid credentials returns 200 and JSON body with `csrf_token` (no auth tokens in body)
 - POST /api/auth/refresh with valid refresh credential returns 200 and JSON body with `csrf_token` (no auth tokens in body)
-- GET /api/auth/me with valid token returns current user data
+- GET /api/auth/me with valid token returns current user data (including `is_demo`)
 - GET /api/auth/csrf returns `csrf_token` for authenticated cookie sessions
 - Password is hashed (not stored as plaintext) in database
 
@@ -102,6 +102,7 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 ### Error Cases
 
 - Returns 401 if not authenticated
+- Returns 403 for demo account uploads
 - Returns 400 if file is not a PDF (wrong extension)
 - Returns 400 if file has .pdf extension but wrong magic bytes (not a real PDF)
 - Returns 400 if file exceeds 10MB size limit
@@ -284,10 +285,29 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 ### Error Cases
 
 - Returns 404 if document does not exist or belongs to another user
+- Returns 403 for demo account deletes
 
 ### Edge Cases
 
 - Deleting a document that is currently PROCESSING [?]
+
+---
+
+## Feature: Demo Seed Startup
+
+### Happy Path
+
+- Startup seed creates demo user (`username=demo`) when missing
+- Demo user seed imports completed documents and chunks from fixture JSON when present
+- All seeded documents are marked COMPLETED
+
+### Error Cases
+
+- Missing fixture file logs a warning and still creates demo user
+
+### Edge Cases
+
+- Seeding is idempotent (no duplicate demo user/documents on repeated startup)
 
 ---
 

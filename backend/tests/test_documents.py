@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import create_access_token
 from app.models.base import Document, DocumentStatus
 from app.models.user import User
 
@@ -54,6 +55,11 @@ async def _upload_pdf(client, headers, content=MINIMAL_PDF, filename="test.pdf")
             headers=headers,
             files={"file": (filename, io.BytesIO(content), "application/pdf")},
         )
+
+
+def _auth_headers_for_user(user: User) -> dict[str, str]:
+    token = create_access_token(data={"sub": str(user.id)})
+    return {"Authorization": f"Bearer {token}"}
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +152,31 @@ class TestUpload:
         response = await _upload_pdf(client, auth_headers, content=fake_pdf)
         assert response.status_code == 400
         assert "does not match PDF format" in response.json()["detail"]
+
+    async def test_upload_returns_403_for_demo_user(
+        self, client, db_session: AsyncSession
+    ):
+        demo_user = User(
+            username="demo_upload_user",
+            email="demo_upload_user@example.com",
+            hashed_password="unused",
+            is_demo=True,
+        )
+        db_session.add(demo_user)
+        await db_session.flush()
+
+        response = await _upload_pdf(client, _auth_headers_for_user(demo_user))
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Demo account cannot upload documents"
+        user_docs = (
+            await db_session.scalars(select(Document).where(Document.user_id == demo_user.id))
+        ).all()
+        assert user_docs == []
+
+    async def test_upload_still_works_for_non_demo_user(self, client, auth_headers):
+        response = await _upload_pdf(client, auth_headers)
+        assert response.status_code == 201
 
 
 # ---------------------------------------------------------------------------
@@ -285,6 +316,46 @@ class TestDeleteDocument:
             f"/api/documents/{test_document.id}", headers=second_user_headers
         )
         assert response.status_code == 404
+
+    async def test_delete_document_returns_403_for_demo_user(
+        self, client, db_session: AsyncSession
+    ):
+        demo_user = User(
+            username="demo_delete_user",
+            email="demo_delete_user@example.com",
+            hashed_password="unused",
+            is_demo=True,
+        )
+        db_session.add(demo_user)
+        await db_session.flush()
+
+        demo_doc = Document(
+            filename="demo.pdf",
+            file_path="uploads/demo.pdf",
+            file_size=123,
+            status=DocumentStatus.COMPLETED,
+            user_id=demo_user.id,
+        )
+        db_session.add(demo_doc)
+        await db_session.flush()
+
+        with patch(
+            "app.api.documents.delete_file",
+            new=AsyncMock(return_value=None),
+        ) as mock_delete_file:
+            response = await client.delete(
+                f"/api/documents/{demo_doc.id}",
+                headers=_auth_headers_for_user(demo_user),
+            )
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Demo account cannot delete documents"
+        mock_delete_file.assert_not_awaited()
+
+        persisted_doc = await db_session.scalar(
+            select(Document).where(Document.id == demo_doc.id)
+        )
+        assert persisted_doc is not None
 
 
 # ---------------------------------------------------------------------------

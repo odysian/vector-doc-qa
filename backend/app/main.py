@@ -3,7 +3,8 @@ from contextlib import asynccontextmanager
 from app.api import auth, documents
 from app.api.dependencies import csrf_header_for_docs, verify_csrf
 from app.config import settings
-from app.database import async_engine, get_db, init_db
+from app.database import AsyncSessionLocal, async_engine, get_db, init_db
+from app.services.demo_seed_service import seed_demo_user
 from app.utils.logging_config import get_logger, setup_logging
 from app.utils.rate_limit import limiter
 from fastapi import Depends, FastAPI
@@ -31,11 +32,18 @@ async def _cleanup_expired_refresh_tokens() -> None:
         await db.commit()
 
 
+async def _seed_demo_account() -> None:
+    """Seed the demo account and optional fixture-backed data."""
+    async with AsyncSessionLocal() as db:
+        await seed_demo_user(db)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan events: startup and shutdown"""
     logger.info("Starting Document Intelligence API")
     await init_db()
+    await _seed_demo_account()
     await _cleanup_expired_refresh_tokens()
     logger.info("API ready")
     yield
