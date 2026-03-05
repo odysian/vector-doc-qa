@@ -453,6 +453,12 @@ scripts/fresh_review_loop.sh --task-id <id> --base origin/main --verify-cmd "<ve
 
 Fresh review loop start condition: tracked and staged diffs must be clean; untracked scratch files are allowed.
 
+Fresh review validity rule:
+
+- Automated review output must be valid and substantive (required non-empty summary/flags/findings fields), not just parseable JSON.
+- If automation fails or output is invalid/non-substantive, review is incomplete.
+- Execute the generated manual fallback prompt in `.codex/audit/task-<id>-<utc-timestamp>/task-<id>-r<round>-manual-review-fallback.md` and document that fallback review before finalize.
+
 ### Code Organization
 
 **Backend (FastAPI):**
