@@ -80,6 +80,10 @@ backend/reports/
 # Local logs
 logs/
 
+# Codex local audit artifacts
+.codex/audit/*
+!.codex/audit/.gitkeep
+
 # Personal docs
 docs/DEEP_DIVE.md
 docs/INTERVIEW_BRIEF.md

@@ -40,5 +40,7 @@ apply these defaults automatically:
 - select `mode=single`
 - extract only the requested feature section from `<filename>`
 - generate one Task issue body at `plans/task-<feature-slug>-01.md`
-- run `gh issue create` without extra discovery chatter
+- run `scripts/gh_preflight.sh` before `gh issue create`
+- run `gh issue create` once without extra discovery chatter
+- if GH write fails: request elevated approval for the exact GH command, then provide manual one-liner + URL if elevated execution still fails
 - return a terse completion summary (issue URL, file path, concise implementation plan, command used)

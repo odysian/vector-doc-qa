@@ -61,6 +61,13 @@ Post-implementation verification checklist. Run through after every feature befo
 - [ ] Test names describe the scenario and expected outcome
 - [ ] Async job status transitions are covered (`pending` -> `processing` -> terminal state)
 
+## Workflow Reliability
+
+- [ ] GH write actions used `scripts/gh_preflight.sh` and `--body-file`
+- [ ] PR creation used `scripts/create_pr.sh` with fail-fast fallback order (exact command once -> elevated exact command -> manual one-liner + URL)
+- [ ] No queue/outbox fallback flow was used for GH writes
+- [ ] Fresh review loop started from a working tree with no tracked/staged diffs (untracked scratch files allowed)
+
 ## Documentation
 
 - [ ] ARCHITECTURE.md updated if schema, endpoints, or infrastructure changed
