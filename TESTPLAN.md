@@ -2,7 +2,7 @@
 
 Test case definitions for Quaero. Tests are defined here before implementation. Each section maps to a feature domain.
 
-**Status:** Pytest suite implemented in `backend/tests/`. 37 tests covering auth, documents, search, query, and messages. Uses `quaero_test` schema with transaction rollback per test. External APIs (OpenAI, Anthropic) mocked at the service function level.
+**Status:** Pytest suite implemented in `backend/tests/`. 40 tests covering auth, documents, search, query, and messages. Uses `quaero_test` schema with transaction rollback per test. External APIs (OpenAI, Anthropic) mocked at the service function level.
 
 ---
 
@@ -166,6 +166,7 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 - Answer includes cited chunks from the document
 - User message and assistant response are saved to messages table
 - Sources include similarity scores and chunk content
+- Query and streaming query include a bounded recent conversation window (oldest -> newest ordering) for same-document follow-ups
 
 ### Error Cases
 
@@ -179,6 +180,7 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 - Streaming failure after partial tokens still persists a terminal assistant message when DB is available
 - Very short query (single word)
 - Very long query (paragraph)
+- History window trims older turns beyond configured bound
 
 ### Security Cases
 

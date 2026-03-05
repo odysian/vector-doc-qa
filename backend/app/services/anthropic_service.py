@@ -16,7 +16,11 @@ def _get_client() -> AsyncAnthropic:
     return _client
 
 
-def _build_prompt(query: str, chunks: list[dict]) -> str:
+def _build_prompt(
+    query: str,
+    chunks: list[dict],
+    conversation_history: list[dict[str, str]] | None = None,
+) -> str:
     """
     Build the prompt for Claude with chunks embedded
 
@@ -34,11 +38,31 @@ def _build_prompt(query: str, chunks: list[dict]) -> str:
 
     excerpts_text = "\n\n".join(excerpts)
 
+    history_lines: list[str] = []
+    for message in conversation_history or []:
+        role = message.get("role", "").strip().lower()
+        content = message.get("content", "").strip()
+        if not content:
+            continue
+        if role == "user":
+            history_lines.append(f"User: {content}")
+            continue
+        if role == "assistant":
+            history_lines.append(f"Assistant: {content}")
+
+    history_section = ""
+    if history_lines:
+        history_section = (
+            "Recent conversation history (oldest to newest):\n"
+            + "\n".join(history_lines)
+            + "\n\n"
+        )
+
     prompt = f"""Here are excerpts from a document:
 
 {excerpts_text}
 
-Question: {query}
+{history_section}Current question: {query}
 
 You are a helpful assistant. Answer the user's question using only the provided excerpts.
 
@@ -49,7 +73,11 @@ If the excerpts contain absolutely no relevant information, state that you canno
     return prompt
 
 
-async def generate_answer(query: str, chunks: list[dict]) -> str:
+async def generate_answer(
+    query: str,
+    chunks: list[dict],
+    conversation_history: list[dict[str, str]] | None = None,
+) -> str:
     """
     Calls Claude API to generate an answer to user query.
     Args:
@@ -67,7 +95,7 @@ async def generate_answer(query: str, chunks: list[dict]) -> str:
         f"Generating answer with query_chars={len(query)}, chunk_count={len(chunks)}"
     )
 
-    prompt = _build_prompt(query, chunks)
+    prompt = _build_prompt(query, chunks, conversation_history)
     logger.debug(f"Built prompt with {len(chunks)} chunks")
 
     try:
@@ -97,7 +125,11 @@ async def generate_answer(query: str, chunks: list[dict]) -> str:
         raise
 
 
-async def generate_answer_stream(query: str, chunks: list[dict]) -> AsyncGenerator[str, None]:
+async def generate_answer_stream(
+    query: str,
+    chunks: list[dict],
+    conversation_history: list[dict[str, str]] | None = None,
+) -> AsyncGenerator[str, None]:
     """
     Calls Claude streaming API and yields answer tokens as they arrive.
     """
@@ -105,7 +137,7 @@ async def generate_answer_stream(query: str, chunks: list[dict]) -> AsyncGenerat
         f"Generating streaming answer with query_chars={len(query)}, chunk_count={len(chunks)}"
     )
 
-    prompt = _build_prompt(query, chunks)
+    prompt = _build_prompt(query, chunks, conversation_history)
     logger.debug(f"Built prompt with {len(chunks)} chunks")
 
     try:

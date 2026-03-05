@@ -314,7 +314,7 @@ back to socket peer IP to prevent header spoofing.
 - **Rate Limit:** 10/hour per user/IP
 - **Request Body:** `{ "query": "string" }`
 - **Success (200):** `{ "query": "...", "answer": "...", "sources": [...], "pipeline_meta": { "embed_ms": 12, "retrieval_ms": 8, "llm_ms": 420, "total_ms": 440, "top_similarity": 0.91, "avg_similarity": 0.82, "chunks_retrieved": 5 } }`
-- **Notes:** Full RAG pipeline — embeds query, searches chunks, sends to Claude, saves messages
+- **Notes:** Full RAG pipeline — loads bounded recent chat history (oldest -> newest), embeds query, searches chunks, sends to Claude, saves messages
 - **Errors:**
   - 404: Document not found
 
@@ -328,7 +328,7 @@ back to socket peer IP to prevent header spoofing.
   - `meta`: pipeline metadata (`embed_ms`, `retrieval_ms`, `llm_ms`, `total_ms`, `top_similarity`, `avg_similarity`, `chunks_retrieved`)
   - `done`: `{ "message_id": <int> }`
   - `error`: `{ "detail": "..." }` on failures
-- **Notes:** Uses a two-transaction pattern to avoid holding a DB session while streaming
+- **Notes:** Uses a two-transaction pattern to avoid holding a DB session while streaming; includes the same bounded recent chat history window used by `/query`
 - **Production proxy note:** NGINX disables buffering and gzip on this path to preserve token-by-token SSE delivery
 
 #### GET /api/documents/{document_id}/messages
