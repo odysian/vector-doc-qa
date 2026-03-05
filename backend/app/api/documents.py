@@ -174,6 +174,11 @@ async def upload_document(
     3. Create database record
     4. Return document info
     """
+    if current_user.is_demo:
+        raise HTTPException(
+            status_code=403,
+            detail="Demo account cannot upload documents",
+        )
 
     logger.info(f"Uploading: {file.filename}")
 
@@ -357,6 +362,12 @@ async def delete_document(
     """
     Delete a document and its file.
     """
+    if current_user.is_demo:
+        raise HTTPException(
+            status_code=403,
+            detail="Demo account cannot delete documents",
+        )
+
     logger.info(f"Deleting document_id={document_id}")
 
     stmt = (

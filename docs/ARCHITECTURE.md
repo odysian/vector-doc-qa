@@ -111,6 +111,7 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 | username | VARCHAR(50) | UNIQUE, NOT NULL, indexed |
 | email | VARCHAR(100) | UNIQUE, NOT NULL, indexed |
 | hashed_password | VARCHAR(255) | NOT NULL |
+| is_demo | BOOLEAN | NOT NULL, DEFAULT false |
 | created_at | TIMESTAMPTZ | DEFAULT now() |
 
 ### documents
@@ -243,7 +244,7 @@ back to socket peer IP to prevent header spoofing.
 
 #### GET /api/auth/me
 - **Auth:** Required (httpOnly access_token cookie or Bearer token)
-- **Success (200):** `{ "id": 1, "username": "chris", "email": "chris@example.com", "created_at": "..." }`
+- **Success (200):** `{ "id": 1, "username": "chris", "email": "chris@example.com", "is_demo": false, "created_at": "..." }`
 - **Errors:**
   - 401: Invalid or missing token
 
@@ -258,6 +259,7 @@ back to socket peer IP to prevent header spoofing.
 - **Errors:**
   - 400: Not a PDF, file too large, invalid magic bytes
   - 401: Not authenticated
+  - 403: Demo account cannot upload documents
   - 503: Upload saved but queueing failed
 
 #### GET /api/documents/
@@ -286,6 +288,7 @@ back to socket peer IP to prevent header spoofing.
 - **Rate Limit:** 10/hour per user/IP
 - **Success (200):** `{ "message": "Document deleted successfully" }`
 - **Errors:**
+  - 403: Demo account cannot delete documents
   - 404: Document not found or belongs to another user
 
 #### POST /api/documents/{document_id}/process

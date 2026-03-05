@@ -24,6 +24,7 @@ class UserResponse(BaseModel):
     id: int
     username: str
     email: str
+    is_demo: bool
     created_at: datetime
 
     class Config:
