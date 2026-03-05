@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import Chunk, Document, DocumentStatus
@@ -13,24 +16,27 @@ from app.models.user import User
 from app.services import demo_seed_service
 
 
-def _write_fixture(path: Path) -> None:
-    payload = {
-        "documents": [
+def _write_fixture(path: Path, *, include_file_content: bool = False) -> None:
+    document_payload = {
+        "filename": "demo-fixture.pdf",
+        "file_path": "uploads/demo-fixture.pdf",
+        "file_size": 123,
+        "status": "completed",
+        "chunks": [
             {
-                "filename": "demo-fixture.pdf",
-                "file_path": "uploads/demo-fixture.pdf",
-                "file_size": 123,
-                "status": "completed",
-                "chunks": [
-                    {
-                        "content": "Demo chunk content",
-                        "chunk_index": 0,
-                        "embedding": [0.1] * 1536,
-                    }
-                ],
+                "content": "Demo chunk content",
+                "chunk_index": 0,
+                "embedding": [0.1] * 1536,
             }
-        ]
+        ],
     }
+
+    if include_file_content:
+        document_payload["file_content_base64"] = base64.b64encode(
+            b"%PDF-1.4 fixture-bytes"
+        ).decode("ascii")
+
+    payload = {"documents": [document_payload]}
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
@@ -44,6 +50,11 @@ class TestDemoSeedService:
         fixture_path = tmp_path / "demo_seed_data.json"
         _write_fixture(fixture_path)
         monkeypatch.setattr(demo_seed_service, "DEMO_FIXTURE_PATH", fixture_path)
+
+        mock_read = AsyncMock(side_effect=FileNotFoundError("missing"))
+        mock_write = AsyncMock(return_value=None)
+        monkeypatch.setattr(demo_seed_service, "read_file_bytes", mock_read)
+        monkeypatch.setattr(demo_seed_service, "write_file_bytes", mock_write)
 
         await demo_seed_service.seed_demo_user(db_session)
 
@@ -67,6 +78,36 @@ class TestDemoSeedService:
         assert chunk.embedding is not None
         assert len(chunk.embedding) == 1536
 
+        mock_write.assert_awaited_once_with(
+            "uploads/demo-fixture.pdf",
+            demo_seed_service.DEMO_PLACEHOLDER_PDF_BYTES,
+            content_type="application/pdf",
+        )
+
+    async def test_seed_uses_embedded_file_content_when_available(
+        self,
+        db_session: AsyncSession,
+        monkeypatch,
+        tmp_path: Path,
+    ):
+        fixture_path = tmp_path / "demo_seed_data.json"
+        _write_fixture(fixture_path, include_file_content=True)
+        monkeypatch.setattr(demo_seed_service, "DEMO_FIXTURE_PATH", fixture_path)
+
+        mock_read = AsyncMock(return_value=b"should-not-read")
+        mock_write = AsyncMock(return_value=None)
+        monkeypatch.setattr(demo_seed_service, "read_file_bytes", mock_read)
+        monkeypatch.setattr(demo_seed_service, "write_file_bytes", mock_write)
+
+        await demo_seed_service.seed_demo_user(db_session)
+
+        mock_read.assert_not_awaited()
+        mock_write.assert_awaited_once_with(
+            "uploads/demo-fixture.pdf",
+            b"%PDF-1.4 fixture-bytes",
+            content_type="application/pdf",
+        )
+
     async def test_seed_is_idempotent_when_demo_user_exists(
         self,
         db_session: AsyncSession,
@@ -76,12 +117,24 @@ class TestDemoSeedService:
         fixture_path = tmp_path / "demo_seed_data.json"
         _write_fixture(fixture_path)
         monkeypatch.setattr(demo_seed_service, "DEMO_FIXTURE_PATH", fixture_path)
+        monkeypatch.setattr(
+            demo_seed_service,
+            "read_file_bytes",
+            AsyncMock(side_effect=FileNotFoundError("missing")),
+        )
+        monkeypatch.setattr(
+            demo_seed_service,
+            "write_file_bytes",
+            AsyncMock(return_value=None),
+        )
 
         await demo_seed_service.seed_demo_user(db_session)
         await demo_seed_service.seed_demo_user(db_session)
 
         demo_user_count = await db_session.scalar(
-            select(func.count()).select_from(User).where(User.username == demo_seed_service.DEMO_USERNAME)
+            select(func.count())
+            .select_from(User)
+            .where(User.username == demo_seed_service.DEMO_USERNAME)
         )
         assert demo_user_count == 1
 
@@ -96,6 +149,52 @@ class TestDemoSeedService:
             .where(Document.user_id == demo_user.id)
         )
         assert document_count == 1
+
+    async def test_seed_skips_when_demo_email_already_exists(
+        self,
+        db_session: AsyncSession,
+        monkeypatch,
+    ):
+        existing_user = User(
+            username="not_demo",
+            email=demo_seed_service.DEMO_EMAIL,
+            hashed_password="unused",
+            is_demo=False,
+        )
+        db_session.add(existing_user)
+        await db_session.flush()
+
+        mock_write = AsyncMock(return_value=None)
+        monkeypatch.setattr(demo_seed_service, "write_file_bytes", mock_write)
+
+        await demo_seed_service.seed_demo_user(db_session)
+
+        demo_user_count = await db_session.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.username == demo_seed_service.DEMO_USERNAME)
+        )
+        assert demo_user_count == 0
+        mock_write.assert_not_awaited()
+
+    async def test_seed_handles_integrity_conflict_without_failing_startup(
+        self,
+        db_session: AsyncSession,
+        monkeypatch,
+    ):
+        async def _raise_integrity(*args, **kwargs):
+            raise IntegrityError("INSERT", {}, Exception("duplicate key"))
+
+        monkeypatch.setattr(db_session, "flush", _raise_integrity)
+
+        await demo_seed_service.seed_demo_user(db_session)
+
+        demo_user_count = await db_session.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.username == demo_seed_service.DEMO_USERNAME)
+        )
+        assert demo_user_count == 0
 
     async def test_seed_skips_documents_when_fixture_missing(
         self,

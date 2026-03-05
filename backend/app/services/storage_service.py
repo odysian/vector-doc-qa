@@ -90,7 +90,12 @@ class GCSStorageBackend:
 
     def read_bytes(self, relative_path: str) -> bytes:
         blob = self._bucket.blob(relative_path)
-        return blob.download_as_bytes()
+        try:
+            return blob.download_as_bytes()
+        except Exception as exc:
+            if self._not_found_exc and isinstance(exc, self._not_found_exc):
+                raise FileNotFoundError(relative_path) from exc
+            raise
 
     def delete(self, relative_path: str) -> None:
         blob = self._bucket.blob(relative_path)
