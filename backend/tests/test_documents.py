@@ -169,6 +169,10 @@ class TestUpload:
 
         assert response.status_code == 403
         assert response.json()["detail"] == "Demo account cannot upload documents"
+        user_docs = (
+            await db_session.scalars(select(Document).where(Document.user_id == demo_user.id))
+        ).all()
+        assert user_docs == []
 
     async def test_upload_still_works_for_non_demo_user(self, client, auth_headers):
         response = await _upload_pdf(client, auth_headers)
@@ -335,13 +339,23 @@ class TestDeleteDocument:
         db_session.add(demo_doc)
         await db_session.flush()
 
-        response = await client.delete(
-            f"/api/documents/{demo_doc.id}",
-            headers=_auth_headers_for_user(demo_user),
-        )
+        with patch(
+            "app.api.documents.delete_file",
+            new=AsyncMock(return_value=None),
+        ) as mock_delete_file:
+            response = await client.delete(
+                f"/api/documents/{demo_doc.id}",
+                headers=_auth_headers_for_user(demo_user),
+            )
 
         assert response.status_code == 403
         assert response.json()["detail"] == "Demo account cannot delete documents"
+        mock_delete_file.assert_not_awaited()
+
+        persisted_doc = await db_session.scalar(
+            select(Document).where(Document.id == demo_doc.id)
+        )
+        assert persisted_doc is not None
 
 
 # ---------------------------------------------------------------------------
