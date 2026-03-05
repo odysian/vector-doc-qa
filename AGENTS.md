@@ -7,14 +7,15 @@
 Read in this order:
 1. `AGENTS.md` (this file)
 2. `WORKFLOW.md`
-3. `docs/ISSUES_WORKFLOW.md`
-4. `docs/ARCHITECTURE.md`
-5. `docs/PATTERNS.md`
-6. `docs/REVIEW_CHECKLIST.md`
-7. `skills/write-spec.md`
-8. `skills/spec-to-issues.md`
-9. `skills/issue-to-pr.md`
-10. `skills/spec-workflow-gh.md`
+3. `MIGRATION_GUIDE.md`
+4. `docs/ISSUES_WORKFLOW.md`
+5. `docs/ARCHITECTURE.md`
+6. `docs/PATTERNS.md`
+7. `docs/REVIEW_CHECKLIST.md`
+8. `skills/write-spec.md`
+9. `skills/spec-to-issues.md`
+10. `skills/issue-to-pr.md`
+11. `skills/spec-workflow-gh.md`
 
 ## Unit of Work Rule
 
@@ -43,13 +44,18 @@ Read in this order:
 5. Implement with tight, surgical changes.
 6. Run verification commands.
 7. Update tests/docs if required.
-8. Open PR that closes the Task issue; close Spec after child Tasks are done/deferred.
+8. Open PR that closes the Task issue, run bounded fresh-context review loop, then close Spec after child Tasks are done/deferred.
 
 ## Process
 
 Read and follow `WORKFLOW.md` for the full development process and `docs/ISSUES_WORKFLOW.md` for the issue-control execution modes. Together they define the Design -> Test -> Implement -> Review -> Document loop, TDD workflow, technical constraints (SQLAlchemy 2.0, Pydantic v2, async patterns), security requirements, and documentation maintenance rules.
 
 This file contains **project-specific rules** that supplement WORKFLOW.md. If they conflict, this file wins.
+
+## Workflow Metadata
+
+- **Template baseline:** `agentic-workflow-template v0.3.0`
+- **Adoption date:** `2026-03-05`
 
 ---
 
@@ -77,6 +83,14 @@ Quaero is an AI-powered PDF question-answering platform that uses Retrieval Augm
 - **Surgical changes only.** Touch only what the task requires. Do not improve adjacent code, comments, or formatting. Match existing style.
 - **Explain what you're doing.** Include brief comments explaining why for non-obvious logic.
 - **Prefer explicit over clever.** Readable, straightforward code. No one-liners that sacrifice clarity.
+
+## Local Automation Defaults
+
+- **Use fail-fast GH preflight checks.** Run `scripts/gh_preflight.sh` before GH write actions.
+- **Use the PR wrapper.** Create PRs with `scripts/create_pr.sh` and `--body-file`.
+- **Follow supervised GH fallback order.** Run preflight, try the exact GH command once (default `--max-attempts=1`), request elevated approval for the exact command if it fails, then provide manual one-liner + URL if elevated execution still fails.
+- **Use bounded fresh review loop.** Run `scripts/fresh_review_loop.sh` for review/patch rounds.
+- **Fresh review loop working tree rule.** No tracked/staged diffs are allowed before starting the loop; untracked scratch files are allowed.
 
 ## Decision Brief (Required)
 
@@ -246,9 +260,9 @@ _Add to this section when the agent makes a mistake. Each line prevents a repeat
 - **Do not create `.env` files with real secrets.** Use `.env.example` with placeholders.
 - **Do not add dependencies that duplicate existing functionality.** Check what's installed.
 - **Do not modify migration files after they've been applied.** Create a new one.
-- **Before running `gh` issue/PR commands, run preflight once per session:** `gh auth status`, `gh repo set-default odysian/vector-doc-qa`, `gh repo view --json nameWithOwner,url`.
-- **If `gh` fails with transient API connectivity errors, retry 2-3 times, then use the equivalent `gh api` endpoint as fallback.**
-- **When using `gh api` with query strings in zsh, quote the endpoint string to avoid shell globbing.**
+- **Before GH write commands, run:** `scripts/gh_preflight.sh`.
+- **For PR creation, use:** `scripts/create_pr.sh --body-file ...` (no queue/outbox fallback).
+- **If GH write fails, use supervised fail-fast order:** exact command once -> request elevated approval for that exact command -> provide manual one-liner + URL.
 
 ---
 

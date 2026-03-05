@@ -2,6 +2,8 @@
 
 This repository uses GitHub issues as the execution control plane.
 
+Workflow template baseline in this repository: `agentic-workflow-template v0.3.0` (adopted 2026-03-05).
+
 ## Workflow Loop
 
 1. Whiteboard feature ideas in `plans/*.md` or spec docs (scratch planning).
@@ -88,6 +90,7 @@ A Task can be closed when:
 - tests and docs for the feature are included in the same Task by default
 - docs are updated if required
 - follow-ups are created
+- required fresh-context review is completed and documented
 
 ## Decisions Policy (Locks, Issues, ADRs)
 
@@ -101,6 +104,25 @@ Use the Verification section in `AGENTS.md` as the canonical command set.
 Task and PR issue bodies should copy commands from there.
 Prefer repo-level verify entrypoints when available (`make backend-verify`, `make frontend-verify`).
 
+## GH Reliability (Supervised Fail-Fast Default)
+
+Use resilient wrappers:
+
+```bash
+scripts/create_pr.sh --title "Task #<id>: <short-title>" --body-file <pr-body.md> --base main --head <task-branch> --task-id <id>
+```
+
+Required order for GH writes:
+
+1. Run preflight (`scripts/gh_preflight.sh`).
+2. Try the exact GH command once (interactive default: `scripts/create_pr.sh --max-attempts=1`).
+3. If it fails, request elevated approval for the exact GH command.
+4. If elevated execution still fails, provide exact manual one-liner + URL.
+
+Do not use queue/outbox fallback flows.
+
+Fresh review loop start condition: tracked and staged diffs must be clean; untracked scratch files are allowed.
+
 ## Codex + GitHub CLI Playbook
 
 If using Codex in VS Code with GitHub CLI, follow `skills/spec-workflow-gh.md`.
@@ -108,6 +130,7 @@ If using Codex in VS Code with GitHub CLI, follow `skills/spec-workflow-gh.md`.
 - `mode=single` (default): generate one Task issue body + `gh issue create` command
 - `mode=gated`: generate Spec + Task issue body + commands
 - `mode=fast`: generate quick-fix checklist (no issue commands by default)
+- before GH write commands, run `scripts/gh_preflight.sh`
 
 ### Standard Kickoff Prompt (Single Line)
 

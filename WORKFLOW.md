@@ -4,6 +4,8 @@ This document defines the complete development workflow for all projects. Any ag
 
 The developer (Chris) is a backend/full-stack developer building production applications. The workflow is designed for AI-assisted development where the developer architects and reviews, and agents implement and verify. Every feature follows the same loop: **Design → Test → Implement → Review → Document.**
 
+Workflow template baseline in this repository: `agentic-workflow-template v0.3.0` (adopted 2026-03-05).
+
 ---
 
 ## Table of Contents
@@ -425,6 +427,31 @@ GitHub issues are the execution source of truth.
 - PRs close Task issues (`Closes #...`), not Spec issues.
 - Decision Locks live in the controlling issue (Task in `single`, Spec in `gated`).
 - `TASKS.md` is optional scratchpad only and never authoritative.
+
+### GH Reliability Policy (Fail-Fast)
+
+- Use `--body-file` for issue/PR content.
+- Run `scripts/gh_preflight.sh` before GH write actions.
+- For PR creation, use `scripts/create_pr.sh`.
+- Supervised fallback order:
+  1. Preflight + one GH command attempt (default `scripts/create_pr.sh --max-attempts=1`).
+  2. If GH write fails, request elevated approval for the exact GH command.
+  3. If elevated execution still fails, provide exact manual one-liner + URL.
+- Do not use queue/outbox fallback flows.
+
+Canonical PR create command:
+
+```bash
+scripts/create_pr.sh --title "Task #<id>: <short-title>" --body-file <pr-body.md> --base main --head <task-branch> --task-id <id>
+```
+
+Canonical fresh review loop command:
+
+```bash
+scripts/fresh_review_loop.sh --task-id <id> --base origin/main --verify-cmd "<verify-command>"
+```
+
+Fresh review loop start condition: tracked and staged diffs must be clean; untracked scratch files are allowed.
 
 ### Code Organization
 

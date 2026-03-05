@@ -44,7 +44,8 @@ Interpret this shorthand as:
 - acceptance criteria with backend/frontend/tests/docs checkboxes
 - `Parent Spec: (placeholder)` only in `mode=gated`
 5. Final execution step for issue modes:
-- start Task `#<id>` in a new branch and open PR with `Closes #<id>`
+- start Task `#<id>` in a dedicated branch (`task-<id>-<short-name>`) and open PR with `Closes #<id>` via `scripts/create_pr.sh`
+- run bounded fresh-context review/patch loop before finalizing (`max_review_rounds=2`, `max_auto_patch_commits=2`)
 
 ## Procedure
 
@@ -52,8 +53,8 @@ Interpret this shorthand as:
 
 When the shorthand request is used, default to this non-interactive behavior:
 
-1. Use the current branch. Do not switch branches unless explicitly asked.
-2. Do not run preflight discovery commands by default (`gh auth status`, `gh label list`, broad repo scans).
+1. For issue drafting, use the current branch; before implementation, switch to a dedicated Task branch.
+2. Run `scripts/gh_preflight.sh` before GH write commands; avoid broad GH discovery scans (`gh label list`, wide repo scans) unless needed.
 3. Write one Task issue body file under `plans/`:
 - `plans/task-<feature-slug>-01.md`
 4. Run `gh issue create` directly with the labels inferred from scope.
@@ -90,9 +91,23 @@ You run those commands in the repo terminal.
 
 Ask Codex to:
 
-- start Task `#<id>` in a new branch
+- start Task `#<id>` in a dedicated branch
 - implement and verify
-- open PR containing `Closes #<id>`
+- open PR containing `Closes #<id>` via `scripts/create_pr.sh`
+- if GH write fails: request elevated approval for the exact GH command first; if that still fails, paste the exact one-liner/manual URL
+- run fresh-context review and patch notable findings with loop caps enforced
+
+Preferred PR create command:
+
+```bash
+scripts/create_pr.sh --title "Task #<id>: <short-title>" --body-file <path-to-pr-body-md> --base main --head <task-branch> --task-id <id>
+```
+
+Local automation shortcut:
+
+```bash
+scripts/fresh_review_loop.sh --task-id <id> --base origin/main --verify-cmd "<verify-command>"
+```
 
 ## Common GitHub CLI Snippets
 
