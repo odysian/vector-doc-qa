@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Document as ReactPdfDocument, Page, pdfjs } from "react-pdf";
 import { api, ApiError, SessionExpiredError } from "@/lib/api";
-import { findCitationSpanMatch } from "./pdfCitationMatch";
+import { findCitationSpanMatch, normalizeCitationText } from "./pdfCitationMatch";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -24,6 +24,8 @@ const PAGE_HIGHLIGHT_START_DELAY_MS = 300;
 const PAGE_HIGHLIGHT_DURATION_MS = 2500;
 const SNIPPET_HIGHLIGHT_START_DELAY_MS = 200;
 const MAX_SNIPPET_HIGHLIGHT_RETRY_FRAMES = 120;
+const MIN_FALLBACK_TOKEN_LENGTH = 4;
+const MAX_FALLBACK_HIGHLIGHT_SPANS = 24;
 
 /**
  * In-app PDF viewer that supports citation deep links with page-level fallback.
@@ -156,11 +158,53 @@ export function PdfViewer({
         uniqueSpans.map((span) => span.textContent ?? ""),
         snippet
       );
-      if (!match) return false;
+      let matchedSpans: HTMLElement[] = [];
+      if (match) {
+        matchedSpans = uniqueSpans.slice(match.startIndex, match.endIndex + 1);
+      } else {
+        // Fallback: highlight the strongest contiguous token-overlap region on the page.
+        const snippetTokens = normalizeCitationText(snippet)
+          .split(" ")
+          .filter((word) => word.length >= MIN_FALLBACK_TOKEN_LENGTH);
+        if (snippetTokens.length === 0) return false;
+
+        const snippetTokenSet = new Set(snippetTokens);
+        const spanScores = uniqueSpans.map((span) => {
+          const words = normalizeCitationText(span.textContent ?? "").split(" ").filter(Boolean);
+          if (words.length === 0) return 0;
+          return words.reduce(
+            (score, word) => (snippetTokenSet.has(word) ? score + 1 : score),
+            0
+          );
+        });
+
+        let bestIndex = -1;
+        let bestScore = 0;
+        spanScores.forEach((score, index) => {
+          if (score > bestScore) {
+            bestScore = score;
+            bestIndex = index;
+          }
+        });
+        if (bestIndex === -1 || bestScore === 0) return false;
+
+        let startIndex = bestIndex;
+        while (startIndex > 0 && spanScores[startIndex - 1] > 0) {
+          startIndex -= 1;
+        }
+
+        let endIndex = bestIndex;
+        while (endIndex < uniqueSpans.length - 1 && spanScores[endIndex + 1] > 0) {
+          endIndex += 1;
+        }
+
+        const fallbackSpanCount = Math.min(endIndex - startIndex + 1, MAX_FALLBACK_HIGHLIGHT_SPANS);
+        matchedSpans = uniqueSpans.slice(startIndex, startIndex + fallbackSpanCount);
+      }
+
+      if (matchedSpans.length === 0) return false;
 
       clearTextHighlight();
-
-      const matchedSpans = uniqueSpans.slice(match.startIndex, match.endIndex + 1);
       matchedSpans.forEach((span) => {
         span.classList.add("citation-text-highlight");
       });
