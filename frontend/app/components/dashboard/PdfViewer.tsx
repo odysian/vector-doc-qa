@@ -27,6 +27,9 @@ const MAX_SNIPPET_HIGHLIGHT_RETRY_FRAMES = 120;
 const MIN_FALLBACK_TOKEN_LENGTH = 4;
 const MAX_FALLBACK_HIGHLIGHT_SPANS = 24;
 const FALLBACK_ANCHOR_TOKEN_WINDOW = 10;
+const MIN_FALLBACK_SPAN_SCORE = 2;
+const MIN_FALLBACK_RUN_SCORE = 4;
+const MIN_FALLBACK_UNIQUE_TOKEN_MATCHES = 3;
 
 /**
  * In-app PDF viewer that supports citation deep links with page-level fallback.
@@ -171,38 +174,31 @@ export function PdfViewer({
 
         const snippetTokenSet = new Set(snippetTokens);
         const anchorTokenSet = new Set(snippetTokens.slice(0, FALLBACK_ANCHOR_TOKEN_WINDOW));
-        const spanScores = uniqueSpans.map((span) => {
-          const words = normalizeCitationText(span.textContent ?? "").split(" ").filter(Boolean);
-          if (words.length === 0) return 0;
-          return words.reduce(
-            (score, word) => (snippetTokenSet.has(word) ? score + 1 : score),
-            0
-          );
-        });
-        const anchorScores = uniqueSpans.map((span) => {
-          const words = normalizeCitationText(span.textContent ?? "").split(" ").filter(Boolean);
-          if (words.length === 0) return 0;
-          return words.reduce(
-            (score, word) => (anchorTokenSet.has(word) ? score + 1 : score),
-            0
-          );
-        });
+        const spanWords = uniqueSpans.map((span) =>
+          normalizeCitationText(span.textContent ?? "").split(" ").filter(Boolean)
+        );
+        const spanScores = spanWords.map((words) =>
+          words.reduce((score, word) => (snippetTokenSet.has(word) ? score + 1 : score), 0)
+        );
+        const anchorScores = spanWords.map((words) =>
+          words.reduce((score, word) => (anchorTokenSet.has(word) ? score + 1 : score), 0)
+        );
 
         let bestIndex = -1;
+        let bestCombinedScore = 0;
         let bestScore = 0;
-        const anchorIndex = anchorScores.findIndex((score) => score > 0);
-        if (anchorIndex !== -1) {
-          bestIndex = anchorIndex;
-          bestScore = spanScores[anchorIndex] ?? 0;
-        } else {
-          spanScores.forEach((score, index) => {
-            if (score > bestScore) {
-              bestScore = score;
-              bestIndex = index;
-            }
-          });
-        }
-        if (bestIndex === -1 || bestScore === 0) return false;
+        spanScores.forEach((score, index) => {
+          const combinedScore = score + (anchorScores[index] ?? 0) * 2;
+          if (
+            combinedScore > bestCombinedScore
+            || (combinedScore === bestCombinedScore && score > bestScore)
+          ) {
+            bestCombinedScore = combinedScore;
+            bestScore = score;
+            bestIndex = index;
+          }
+        });
+        if (bestIndex === -1 || bestScore < MIN_FALLBACK_SPAN_SCORE) return false;
 
         const startIndex = bestIndex;
         let endIndex = bestIndex;
@@ -211,7 +207,23 @@ export function PdfViewer({
         }
 
         const fallbackSpanCount = Math.min(endIndex - startIndex + 1, MAX_FALLBACK_HIGHLIGHT_SPANS);
-        matchedSpans = uniqueSpans.slice(startIndex, startIndex + fallbackSpanCount);
+        const fallbackEnd = startIndex + fallbackSpanCount;
+        const runTotalScore = spanScores
+          .slice(startIndex, fallbackEnd)
+          .reduce((sum, score) => sum + score, 0);
+        const matchedFallbackTokens = new Set(
+          spanWords
+            .slice(startIndex, fallbackEnd)
+            .flat()
+            .filter((word) => snippetTokenSet.has(word))
+        );
+        if (
+          runTotalScore < MIN_FALLBACK_RUN_SCORE
+          || matchedFallbackTokens.size < MIN_FALLBACK_UNIQUE_TOKEN_MATCHES
+        ) {
+          return false;
+        }
+        matchedSpans = uniqueSpans.slice(startIndex, fallbackEnd);
       }
 
       if (matchedSpans.length === 0) return false;

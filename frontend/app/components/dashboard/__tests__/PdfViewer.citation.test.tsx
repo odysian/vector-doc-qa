@@ -240,4 +240,48 @@ describe("PdfViewer citation highlight behavior", () => {
       expect(document.querySelectorAll(".citation-text-highlight")).toHaveLength(0);
     });
   });
+
+  it("does not apply text highlight for weak single-token overlap", async () => {
+    mockPdfState.spansByPage.set(2, [
+      "Security policy mandates credential rotation every ninety days.",
+      "Use MFA for all privileged actions.",
+    ]);
+
+    render(
+      <PdfViewer
+        documentId={12}
+        highlightPage={2}
+        highlightSnippet="Policy exceptions require annual board signoff for temporary contractors."
+      />
+    );
+
+    const pageHeading = await screen.findByText("Page 2");
+    const pageWrapper = pageHeading.parentElement?.parentElement;
+
+    await waitFor(() => {
+      expect(scrollIntoViewSpy).toHaveBeenCalled();
+      expect(pageWrapper?.className).toContain("border-lapis-400/70");
+      expect(document.querySelectorAll(".citation-text-highlight")).toHaveLength(0);
+    });
+  });
+
+  it("applies text highlight for strong overlap when exact phrase match is unavailable", async () => {
+    mockPdfState.spansByPage.set(2, [
+      "Password policy requires credential rotation every ninety days.",
+      "Privileged access reviews and incident response ownership are mandatory.",
+    ]);
+
+    const { container } = render(
+      <PdfViewer
+        documentId={13}
+        highlightPage={2}
+        highlightSnippet="Credential policy and access ownership controls are mandatory during incident drills."
+      />
+    );
+
+    await waitFor(() => {
+      expect(scrollIntoViewSpy).toHaveBeenCalled();
+      expect(container.querySelectorAll(".citation-text-highlight").length).toBeGreaterThan(0);
+    });
+  });
 });
