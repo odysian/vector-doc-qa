@@ -196,6 +196,8 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 
 - `queryDocumentStream()` assembles SSE frames across multiple chunks and dispatches events in order (`sources` -> `token` -> `meta` -> `done`)
 - ChatWindow send controls enter streaming state during an active stream and return to normal after `done`
+- ChatWindow shows a `Stop` control only during active streaming and aborts stream updates when clicked
+- ChatWindow `Retry` re-submits the same query after a stopped/failed assistant response and completes on `done`
 
 ### Error Cases
 
@@ -205,6 +207,7 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 ### Edge Cases
 
 - ChatWindow unmount aborts active stream and does not retain stale streaming state on cleanup
+- ChatWindow blocks duplicate placeholder creation on rapid double-submit while a stream is already in flight
 
 ---
 
