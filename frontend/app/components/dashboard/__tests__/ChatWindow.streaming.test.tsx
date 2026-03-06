@@ -141,29 +141,36 @@ describe("ChatWindow streaming lifecycle", () => {
     expect(await screen.findByText("Recovered answer")).toBeInTheDocument();
   });
 
-  it("stops an active stream and leaves a retryable stopped state", async () => {
+  it("stops an active stream, then retries with the original query", async () => {
     let capturedSignal: AbortSignal | undefined;
+    const originalQuery = "Please stop this";
 
-    queryDocumentStreamMock.mockImplementation(async (_documentId, _query, _callbacks, options) => {
-      capturedSignal = options?.signal;
-      await new Promise<void>((resolve, reject) => {
-        if (!capturedSignal) {
-          resolve();
-          return;
-        }
+    queryDocumentStreamMock
+      .mockImplementationOnce(async (_documentId, _query, _callbacks, options) => {
+        capturedSignal = options?.signal;
+        await new Promise<void>((resolve, reject) => {
+          if (!capturedSignal) {
+            resolve();
+            return;
+          }
 
-        if (capturedSignal.aborted) {
-          reject(new DOMException("aborted", "AbortError"));
-          return;
-        }
+          if (capturedSignal.aborted) {
+            reject(new DOMException("aborted", "AbortError"));
+            return;
+          }
 
-        capturedSignal.addEventListener(
-          "abort",
-          () => reject(new DOMException("aborted", "AbortError")),
-          { once: true }
-        );
+          capturedSignal.addEventListener(
+            "abort",
+            () => reject(new DOMException("aborted", "AbortError")),
+            { once: true }
+          );
+        });
+      })
+      .mockImplementationOnce(async (_documentId, _query, callbacks) => {
+        await Promise.resolve();
+        callbacks.onToken("Recovered after stop");
+        callbacks.onDone({ message_id: 404 });
       });
-    });
 
     render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
     await waitFor(() => {
@@ -171,7 +178,7 @@ describe("ChatWindow streaming lifecycle", () => {
     });
 
     const input = screen.getByPlaceholderText("Ask a question about this document...");
-    fireEvent.change(input, { target: { value: "Please stop this" } });
+    fireEvent.change(input, { target: { value: originalQuery } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() => expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1));
@@ -183,7 +190,11 @@ describe("ChatWindow streaming lifecycle", () => {
     });
 
     expect(await screen.findByText("Stopped. You can retry this response.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(queryDocumentStreamMock).toHaveBeenCalledTimes(2));
+    expect(queryDocumentStreamMock.mock.calls[1]?.[1]).toBe(originalQuery);
+    expect(await screen.findByText("Recovered after stop")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
   });
