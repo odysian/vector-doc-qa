@@ -20,6 +20,8 @@ interface PdfViewerProps {
 const MAX_RENDERED_PAGE_WIDTH = 840;
 const PAGE_WIDTH_STEP = 8;
 const TEXT_HIGHLIGHT_DURATION_MS = 1500;
+const PAGE_HIGHLIGHT_START_DELAY_MS = 300;
+const PAGE_HIGHLIGHT_DURATION_MS = 2500;
 
 /**
  * In-app PDF viewer that supports citation deep links with page-level fallback.
@@ -181,6 +183,7 @@ export function PdfViewer({
     const snippet = highlightSnippet?.trim() || "";
     let frameId: number | null = null;
     let snippetFrameId: number | null = null;
+    let highlightStartTimer: number | null = null;
     let highlightTimer: number | null = null;
     let attempts = 0;
     let snippetAttempts = 0;
@@ -197,8 +200,16 @@ export function PdfViewer({
       }
 
       target.scrollIntoView({ behavior: "smooth", block: "center" });
-      setActiveHighlightPage(targetPage);
       clearTextHighlight();
+      // Start page-level fallback highlight after smooth-scroll has begun.
+      setActiveHighlightPage((current) => (current === targetPage ? null : current));
+      highlightStartTimer = window.setTimeout(() => {
+        setActiveHighlightPage(targetPage);
+        highlightTimer = window.setTimeout(() => {
+          setActiveHighlightPage((current) => (current === targetPage ? null : current));
+        }, PAGE_HIGHLIGHT_DURATION_MS);
+      }, PAGE_HIGHLIGHT_START_DELAY_MS);
+
       if (snippet) {
         const highlightSnippetOnceReady = () => {
           if (tryHighlightSnippet(targetPage, snippet)) return;
@@ -210,9 +221,6 @@ export function PdfViewer({
 
         highlightSnippetOnceReady();
       }
-      highlightTimer = window.setTimeout(() => {
-        setActiveHighlightPage((current) => (current === targetPage ? null : current));
-      }, 1500);
     };
 
     scrollToTarget();
@@ -220,6 +228,7 @@ export function PdfViewer({
     return () => {
       if (frameId !== null) window.cancelAnimationFrame(frameId);
       if (snippetFrameId !== null) window.cancelAnimationFrame(snippetFrameId);
+      if (highlightStartTimer !== null) window.clearTimeout(highlightStartTimer);
       if (highlightTimer !== null) window.clearTimeout(highlightTimer);
     };
   }, [highlightPage, highlightSnippet, numPages, clearTextHighlight, tryHighlightSnippet]);
