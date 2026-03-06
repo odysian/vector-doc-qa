@@ -143,10 +143,12 @@ describe("ChatWindow streaming lifecycle", () => {
 
   it("stops an active stream, then retries with the original query", async () => {
     let capturedSignal: AbortSignal | undefined;
+    let stoppedStreamCallbacks: StreamCallbacks | undefined;
     const originalQuery = "Please stop this";
 
     queryDocumentStreamMock
-      .mockImplementationOnce(async (_documentId, _query, _callbacks, options) => {
+      .mockImplementationOnce(async (_documentId, _query, callbacks, options) => {
+        stoppedStreamCallbacks = callbacks as StreamCallbacks;
         capturedSignal = options?.signal;
         await new Promise<void>((resolve, reject) => {
           if (!capturedSignal) {
@@ -188,6 +190,8 @@ describe("ChatWindow streaming lifecycle", () => {
     await waitFor(() => {
       expect(capturedSignal?.aborted).toBe(true);
     });
+    stoppedStreamCallbacks?.onToken("Zombie token after stop");
+    expect(screen.queryByText("Zombie token after stop")).not.toBeInTheDocument();
 
     expect(await screen.findByText("Stopped. You can retry this response.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
