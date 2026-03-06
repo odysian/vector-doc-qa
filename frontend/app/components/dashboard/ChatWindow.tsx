@@ -311,7 +311,7 @@ export function ChatWindow({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 max-h-full bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shadow-xl">
+    <div className="flex flex-col w-full h-full min-h-0 max-h-full bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shadow-xl">
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50 backdrop-blur">
         <div className="flex items-center gap-3 min-w-0 flex-1">

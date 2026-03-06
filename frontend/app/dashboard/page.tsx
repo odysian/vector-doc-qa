@@ -472,7 +472,7 @@ export default function DashboardPage() {
               <div className={`flex-1 min-h-0 flex gap-4 ${useTabLayout ? "flex-col items-center" : "flex-row"}`}>
                 <section
                   className={`${showPdfPane ? "flex" : "hidden"} min-h-0 min-w-0 w-full ${
-                    useTabLayout ? "flex-1 max-w-5xl" : "flex-[1.15] basis-[56%]"
+                    useTabLayout ? "flex-1 max-w-5xl" : "flex-[1.15_0_56%]"
                   }`}
                 >
                   <PdfViewer
@@ -485,7 +485,7 @@ export default function DashboardPage() {
 
                 <section
                   className={`${showChatPane ? "flex" : "hidden"} min-h-0 min-w-0 w-full ${
-                    useTabLayout ? "flex-1 max-w-5xl" : "flex-[0.95] basis-[44%]"
+                    useTabLayout ? "flex-1 max-w-5xl" : "flex-[0.95_0_44%]"
                   }`}
                 >
                   <ChatWindow

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import DashboardPage from "@/app/dashboard/page";
 import { api, ApiError, SessionExpiredError, isLoggedIn, type Document } from "@/lib/api";
@@ -26,6 +26,7 @@ vi.mock("@/lib/api", async () => {
       processDocument: vi.fn(),
       getDocumentStatus: vi.fn(),
       deleteDocument: vi.fn(),
+      getMessages: vi.fn(),
       logout: vi.fn(),
     },
   };
@@ -37,6 +38,7 @@ const uploadDocumentMock = vi.mocked(api.uploadDocument);
 const processDocumentMock = vi.mocked(api.processDocument);
 const getDocumentStatusMock = vi.mocked(api.getDocumentStatus);
 const deleteDocumentMock = vi.mocked(api.deleteDocument);
+const getMessagesMock = vi.mocked(api.getMessages);
 
 function makeDocument(
   overrides: Partial<Document> = {}
@@ -63,9 +65,11 @@ describe("DashboardPage regression behavior", () => {
     processDocumentMock.mockReset();
     getDocumentStatusMock.mockReset();
     deleteDocumentMock.mockReset();
+    getMessagesMock.mockReset();
 
     isLoggedInMock.mockReturnValue(true);
     getDocumentsMock.mockResolvedValue({ documents: [], total: 0 });
+    getMessagesMock.mockResolvedValue({ messages: [], total: 0 });
     uploadDocumentMock.mockResolvedValue(makeDocument());
     processDocumentMock.mockResolvedValue({
       message: "queued",
@@ -187,5 +191,51 @@ describe("DashboardPage regression behavior", () => {
       expect(getDocumentsMock).toHaveBeenCalledTimes(2);
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+  });
+});
+
+describe("DashboardPage layout contracts", () => {
+  const ResizeObserverOrig = globalThis.ResizeObserver;
+
+  beforeAll(() => {
+    globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
+      observe: vi.fn(),
+      unobserve: vi.fn(),
+      disconnect: vi.fn(),
+    }));
+  });
+
+  afterAll(() => {
+    globalThis.ResizeObserver = ResizeObserverOrig;
+  });
+
+  beforeEach(() => {
+    pushMock.mockReset();
+    isLoggedInMock.mockReset();
+    getDocumentsMock.mockReset();
+    getMessagesMock.mockReset();
+
+    isLoggedInMock.mockReturnValue(true);
+    getMessagesMock.mockResolvedValue({ messages: [], total: 0 });
+  });
+
+  async function selectDocument() {
+    const doc = makeDocument();
+    getDocumentsMock.mockResolvedValueOnce({ documents: [doc], total: 1 });
+    render(<DashboardPage />);
+    await screen.findByText("alpha.pdf");
+    fireEvent.click(screen.getByText("alpha.pdf"));
+    await screen.findByText("Ask a question about this document");
+  }
+
+  it("chat section has w-full in tab mode for centering parity with PDF section", async () => {
+    // jsdom defaults innerWidth to 0, which triggers tab layout
+    await selectDocument();
+
+    const chatSection = screen.getByText("Ask a question about this document")
+      .closest("section");
+    expect(chatSection).not.toBeNull();
+    expect(chatSection!.className).toContain("w-full");
+    expect(chatSection!.className).toContain("max-w-5xl");
   });
 });
