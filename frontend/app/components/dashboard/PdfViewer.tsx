@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Document as ReactPdfDocument, Page, pdfjs } from "react-pdf";
 import { api, ApiError, SessionExpiredError } from "@/lib/api";
-import { findCitationSpanMatch } from "./pdfCitationMatch";
+import { findCitationSpanMatch, normalizeCitationText } from "./pdfCitationMatch";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -19,7 +19,17 @@ interface PdfViewerProps {
 
 const MAX_RENDERED_PAGE_WIDTH = 840;
 const PAGE_WIDTH_STEP = 8;
-const TEXT_HIGHLIGHT_DURATION_MS = 1500;
+const TEXT_HIGHLIGHT_DURATION_MS = 3000;
+const PAGE_HIGHLIGHT_START_DELAY_MS = 300;
+const PAGE_HIGHLIGHT_DURATION_MS = 2500;
+const SNIPPET_HIGHLIGHT_START_DELAY_MS = 200;
+const MAX_SNIPPET_HIGHLIGHT_RETRY_FRAMES = 120;
+const MIN_FALLBACK_TOKEN_LENGTH = 4;
+const MAX_FALLBACK_HIGHLIGHT_SPANS = 24;
+const FALLBACK_ANCHOR_TOKEN_WINDOW = 10;
+const MIN_FALLBACK_SPAN_SCORE = 2;
+const MIN_FALLBACK_RUN_SCORE = 4;
+const MIN_FALLBACK_UNIQUE_TOKEN_MATCHES = 3;
 
 /**
  * In-app PDF viewer that supports citation deep links with page-level fallback.
@@ -143,18 +153,82 @@ export function PdfViewer({
       if (!target) return false;
 
       const spans = Array.from(target.querySelectorAll(".react-pdf__Page__textContent span"))
+        .concat(Array.from(target.querySelectorAll(".textLayer span")))
         .filter((node): node is HTMLElement => node instanceof HTMLElement);
-      if (spans.length === 0) return false;
+      const uniqueSpans = Array.from(new Set(spans));
+      if (uniqueSpans.length === 0) return false;
 
       const match = findCitationSpanMatch(
-        spans.map((span) => span.textContent ?? ""),
+        uniqueSpans.map((span) => span.textContent ?? ""),
         snippet
       );
-      if (!match) return false;
+      let matchedSpans: HTMLElement[] = [];
+      if (match) {
+        matchedSpans = uniqueSpans.slice(match.startIndex, match.endIndex + 1);
+      } else {
+        // Fallback: highlight the strongest contiguous token-overlap region on the page.
+        const snippetTokens = normalizeCitationText(snippet)
+          .split(" ")
+          .filter((word) => word.length >= MIN_FALLBACK_TOKEN_LENGTH);
+        if (snippetTokens.length === 0) return false;
+
+        const snippetTokenSet = new Set(snippetTokens);
+        const anchorTokenSet = new Set(snippetTokens.slice(0, FALLBACK_ANCHOR_TOKEN_WINDOW));
+        const spanWords = uniqueSpans.map((span) =>
+          normalizeCitationText(span.textContent ?? "").split(" ").filter(Boolean)
+        );
+        const spanScores = spanWords.map((words) =>
+          words.reduce((score, word) => (snippetTokenSet.has(word) ? score + 1 : score), 0)
+        );
+        const anchorScores = spanWords.map((words) =>
+          words.reduce((score, word) => (anchorTokenSet.has(word) ? score + 1 : score), 0)
+        );
+
+        let bestIndex = -1;
+        let bestCombinedScore = 0;
+        let bestScore = 0;
+        spanScores.forEach((score, index) => {
+          const combinedScore = score + (anchorScores[index] ?? 0) * 2;
+          if (
+            combinedScore > bestCombinedScore
+            || (combinedScore === bestCombinedScore && score > bestScore)
+          ) {
+            bestCombinedScore = combinedScore;
+            bestScore = score;
+            bestIndex = index;
+          }
+        });
+        if (bestIndex === -1 || bestScore < MIN_FALLBACK_SPAN_SCORE) return false;
+
+        const startIndex = bestIndex;
+        let endIndex = bestIndex;
+        while (endIndex < uniqueSpans.length - 1 && spanScores[endIndex + 1] > 0) {
+          endIndex += 1;
+        }
+
+        const fallbackSpanCount = Math.min(endIndex - startIndex + 1, MAX_FALLBACK_HIGHLIGHT_SPANS);
+        const fallbackEnd = startIndex + fallbackSpanCount;
+        const runTotalScore = spanScores
+          .slice(startIndex, fallbackEnd)
+          .reduce((sum, score) => sum + score, 0);
+        const matchedFallbackTokens = new Set(
+          spanWords
+            .slice(startIndex, fallbackEnd)
+            .flat()
+            .filter((word) => snippetTokenSet.has(word))
+        );
+        if (
+          runTotalScore < MIN_FALLBACK_RUN_SCORE
+          || matchedFallbackTokens.size < MIN_FALLBACK_UNIQUE_TOKEN_MATCHES
+        ) {
+          return false;
+        }
+        matchedSpans = uniqueSpans.slice(startIndex, fallbackEnd);
+      }
+
+      if (matchedSpans.length === 0) return false;
 
       clearTextHighlight();
-
-      const matchedSpans = spans.slice(match.startIndex, match.endIndex + 1);
       matchedSpans.forEach((span) => {
         span.classList.add("citation-text-highlight");
       });
@@ -181,6 +255,8 @@ export function PdfViewer({
     const snippet = highlightSnippet?.trim() || "";
     let frameId: number | null = null;
     let snippetFrameId: number | null = null;
+    let snippetStartTimer: number | null = null;
+    let highlightStartTimer: number | null = null;
     let highlightTimer: number | null = null;
     let attempts = 0;
     let snippetAttempts = 0;
@@ -197,22 +273,30 @@ export function PdfViewer({
       }
 
       target.scrollIntoView({ behavior: "smooth", block: "center" });
-      setActiveHighlightPage(targetPage);
       clearTextHighlight();
+      // Start page-level fallback highlight after smooth-scroll has begun.
+      setActiveHighlightPage((current) => (current === targetPage ? null : current));
+      highlightStartTimer = window.setTimeout(() => {
+        setActiveHighlightPage(targetPage);
+        highlightTimer = window.setTimeout(() => {
+          setActiveHighlightPage((current) => (current === targetPage ? null : current));
+        }, PAGE_HIGHLIGHT_DURATION_MS);
+      }, PAGE_HIGHLIGHT_START_DELAY_MS);
+
       if (snippet) {
         const highlightSnippetOnceReady = () => {
           if (tryHighlightSnippet(targetPage, snippet)) return;
-          if (snippetAttempts < 20) {
+          if (snippetAttempts < MAX_SNIPPET_HIGHLIGHT_RETRY_FRAMES) {
             snippetAttempts += 1;
             snippetFrameId = window.requestAnimationFrame(highlightSnippetOnceReady);
           }
         };
 
-        highlightSnippetOnceReady();
+        // Let smooth scrolling begin before trying transient text highlight.
+        snippetStartTimer = window.setTimeout(() => {
+          highlightSnippetOnceReady();
+        }, SNIPPET_HIGHLIGHT_START_DELAY_MS);
       }
-      highlightTimer = window.setTimeout(() => {
-        setActiveHighlightPage((current) => (current === targetPage ? null : current));
-      }, 1500);
     };
 
     scrollToTarget();
@@ -220,6 +304,8 @@ export function PdfViewer({
     return () => {
       if (frameId !== null) window.cancelAnimationFrame(frameId);
       if (snippetFrameId !== null) window.cancelAnimationFrame(snippetFrameId);
+      if (snippetStartTimer !== null) window.clearTimeout(snippetStartTimer);
+      if (highlightStartTimer !== null) window.clearTimeout(highlightStartTimer);
       if (highlightTimer !== null) window.clearTimeout(highlightTimer);
     };
   }, [highlightPage, highlightSnippet, numPages, clearTextHighlight, tryHighlightSnippet]);

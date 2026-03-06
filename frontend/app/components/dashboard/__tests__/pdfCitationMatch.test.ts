@@ -25,6 +25,53 @@ describe("pdfCitationMatch", () => {
     });
   });
 
+  it("prefers the longest contiguous snippet match over shorter anchor fragments", () => {
+    const spans = [
+      "Revenue growth and expanded margins are highlighted in summary notes.",
+      "Additional short anchor phrases can appear more than once.",
+      "Detailed findings include",
+      "Q4 revenue of $5M with strong growth and expanded margins",
+      "with improved retention outcomes in enterprise accounts.",
+    ];
+
+    const match = findCitationSpanMatch(
+      spans,
+      "The report states Q4 revenue of $5M with strong growth and expanded margins with improved retention outcomes in enterprise accounts."
+    );
+
+    expect(match).toEqual({
+      startIndex: 3,
+      endIndex: 4,
+    });
+  });
+
+  it("prefers excerpt-beginning match before later longer phrases when available", () => {
+    const spans = [
+      "Quick gains this year.",
+      "Intervening sentence that differs from the source excerpt.",
+      "Recurring revenue retention expansion and margin profile improvements.",
+    ];
+
+    const match = findCitationSpanMatch(
+      spans,
+      "Quick gains this year. Additional commentary that is not present in the PDF. Recurring revenue retention expansion and margin profile improvements."
+    );
+
+    expect(match).toEqual({
+      startIndex: 0,
+      endIndex: 0,
+    });
+  });
+
+  it("returns null when only a short weak overlap is found", () => {
+    const match = findCitationSpanMatch(
+      ["Risk section: revenue growth appears once in the appendix."],
+      "The cited section says revenue growth accelerated due to stronger retention and net expansion."
+    );
+
+    expect(match).toBeNull();
+  });
+
   it("returns null when snippet candidate cannot be found", () => {
     const match = findCitationSpanMatch(
       ["Security policy requires rotation every ninety days."],

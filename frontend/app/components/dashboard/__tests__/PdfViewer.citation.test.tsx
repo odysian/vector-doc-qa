@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useEffect, type ReactNode } from "react";
 import { PdfViewer } from "@/app/components/dashboard/PdfViewer";
@@ -121,12 +121,99 @@ describe("PdfViewer citation highlight behavior", () => {
     await waitFor(() => {
       expect(scrollIntoViewSpy).toHaveBeenCalled();
       const highlighted = container.querySelectorAll(".citation-text-highlight");
-      expect(highlighted.length).toBeGreaterThan(0);
+      expect(highlighted).toHaveLength(3);
     });
 
     await waitFor(() => {
       expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(0);
-    }, { timeout: 2500 });
+    }, { timeout: 4200 });
+  });
+
+  it("reapplies text highlight when the same-page citation is retriggered", async () => {
+    mockPdfState.spansByPage.set(1, [
+      "Acme Corp posted",
+      "Q4 revenue",
+      "of $5M with strong growth",
+      "and expanded margins",
+    ]);
+
+    const { container, rerender } = render(
+      <PdfViewer
+        documentId={7}
+        highlightPage={1}
+        highlightSnippet="Q4 revenue of $5M with strong growth and expanded margins."
+      />
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(3);
+    });
+    await waitFor(() => {
+      expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(0);
+    }, { timeout: 4200 });
+
+    rerender(<PdfViewer documentId={7} highlightPage={null} highlightSnippet={null} />);
+    rerender(
+      <PdfViewer
+        documentId={7}
+        highlightPage={1}
+        highlightSnippet="Q4 revenue of $5M with strong growth and expanded margins."
+      />
+    );
+
+    await waitFor(() => {
+      expect(scrollIntoViewSpy).toHaveBeenCalledTimes(2);
+      expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(3);
+    });
+  });
+
+  it("highlights snippet when text layer becomes available during retry window", async () => {
+    const queuedFrames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      queuedFrames.push(callback);
+      return queuedFrames.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+
+    const { container, rerender } = render(
+      <PdfViewer
+        documentId={7}
+        highlightPage={1}
+        highlightSnippet="Q4 revenue of $5M with strong growth and expanded margins."
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Page 1")).toBeInTheDocument();
+      expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(0);
+      expect(queuedFrames.length).toBeGreaterThan(0);
+    });
+
+    mockPdfState.spansByPage.set(1, [
+      "Acme Corp posted",
+      "Q4 revenue",
+      "of $5M with strong growth",
+      "and expanded margins",
+    ]);
+    rerender(
+      <PdfViewer
+        documentId={7}
+        highlightPage={1}
+        highlightSnippet="Q4 revenue of $5M with strong growth and expanded margins."
+      />
+    );
+
+    await act(async () => {
+      while (queuedFrames.length > 0) {
+        const callback = queuedFrames.shift();
+        callback?.(performance.now());
+        await Promise.resolve();
+      }
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(3);
+    });
   });
 
   it("falls back to page-level highlight when snippet does not match", async () => {
@@ -151,6 +238,50 @@ describe("PdfViewer citation highlight behavior", () => {
       expect(pageWrapper).toBeTruthy();
       expect(pageWrapper?.className).toContain("border-lapis-400/70");
       expect(document.querySelectorAll(".citation-text-highlight")).toHaveLength(0);
+    });
+  });
+
+  it("does not apply text highlight for weak single-token overlap", async () => {
+    mockPdfState.spansByPage.set(2, [
+      "Security policy mandates credential rotation every ninety days.",
+      "Use MFA for all privileged actions.",
+    ]);
+
+    render(
+      <PdfViewer
+        documentId={12}
+        highlightPage={2}
+        highlightSnippet="Policy exceptions require annual board signoff for temporary contractors."
+      />
+    );
+
+    const pageHeading = await screen.findByText("Page 2");
+    const pageWrapper = pageHeading.parentElement?.parentElement;
+
+    await waitFor(() => {
+      expect(scrollIntoViewSpy).toHaveBeenCalled();
+      expect(pageWrapper?.className).toContain("border-lapis-400/70");
+      expect(document.querySelectorAll(".citation-text-highlight")).toHaveLength(0);
+    });
+  });
+
+  it("applies text highlight for strong overlap when exact phrase match is unavailable", async () => {
+    mockPdfState.spansByPage.set(2, [
+      "Password policy requires credential rotation every ninety days.",
+      "Privileged access reviews and incident response ownership are mandatory.",
+    ]);
+
+    const { container } = render(
+      <PdfViewer
+        documentId={13}
+        highlightPage={2}
+        highlightSnippet="Credential policy and access ownership controls are mandatory during incident drills."
+      />
+    );
+
+    await waitFor(() => {
+      expect(scrollIntoViewSpy).toHaveBeenCalled();
+      expect(container.querySelectorAll(".citation-text-highlight").length).toBeGreaterThan(0);
     });
   });
 });

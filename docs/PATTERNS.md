@@ -289,6 +289,16 @@ try {
 
 Use the lightweight status endpoint for frequent updates while documents are in `pending` or `processing`. Stop polling when all documents reach terminal states (`completed` or `failed`).
 
+### Citation Highlight Heuristics
+
+PDF citation text highlighting uses a three-stage strategy:
+
+1. Start-anchored phrase matching against text-layer spans
+2. Broader phrase-window matching on the cited page
+3. Token-overlap fallback with confidence gates
+
+Fallback text highlight is applied only when overlap confidence is sufficient (minimum per-span overlap score, run score, and unique matched token count). If confidence is low, the UI falls back to page-level highlight only.
+
 ---
 
 ## Database Patterns
