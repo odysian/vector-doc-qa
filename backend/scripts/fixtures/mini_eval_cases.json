@@ -28,6 +28,15 @@
         "rotation",
         "90 days"
       ]
+    },
+    {
+      "case_id": "case-004-tell-tale-heart",
+      "question": "What was the narrator's motive for killing the old man, and how was the crime discovered?",
+      "target_document": "the-tell-tale-heart.pdf",
+      "expected_facts": [
+        "eye",
+        "police"
+      ]
     }
   ]
 }
