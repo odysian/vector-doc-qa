@@ -45,6 +45,24 @@ describe("pdfCitationMatch", () => {
     });
   });
 
+  it("prefers excerpt-beginning match before later longer phrases when available", () => {
+    const spans = [
+      "Quick gains this year.",
+      "Intervening sentence that differs from the source excerpt.",
+      "Recurring revenue retention expansion and margin profile improvements.",
+    ];
+
+    const match = findCitationSpanMatch(
+      spans,
+      "Quick gains this year. Additional commentary that is not present in the PDF. Recurring revenue retention expansion and margin profile improvements."
+    );
+
+    expect(match).toEqual({
+      startIndex: 0,
+      endIndex: 0,
+    });
+  });
+
   it("returns null when only a short weak overlap is found", () => {
     const match = findCitationSpanMatch(
       ["Risk section: revenue growth appears once in the appendix."],

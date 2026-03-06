@@ -26,6 +26,7 @@ const SNIPPET_HIGHLIGHT_START_DELAY_MS = 200;
 const MAX_SNIPPET_HIGHLIGHT_RETRY_FRAMES = 120;
 const MIN_FALLBACK_TOKEN_LENGTH = 4;
 const MAX_FALLBACK_HIGHLIGHT_SPANS = 24;
+const FALLBACK_ANCHOR_TOKEN_WINDOW = 10;
 
 /**
  * In-app PDF viewer that supports citation deep links with page-level fallback.
@@ -169,6 +170,7 @@ export function PdfViewer({
         if (snippetTokens.length === 0) return false;
 
         const snippetTokenSet = new Set(snippetTokens);
+        const anchorTokenSet = new Set(snippetTokens.slice(0, FALLBACK_ANCHOR_TOKEN_WINDOW));
         const spanScores = uniqueSpans.map((span) => {
           const words = normalizeCitationText(span.textContent ?? "").split(" ").filter(Boolean);
           if (words.length === 0) return 0;
@@ -177,22 +179,32 @@ export function PdfViewer({
             0
           );
         });
+        const anchorScores = uniqueSpans.map((span) => {
+          const words = normalizeCitationText(span.textContent ?? "").split(" ").filter(Boolean);
+          if (words.length === 0) return 0;
+          return words.reduce(
+            (score, word) => (anchorTokenSet.has(word) ? score + 1 : score),
+            0
+          );
+        });
 
         let bestIndex = -1;
         let bestScore = 0;
-        spanScores.forEach((score, index) => {
-          if (score > bestScore) {
-            bestScore = score;
-            bestIndex = index;
-          }
-        });
+        const anchorIndex = anchorScores.findIndex((score) => score > 0);
+        if (anchorIndex !== -1) {
+          bestIndex = anchorIndex;
+          bestScore = spanScores[anchorIndex] ?? 0;
+        } else {
+          spanScores.forEach((score, index) => {
+            if (score > bestScore) {
+              bestScore = score;
+              bestIndex = index;
+            }
+          });
+        }
         if (bestIndex === -1 || bestScore === 0) return false;
 
-        let startIndex = bestIndex;
-        while (startIndex > 0 && spanScores[startIndex - 1] > 0) {
-          startIndex -= 1;
-        }
-
+        const startIndex = bestIndex;
         let endIndex = bestIndex;
         while (endIndex < uniqueSpans.length - 1 && spanScores[endIndex + 1] > 0) {
           endIndex += 1;

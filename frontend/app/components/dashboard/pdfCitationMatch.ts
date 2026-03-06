@@ -5,6 +5,7 @@ export interface CitationSpanMatch {
 
 const WINDOW_SIZES = [24, 18, 12, 8, 6, 4];
 const MIN_CANDIDATE_CHARS = 24;
+const MIN_ANCHORED_CANDIDATE_CHARS = 12;
 const MAX_CANDIDATES = 120;
 
 export const normalizeCitationText = (value: string): string => {
@@ -15,15 +16,35 @@ export const normalizeCitationText = (value: string): string => {
     .trim();
 };
 
-const buildCandidatePhrases = (normalizedSnippet: string): string[] => {
+const buildCandidatePhrases = (
+  normalizedSnippet: string,
+  options?: { anchoredOnly?: boolean; minChars?: number }
+): string[] => {
   const words = normalizedSnippet.split(" ").filter(Boolean);
   if (words.length === 0) return [];
+  const anchoredOnly = options?.anchoredOnly ?? false;
+  const minChars = options?.minChars ?? MIN_CANDIDATE_CHARS;
 
   const candidates: string[] = [];
   const seen = new Set<string>();
 
+  if (anchoredOnly && normalizedSnippet.length >= minChars) {
+    seen.add(normalizedSnippet);
+    candidates.push(normalizedSnippet);
+  }
+
   for (const windowSize of WINDOW_SIZES) {
     if (words.length < windowSize) continue;
+
+    if (anchoredOnly) {
+      const candidate = words.slice(0, windowSize).join(" ").trim();
+      if (candidate.length >= minChars && !seen.has(candidate)) {
+        seen.add(candidate);
+        candidates.push(candidate);
+        if (candidates.length >= MAX_CANDIDATES) return candidates;
+      }
+      continue;
+    }
 
     const starts: number[] = [];
     const maxStart = words.length - windowSize;
@@ -35,18 +56,41 @@ const buildCandidatePhrases = (normalizedSnippet: string): string[] => {
 
     for (const start of starts) {
       const candidate = words.slice(start, start + windowSize).join(" ").trim();
-      if (candidate.length < MIN_CANDIDATE_CHARS || seen.has(candidate)) continue;
+      if (candidate.length < minChars || seen.has(candidate)) continue;
       seen.add(candidate);
       candidates.push(candidate);
       if (candidates.length >= MAX_CANDIDATES) return candidates;
     }
   }
 
-  if (candidates.length === 0 && normalizedSnippet.length >= MIN_CANDIDATE_CHARS) {
+  if (!anchoredOnly && candidates.length === 0 && normalizedSnippet.length >= minChars) {
     candidates.push(normalizedSnippet);
   }
 
   return candidates;
+};
+
+const findMatchFromCandidates = (
+  pageText: string,
+  ranges: Array<{ spanIndex: number; start: number; end: number }>,
+  candidates: string[]
+): CitationSpanMatch | null => {
+  for (const candidate of candidates) {
+    const matchStart = pageText.indexOf(candidate);
+    if (matchStart === -1) continue;
+    const matchEnd = matchStart + candidate.length;
+
+    const startRange = ranges.find((range) => range.end > matchStart);
+    const endRange = [...ranges].reverse().find((range) => range.start < matchEnd);
+    if (!startRange || !endRange || endRange.spanIndex < startRange.spanIndex) continue;
+
+    return {
+      startIndex: startRange.spanIndex,
+      endIndex: endRange.spanIndex,
+    };
+  }
+
+  return null;
 };
 
 export const findCitationSpanMatch = (
@@ -71,20 +115,15 @@ export const findCitationSpanMatch = (
 
   if (!pageText || ranges.length === 0) return null;
 
-  for (const candidate of buildCandidatePhrases(normalizedSnippet)) {
-    const matchStart = pageText.indexOf(candidate);
-    if (matchStart === -1) continue;
-    const matchEnd = matchStart + candidate.length;
+  const anchoredMatch = findMatchFromCandidates(
+    pageText,
+    ranges,
+    buildCandidatePhrases(normalizedSnippet, {
+      anchoredOnly: true,
+      minChars: MIN_ANCHORED_CANDIDATE_CHARS,
+    })
+  );
+  if (anchoredMatch) return anchoredMatch;
 
-    const startRange = ranges.find((range) => range.end > matchStart);
-    const endRange = [...ranges].reverse().find((range) => range.start < matchEnd);
-    if (!startRange || !endRange || endRange.spanIndex < startRange.spanIndex) continue;
-
-    return {
-      startIndex: startRange.spanIndex,
-      endIndex: endRange.spanIndex,
-    };
-  }
-
-  return null;
+  return findMatchFromCandidates(pageText, ranges, buildCandidatePhrases(normalizedSnippet));
 };
