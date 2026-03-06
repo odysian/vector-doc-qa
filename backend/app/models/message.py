@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from app.database import Base
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,6 +42,13 @@ class Message(Base):
     # Constraint to ensure role is either 'user' or 'assistant'
     __table_args__ = (
         CheckConstraint("role IN ('user', 'assistant')", name="check_role"),
+        Index(
+            "ix_quaero_messages_document_id_user_id_created_at_id",
+            document_id,
+            user_id,
+            created_at.desc(),
+            id.desc(),
+        ),
     )
 
     def __repr__(self) -> str:
