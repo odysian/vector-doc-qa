@@ -43,6 +43,7 @@ export interface User {
   id: number;
   username: string;
   email: string;
+  is_demo: boolean;
   created_at: string;
 }
 

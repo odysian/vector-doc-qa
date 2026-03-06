@@ -87,4 +87,27 @@ describe("LoginPage form behavior", () => {
     expect(await screen.findByText("Invalid credentials")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign In" })).toBeEnabled();
   });
+
+  it("logs in with demo credentials from the Try Demo button", async () => {
+    loginMock.mockResolvedValueOnce({ csrf_token: "csrf-demo", token_type: "bearer" });
+
+    render(<LoginPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Try Demo" }));
+
+    await waitFor(() => {
+      expect(loginMock).toHaveBeenCalledWith({
+        username: "demo",
+        password: "demo",
+      });
+      expect(saveTokensMock).toHaveBeenCalledWith({
+        csrf_token: "csrf-demo",
+        token_type: "bearer",
+      });
+      expect(pushMock).toHaveBeenCalledWith("/dashboard");
+    });
+
+    expect(screen.getByLabelText("Username")).toHaveValue("demo");
+    expect(screen.getByLabelText("Password")).toHaveValue("demo");
+  });
 });

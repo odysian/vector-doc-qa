@@ -21,6 +21,7 @@ interface DocumentListProps {
   onDocumentClick: (document: Document) => void;
   onProcessDocument: (document: Document) => Promise<void>;
   onDeleteDocument: (document: Document) => void;
+  hideDeleteActions?: boolean;
 }
 
 function StatusIcon({
@@ -69,6 +70,7 @@ export function DocumentList({
   onDocumentClick,
   onProcessDocument,
   onDeleteDocument,
+  hideDeleteActions = false,
 }: DocumentListProps) {
   const [processingId, setProcessingId] = useState<number | null>(null);
 
@@ -151,15 +153,17 @@ export function DocumentList({
                     )}
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={(e) => handleDelete(e, doc)}
-                  title="Delete"
-                  className="p-1.5 rounded text-zinc-400 hover:bg-red-500/20 hover:text-red-400 transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-800"
-                  aria-label="Delete"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {!hideDeleteActions && (
+                  <button
+                    type="button"
+                    onClick={(e) => handleDelete(e, doc)}
+                    title="Delete"
+                    className="p-1.5 rounded text-zinc-400 hover:bg-red-500/20 hover:text-red-400 transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-800"
+                    aria-label="Delete"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
             {/* Row 2: status icon + file size */}
