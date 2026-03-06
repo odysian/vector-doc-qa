@@ -3,8 +3,8 @@ export interface CitationSpanMatch {
   endIndex: number;
 }
 
-const MIN_ROBUST_MATCH_WORDS = 4;
-const MIN_ROBUST_MATCH_CHARS = 24;
+const WINDOW_SIZES = [24, 18, 12, 8, 6];
+const MIN_CANDIDATE_CHARS = 24;
 
 export const normalizeCitationText = (value: string): string => {
   return value
@@ -14,12 +14,31 @@ export const normalizeCitationText = (value: string): string => {
     .trim();
 };
 
-interface BestWordMatch {
-  snippetStart: number;
-  pageStart: number;
-  length: number;
-  charLength: number;
-}
+const buildCandidatePhrases = (normalizedSnippet: string): string[] => {
+  const words = normalizedSnippet.split(" ").filter(Boolean);
+  if (words.length === 0) return [];
+
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+
+  for (const windowSize of WINDOW_SIZES) {
+    if (words.length < windowSize) continue;
+
+    const starts = [0, Math.floor((words.length - windowSize) / 2), words.length - windowSize];
+    for (const start of starts) {
+      const candidate = words.slice(start, start + windowSize).join(" ").trim();
+      if (candidate.length < MIN_CANDIDATE_CHARS || seen.has(candidate)) continue;
+      seen.add(candidate);
+      candidates.push(candidate);
+    }
+  }
+
+  if (candidates.length === 0 && normalizedSnippet.length >= MIN_CANDIDATE_CHARS) {
+    candidates.push(normalizedSnippet);
+  }
+
+  return candidates;
+};
 
 export const findCitationSpanMatch = (
   spanTexts: string[],
@@ -27,93 +46,36 @@ export const findCitationSpanMatch = (
 ): CitationSpanMatch | null => {
   const normalizedSnippet = normalizeCitationText(snippet);
   if (!normalizedSnippet) return null;
-  const snippetWords = normalizedSnippet.split(" ").filter(Boolean);
-  if (snippetWords.length === 0) return null;
 
-  const pageWords: string[] = [];
-  const pageWordSpanIndices: number[] = [];
+  let pageText = "";
+  const ranges: Array<{ spanIndex: number; start: number; end: number }> = [];
 
   spanTexts.forEach((text, spanIndex) => {
     const normalizedSpan = normalizeCitationText(text);
     if (!normalizedSpan) return;
-    const normalizedWords = normalizedSpan.split(" ").filter(Boolean);
-    normalizedWords.forEach((word) => {
-      pageWords.push(word);
-      pageWordSpanIndices.push(spanIndex);
-    });
+
+    if (pageText.length > 0) pageText += " ";
+    const start = pageText.length;
+    pageText += normalizedSpan;
+    ranges.push({ spanIndex, start, end: pageText.length });
   });
 
-  if (pageWords.length === 0) return null;
+  if (!pageText || ranges.length === 0) return null;
 
-  const pageWordPositions = new Map<string, number[]>();
-  pageWords.forEach((word, index) => {
-    const positions = pageWordPositions.get(word);
-    if (positions) {
-      positions.push(index);
-    } else {
-      pageWordPositions.set(word, [index]);
-    }
-  });
+  for (const candidate of buildCandidatePhrases(normalizedSnippet)) {
+    const matchStart = pageText.indexOf(candidate);
+    if (matchStart === -1) continue;
+    const matchEnd = matchStart + candidate.length;
 
-  let bestMatch: BestWordMatch | null = null;
-  for (let snippetStart = 0; snippetStart < snippetWords.length; snippetStart += 1) {
-    const startWord = snippetWords[snippetStart];
-    const pageStarts = pageWordPositions.get(startWord);
-    if (!pageStarts || pageStarts.length === 0) continue;
+    const startRange = ranges.find((range) => range.end > matchStart);
+    const endRange = [...ranges].reverse().find((range) => range.start < matchEnd);
+    if (!startRange || !endRange || endRange.spanIndex < startRange.spanIndex) continue;
 
-    const snippetWordsRemaining = snippetWords.length - snippetStart;
-    if (bestMatch && snippetWordsRemaining < bestMatch.length) continue;
-
-    for (const pageStart of pageStarts) {
-      const pageWordsRemaining = pageWords.length - pageStart;
-      if (bestMatch && Math.min(snippetWordsRemaining, pageWordsRemaining) < bestMatch.length) {
-        continue;
-      }
-
-      let matchLength = 0;
-      while (
-        snippetStart + matchLength < snippetWords.length &&
-        pageStart + matchLength < pageWords.length &&
-        snippetWords[snippetStart + matchLength] === pageWords[pageStart + matchLength]
-      ) {
-        matchLength += 1;
-      }
-      if (matchLength === 0) continue;
-
-      const matchedSnippet = snippetWords
-        .slice(snippetStart, snippetStart + matchLength)
-        .join(" ");
-      const candidate: BestWordMatch = {
-        snippetStart,
-        pageStart,
-        length: matchLength,
-        charLength: matchedSnippet.length,
-      };
-
-      if (
-        !bestMatch ||
-        candidate.length > bestMatch.length ||
-        (candidate.length === bestMatch.length && candidate.charLength > bestMatch.charLength)
-      ) {
-        bestMatch = candidate;
-      }
-    }
+    return {
+      startIndex: startRange.spanIndex,
+      endIndex: endRange.spanIndex,
+    };
   }
 
-  if (!bestMatch) return null;
-
-  const isFullSnippetMatch = bestMatch.length === snippetWords.length;
-  const isRobustPartialMatch =
-    bestMatch.length >= MIN_ROBUST_MATCH_WORDS && bestMatch.charLength >= MIN_ROBUST_MATCH_CHARS;
-  if (!isFullSnippetMatch && !isRobustPartialMatch) return null;
-
-  const startIndex = pageWordSpanIndices[bestMatch.pageStart];
-  const endWordIndex = bestMatch.pageStart + bestMatch.length - 1;
-  const endIndex = pageWordSpanIndices[endWordIndex];
-  if (startIndex === undefined || endIndex === undefined || endIndex < startIndex) return null;
-
-  return {
-    startIndex,
-    endIndex,
-  };
+  return null;
 };
