@@ -316,6 +316,9 @@ describe("ChatWindow streaming lifecycle", () => {
     const pageRangeLabel = await screen.findByText("Pages 3-4");
     fireEvent.click(pageRangeLabel);
 
-    expect(onCitationClick).toHaveBeenCalledWith(3);
+    expect(onCitationClick).toHaveBeenCalledWith({
+      page: 3,
+      snippet: "Cited section content for pages three and four.",
+    });
   });
 });
