@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = get_logger(__name__)
 
 router = APIRouter()
+CONVERSATION_HISTORY_WINDOW_TURNS = 5
 
 
 def _elapsed_ms(start_time: float) -> int:
@@ -155,6 +156,38 @@ async def _validate_document_for_query(
         raise HTTPException(status_code=400, detail=f"Document {document_id} has no chunks")
 
     return document
+
+
+async def _get_recent_conversation_history(
+    *,
+    db: AsyncSession,
+    document_id: int,
+    user_id: int,
+    window_turns: int = CONVERSATION_HISTORY_WINDOW_TURNS,
+) -> list[dict[str, str]]:
+    """
+    Fetch the last N conversation turns for a document thread (oldest -> newest).
+
+    A turn is treated as two messages (user + assistant), so we load up to N*2
+    recent messages and reverse them to chronological order.
+    """
+    if window_turns <= 0:
+        return []
+
+    message_limit = window_turns * 2
+    stmt = (
+        select(Message.role, Message.content)
+        .where(Message.document_id == document_id)
+        .where(Message.user_id == user_id)
+        .order_by(Message.created_at.desc(), Message.id.desc())
+        .limit(message_limit)
+    )
+    rows = (await db.execute(stmt)).all()
+
+    return [
+        {"role": role, "content": content}
+        for role, content in reversed(rows)
+    ]
 
 
 @router.post("/upload", response_model=UploadResponse, status_code=201)
@@ -526,6 +559,12 @@ async def query_document(
     )
 
     try:
+        conversation_history = await _get_recent_conversation_history(
+            db=db,
+            document_id=document_id,
+            user_id=current_user.id,
+        )
+
         # Save user message to database
         user_message = Message(
             document_id=document_id,
@@ -553,7 +592,11 @@ async def query_document(
         retrieval_ms = _elapsed_ms(retrieval_start)
 
         llm_start = time.perf_counter()
-        answer = await generate_answer(query=body.query, chunks=search_results)
+        answer = await generate_answer(
+            query=body.query,
+            chunks=search_results,
+            conversation_history=conversation_history,
+        )
         llm_ms = _elapsed_ms(llm_start)
         total_ms = _elapsed_ms(pipeline_start)
 
@@ -630,6 +673,12 @@ async def query_document_stream(
     )
 
     try:
+        conversation_history = await _get_recent_conversation_history(
+            db=db,
+            document_id=document_id,
+            user_id=current_user.id,
+        )
+
         # Transaction 1: persist user message + run retrieval, then commit.
         user_message = Message(
             document_id=document_id,
@@ -709,7 +758,11 @@ async def query_document_stream(
 
         try:
             yield ServerSentEvent(event="sources", raw_data=json.dumps(sources_dict))
-            async for token in generate_answer_stream(query=body.query, chunks=search_results):
+            async for token in generate_answer_stream(
+                query=body.query,
+                chunks=search_results,
+                conversation_history=conversation_history,
+            ):
                 answer_tokens.append(token)
                 yield ServerSentEvent(event="token", raw_data=token)
         except Exception as e:

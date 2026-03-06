@@ -1,7 +1,11 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.anthropic_service import generate_answer, generate_answer_stream
+from app.services.anthropic_service import (
+    _build_prompt,
+    generate_answer,
+    generate_answer_stream,
+)
 
 
 class _FakeStreamContext:
@@ -20,6 +24,21 @@ class _FakeStreamContext:
 
 
 class TestAnthropicServiceLogging:
+    def test_build_prompt_formats_history_with_explicit_roles(self):
+        prompt = _build_prompt(
+            query="What changed?",
+            chunks=[{"content": "Excerpt content"}],
+            conversation_history=[
+                {"role": "user", "content": "Summarize section 1"},
+                {"role": "assistant", "content": "Section 1 is about costs"},
+            ],
+        )
+
+        assert "Recent conversation history (oldest to newest):" in prompt
+        assert "User: Summarize section 1" in prompt
+        assert "Assistant: Section 1 is about costs" in prompt
+        assert "Current question: What changed?" in prompt
+
     async def test_generate_answer_info_logs_redact_raw_query(self):
         raw_query = "board compensation details"
         chunks = [{"content": "Compensation details are in this excerpt."}]

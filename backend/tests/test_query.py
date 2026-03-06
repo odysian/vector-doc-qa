@@ -12,6 +12,7 @@ from unittest.mock import patch
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api import documents as documents_api
 from app.models.message import Message
 from app.models.user import User
 
@@ -238,6 +239,60 @@ class TestQuery:
         # Assistant message should have sources stored as JSONB
         assert messages[1].sources is not None
 
+    async def test_query_passes_bounded_ordered_history_to_prompt(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        mock_embeddings,
+        mock_anthropic,
+        db_session: AsyncSession,
+        test_user: User,
+    ):
+        turn_count = documents_api.CONVERSATION_HISTORY_WINDOW_TURNS + 1
+        expected_history: list[dict[str, str]] = []
+
+        for turn in range(turn_count):
+            user_content = f"user turn {turn}"
+            assistant_content = f"assistant turn {turn}"
+            db_session.add(
+                Message(
+                    document_id=processed_document.id,
+                    user_id=test_user.id,
+                    role="user",
+                    content=user_content,
+                )
+            )
+            db_session.add(
+                Message(
+                    document_id=processed_document.id,
+                    user_id=test_user.id,
+                    role="assistant",
+                    content=assistant_content,
+                )
+            )
+            if turn > 0:
+                expected_history.extend(
+                    [
+                        {"role": "user", "content": user_content},
+                        {"role": "assistant", "content": assistant_content},
+                    ]
+                )
+
+        await db_session.flush()
+
+        response = await client.post(
+            f"/api/documents/{processed_document.id}/query",
+            headers=auth_headers,
+            json={"query": "Follow up question"},
+        )
+
+        assert response.status_code == 200
+        assert mock_anthropic["api"].await_count == 1
+        call_kwargs = mock_anthropic["api"].await_args.kwargs
+        assert call_kwargs["query"] == "Follow up question"
+        assert call_kwargs["conversation_history"] == expected_history
+
     async def test_query_returns_404_for_other_users_document(
         self, client, second_user_headers, processed_document, mock_embeddings, mock_anthropic
     ):
@@ -327,8 +382,9 @@ class TestQueryStream:
         async def _fake_generate_answer_stream(
             query: str,
             chunks: list[dict],
+            conversation_history: list[dict[str, str]] | None = None,
         ) -> AsyncGenerator[str, None]:
-            del query, chunks
+            del query, chunks, conversation_history
             yield "This "
             yield "is "
             yield "streamed."
@@ -412,8 +468,9 @@ class TestQueryStream:
         async def _fake_generate_answer_stream(
             query: str,
             chunks: list[dict],
+            conversation_history: list[dict[str, str]] | None = None,
         ) -> AsyncGenerator[str, None]:
-            del query, chunks
+            del query, chunks, conversation_history
             yield "streamed answer"
 
         with (
@@ -489,8 +546,9 @@ class TestQueryStream:
         async def _failing_generate_answer_stream(
             query: str,
             chunks: list[dict],
+            conversation_history: list[dict[str, str]] | None = None,
         ) -> AsyncGenerator[str, None]:
-            del query, chunks
+            del query, chunks, conversation_history
             yield "partial "
             raise RuntimeError("anthropic stream failed")
 
@@ -538,8 +596,9 @@ class TestQueryStream:
         async def _failing_generate_answer_stream(
             query: str,
             chunks: list[dict],
+            conversation_history: list[dict[str, str]] | None = None,
         ) -> AsyncGenerator[str, None]:
-            del query, chunks
+            del query, chunks, conversation_history
             yield "partial "
             raise RuntimeError("sensitive stream runtime payload")
 
@@ -596,8 +655,9 @@ class TestQueryStream:
         async def _fake_generate_answer_stream(
             query: str,
             chunks: list[dict],
+            conversation_history: list[dict[str, str]] | None = None,
         ) -> AsyncGenerator[str, None]:
-            del query, chunks
+            del query, chunks, conversation_history
             yield "streamed token"
 
         fail_then_succeed_calls = {"count": 0}
@@ -642,6 +702,79 @@ class TestQueryStream:
         assert messages[0].role == "user"
         assert messages[1].role == "assistant"
         assert "internal error saving the final response" in messages[1].content.lower()
+
+    async def test_stream_query_passes_bounded_ordered_history_to_prompt(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        mock_embeddings,
+        db_session: AsyncSession,
+        test_user: User,
+    ):
+        turn_count = documents_api.CONVERSATION_HISTORY_WINDOW_TURNS + 1
+        expected_history: list[dict[str, str]] = []
+
+        for turn in range(turn_count):
+            user_content = f"user turn {turn}"
+            assistant_content = f"assistant turn {turn}"
+            db_session.add(
+                Message(
+                    document_id=processed_document.id,
+                    user_id=test_user.id,
+                    role="user",
+                    content=user_content,
+                )
+            )
+            db_session.add(
+                Message(
+                    document_id=processed_document.id,
+                    user_id=test_user.id,
+                    role="assistant",
+                    content=assistant_content,
+                )
+            )
+            if turn > 0:
+                expected_history.extend(
+                    [
+                        {"role": "user", "content": user_content},
+                        {"role": "assistant", "content": assistant_content},
+                    ]
+                )
+
+        await db_session.flush()
+
+        observed_history: dict[str, list[dict[str, str]]] = {"messages": []}
+
+        async def _fake_generate_answer_stream(
+            query: str,
+            chunks: list[dict],
+            conversation_history: list[dict[str, str]] | None = None,
+        ) -> AsyncGenerator[str, None]:
+            del query, chunks
+            observed_history["messages"] = conversation_history or []
+            yield "streamed answer"
+
+        with (
+            patch(
+                "app.api.documents.generate_answer_stream",
+                new=_fake_generate_answer_stream,
+            ),
+            patch(
+                "app.api.documents.AsyncSessionLocal",
+                new=lambda: _NoCloseSessionContext(db_session),
+            ),
+        ):
+            async with client.stream(
+                "POST",
+                f"/api/documents/{processed_document.id}/query/stream",
+                headers=auth_headers,
+                json={"query": "Follow up stream question"},
+            ) as response:
+                assert response.status_code == 200
+                await _read_sse_events(response)
+
+        assert observed_history["messages"] == expected_history
 
 
 # ---------------------------------------------------------------------------
