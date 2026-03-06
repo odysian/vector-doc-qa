@@ -241,10 +241,7 @@ export default function DashboardPage() {
       await api.uploadDocument(file);
       await loadDocuments();
     } catch (err) {
-      const redirected = handleApiError(err, "Upload failed");
-      if (!redirected) {
-        throw err;
-      }
+      handleApiError(err, "Upload failed");
     }
   };
 
@@ -311,6 +308,9 @@ export default function DashboardPage() {
       if (selectedDocument?.id === doc.id) setSelectedDocument(null);
       await loadDocuments();
     } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        setDocumentToDelete(null);
+      }
       handleApiError(err, "Failed to delete document");
     } finally {
       setDeletingInProgress(false);
