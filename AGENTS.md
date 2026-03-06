@@ -20,10 +20,8 @@ Read in this order:
 ## Unit of Work Rule
 
 - **Unit of work is a GitHub Issue.**
-- Choose an execution mode from `docs/ISSUES_WORKFLOW.md` before coding:
-  - `single` (default): one feature -> one Task issue -> one PR
-  - `gated`: Spec issue + child Task issue(s) for feature sets or higher-risk work
-  - `fast`: quick-fix path for tiny low-risk changes
+- Use `single` mode by default: one feature -> one Task issue -> one PR.
+- Use `gated` or `fast` only when explicitly requested.
 - Convert freeform requests into the selected issue mode before implementation.
 - Work one Task issue at a time.
 - PRs close Task issues (`Closes #123`), not Specs.
@@ -33,18 +31,20 @@ Read in this order:
 - Canonical single-line kickoff prompt:
   - `Run kickoff for feature <feature-id> from <filename> mode=<single|gated|fast>.`
   - If `mode` is omitted, default to `single`.
+  - Do not switch to `gated` or `fast` unless explicitly requested.
   - Expected output: issue body file(s), `gh issue create` command(s), created issue link(s), and a 3-5 step implementation plan.
 
 ## Agent Operating Loop
 
 1. Whiteboard scope in `plans/*.md` or spec docs (scratch only).
-2. Choose execution mode (`single` default, `gated`, or `fast`) and create required issue(s).
+2. Choose execution mode and create required issue(s) (`single` unless explicitly asked for `gated`/`fast`).
 3. Restate goal and acceptance criteria.
 4. Plan minimal files and scope.
 5. Implement with tight, surgical changes.
-6. Run verification commands.
-7. Update tests/docs if required.
-8. Open PR that closes the Task issue, run bounded fresh-context review loop, then close Spec after child Tasks are done/deferred.
+6. Run verification commands once (or once per code change set).
+7. Open PR that closes the Task issue.
+8. Provide a lean reviewer follow-up prompt for a separate review pass.
+9. Patch only actionable findings, rerun relevant verification, and finalize.
 
 ## Process
 
@@ -54,8 +54,8 @@ This file contains **project-specific rules** that supplement WORKFLOW.md. If th
 
 ## Workflow Metadata
 
-- **Template baseline:** `agentic-workflow-template v0.3.0`
-- **Adoption date:** `2026-03-05`
+- **Template baseline:** `agentic-workflow-template v0.2.0`
+- **Adoption date:** `2026-03-06`
 
 ---
 
@@ -89,19 +89,19 @@ Quaero is an AI-powered PDF question-answering platform that uses Retrieval Augm
 - **Use fail-fast GH preflight checks.** Run `scripts/gh_preflight.sh` before GH write actions.
 - **Use the PR wrapper.** Create PRs with `scripts/create_pr.sh` and `--body-file`.
 - **Follow supervised GH fallback order.** Run preflight, try the exact GH command once (default `--max-attempts=1`), request elevated approval for the exact command if it fails, then provide manual one-liner + URL if elevated execution still fails.
-- **Use bounded fresh review loop.** Run `scripts/fresh_review_loop.sh` for review/patch rounds.
-- **Fresh review loop working tree rule.** No tracked/staged diffs are allowed before starting the loop; untracked scratch files are allowed.
+- **Lean reviewer handoff is default.** After PR creation, agent1 provides a review prompt in chat and reviewer returns `APPROVED` or `ACTIONABLE`.
+- **Default to one review pass.** Run a second review pass only when explicitly requested.
 
-## Decision Brief (Required)
+## Decision Brief (Conditional)
 
-For non-trivial fixes/features, include a short decision brief before completion:
+For non-trivial fixes/features, include a short decision brief only when behavior/contracts/architecture decisions changed:
 
 - **Chosen approach:** what was implemented.
 - **Alternative considered:** one realistic alternative.
 - **Tradeoff:** why this choice won (complexity/risk/perf/security).
 - **Revisit trigger:** when the alternative should be reconsidered.
 
-For tiny quick fixes, a one-line brief is enough: chosen approach + primary risk.
+For tiny quick fixes with no contract change, decision brief is optional.
 
 ---
 
@@ -173,7 +173,7 @@ alembic upgrade head
 
 If any check fails, fix before moving on.
 
-### Documentation (after every feature)
+### Documentation (when contracts or behavior changed)
 
 - [ ] **docs/ARCHITECTURE.md** — Update if you changed DB schema, API endpoints, system diagram, or infrastructure.
 - [ ] **docs/PATTERNS.md** — Update if you introduced or changed a code convention.
@@ -235,7 +235,7 @@ Execute directly. No plan needed. Verify and report.
 
 ### Issues Workflow (Control Plane)
 
-- Choose mode first: `single` (default), `gated` (Spec + Tasks), or `fast` (tiny low-risk fixes).
+- Choose mode first: `single` by default; use `gated`/`fast` only when explicitly requested.
 - Default sizing in issue modes: 1 feature -> 1 Task -> 1 PR unless split criteria apply.
 - GitHub issues are the execution source of truth. `TASKS.md` is scratchpad-only if present.
 - Follow canonical rules in `docs/ISSUES_WORKFLOW.md` for DoR/DoD.
@@ -261,7 +261,7 @@ _Add to this section when the agent makes a mistake. Each line prevents a repeat
 - **Do not add dependencies that duplicate existing functionality.** Check what's installed.
 - **Do not modify migration files after they've been applied.** Create a new one.
 - **Before GH write commands, run:** `scripts/gh_preflight.sh`.
-- **For PR creation, use:** `scripts/create_pr.sh --body-file ...` (no queue/outbox fallback).
+- **For PR creation, use:** `scripts/create_pr.sh --body-file ...`.
 - **If GH write fails, use supervised fail-fast order:** exact command once -> request elevated approval for that exact command -> provide manual one-liner + URL.
 
 ---

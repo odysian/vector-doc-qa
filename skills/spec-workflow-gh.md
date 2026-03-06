@@ -15,6 +15,7 @@ Default shorthand request:
 Interpret this shorthand as:
 
 - if `mode` omitted, use `mode=single`
+- keep `mode=single` unless `gated` or `fast` is explicitly requested
 - source from `<filename>` (feature section)
 - create/update one Task body file under `plans/`
 - run `gh issue create` directly
@@ -23,7 +24,7 @@ Interpret this shorthand as:
 ## Inputs
 
 - Feature identifier/title (example: `3.1 New Messages Divider`)
-- Mode: `single` (default), `gated`, or `fast`
+- Mode: `single` (default); use `gated`/`fast` only when explicitly requested
 - Spec link/section (optional)
 - Area labels (optional)
 
@@ -45,7 +46,7 @@ Interpret this shorthand as:
 - `Parent Spec: (placeholder)` only in `mode=gated`
 5. Final execution step for issue modes:
 - start Task `#<id>` in a dedicated branch (`task-<id>-<short-name>`) and open PR with `Closes #<id>` via `scripts/create_pr.sh`
-- run bounded fresh-context review/patch loop before finalizing (`max_review_rounds=2`, `max_auto_patch_commits=2`)
+- provide a lean reviewer follow-up prompt after PR creation
 
 ## Procedure
 
@@ -95,18 +96,18 @@ Ask Codex to:
 - implement and verify
 - open PR containing `Closes #<id>` via `scripts/create_pr.sh`
 - if GH write fails: request elevated approval for the exact GH command first; if that still fails, paste the exact one-liner/manual URL
-- run fresh-context review and patch notable findings with loop caps enforced
+- provide reviewer follow-up prompt with explicit constraints:
+  - major bugs/regressions + missing tests/docs only
+  - no environment triage loops
+  - no worktree setup
+  - no broad verification reruns already reported green
+  - output findings first, no command transcript unless a command failed
+  - second review pass only if explicitly requested
 
 Preferred PR create command:
 
 ```bash
 scripts/create_pr.sh --title "Task #<id>: <short-title>" --body-file <path-to-pr-body-md> --base main --head <task-branch> --task-id <id>
-```
-
-Local automation shortcut:
-
-```bash
-scripts/fresh_review_loop.sh --task-id <id> --base origin/main --verify-cmd "<verify-command>"
 ```
 
 ## Common GitHub CLI Snippets

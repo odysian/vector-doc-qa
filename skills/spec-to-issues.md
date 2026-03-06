@@ -6,8 +6,8 @@ Given a feature plan (from `plans/*.md`, specs, or a Spec):
 
 1. Choose execution mode first:
 - `single` (default): one end-to-end Task issue, one PR closes it.
-- `gated`: one Spec issue + child Task issue(s).
-- `fast`: quick-fix checklist only (no issue creation by default).
+- `gated`: one Spec issue + child Task issue(s), only when explicitly requested.
+- `fast`: quick-fix checklist only (no issue creation by default), only when explicitly requested.
 2. In `single` mode, the Task should include mini-spec sections:
 - summary/goal
 - scope in/out

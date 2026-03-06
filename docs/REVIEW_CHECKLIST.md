@@ -65,8 +65,9 @@ Post-implementation verification checklist. Run through after every feature befo
 
 - [ ] GH write actions used `scripts/gh_preflight.sh` and `--body-file`
 - [ ] PR creation used `scripts/create_pr.sh` with fail-fast fallback order (exact command once -> elevated exact command -> manual one-liner + URL)
-- [ ] No queue/outbox fallback flow was used for GH writes
-- [ ] Fresh review loop started from a working tree with no tracked/staged diffs (untracked scratch files allowed)
+- [ ] Reviewer verdict recorded (`APPROVED` or `ACTIONABLE`)
+- [ ] Review findings (if actionable) include severity + file/path:line + required fix
+- [ ] Review stayed lean (no environment triage loops, no worktree setup, no unnecessary broad verification reruns)
 
 ## Documentation
 

@@ -4,7 +4,7 @@ This document defines the complete development workflow for all projects. Any ag
 
 The developer (Chris) is a backend/full-stack developer building production applications. The workflow is designed for AI-assisted development where the developer architects and reviews, and agents implement and verify. Every feature follows the same loop: **Design → Test → Implement → Review → Document.**
 
-Workflow template baseline in this repository: `agentic-workflow-template v0.3.0` (adopted 2026-03-05).
+Workflow template baseline in this repository: `agentic-workflow-template v0.2.0` (adopted 2026-03-06).
 
 ---
 
@@ -422,7 +422,7 @@ If a feature requires changes across backend, database, and frontend, break it i
 
 GitHub issues are the execution source of truth.
 
-- Choose mode first: `single` (default), `gated` (Spec + Task issues), or `fast` (tiny low-risk fixes).
+- Choose mode first: `single` by default; use `gated` or `fast` only when explicitly requested.
 - Default sizing is 1 feature -> 1 Task issue -> 1 PR unless split criteria apply.
 - PRs close Task issues (`Closes #...`), not Spec issues.
 - Decision Locks live in the controlling issue (Task in `single`, Spec in `gated`).
@@ -437,7 +437,6 @@ GitHub issues are the execution source of truth.
   1. Preflight + one GH command attempt (default `scripts/create_pr.sh --max-attempts=1`).
   2. If GH write fails, request elevated approval for the exact GH command.
   3. If elevated execution still fails, provide exact manual one-liner + URL.
-- Do not use queue/outbox fallback flows.
 
 Canonical PR create command:
 
@@ -445,13 +444,42 @@ Canonical PR create command:
 scripts/create_pr.sh --title "Task #<id>: <short-title>" --body-file <pr-body.md> --base main --head <task-branch> --task-id <id>
 ```
 
-Canonical fresh review loop command:
+### Lean Review Mode (Default)
 
-```bash
-scripts/fresh_review_loop.sh --task-id <id> --base origin/main --verify-cmd "<verify-command>"
+After implementation and PR creation, run one focused reviewer follow-up pass:
+
+- Reviewer scope: major correctness bugs, regressions, and missing tests/docs.
+- Reviewer output: `APPROVED` or `ACTIONABLE`.
+- If `ACTIONABLE`, patch findings and rerun only relevant verification.
+- Default to one review pass; run a second pass only when explicitly requested.
+
+Default reviewer constraints:
+
+- use local branch diff/repo context first
+- skip broad environment triage unless blocked
+- do not create worktrees by default
+- do not rerun full verification already reported green
+- report findings first; no command-by-command transcript unless a command failed
+
+Canonical reviewer follow-up prompt:
+
+```text
+Review Task #<id> / PR #<id> on branch <task-branch> vs <base-branch>.
+
+Goal:
+- Find major bugs/regressions and missing tests/docs.
+
+Constraints:
+- Use local diff and repository context first.
+- No environment triage loops, no worktree setup, no broad verification reruns.
+- Run targeted checks only if needed to validate a specific finding.
+- Keep output concise and findings-first.
+
+Required output:
+1. Verdict: APPROVED or ACTIONABLE
+2. Findings (if ACTIONABLE): severity, file/path:line, issue, required fix
+3. Residual risk/testing gaps (max 3 bullets)
 ```
-
-Fresh review loop start condition: tracked and staged diffs must be clean; untracked scratch files are allowed.
 
 ### Code Organization
 

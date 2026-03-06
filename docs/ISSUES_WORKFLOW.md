@@ -2,14 +2,14 @@
 
 This repository uses GitHub issues as the execution control plane.
 
-Workflow template baseline in this repository: `agentic-workflow-template v0.3.0` (adopted 2026-03-05).
+Workflow template baseline in this repository: `agentic-workflow-template v0.2.0` (adopted 2026-03-06).
 
 ## Workflow Loop
 
 1. Whiteboard feature ideas in `plans/*.md` or spec docs (scratch planning).
 2. Document work as issues using one of the execution modes below.
 3. Implement and close Task issues via PRs (`Closes #...`).
-4. Finalize by updating required docs and closing related Spec/tracker issues.
+4. Finalize by updating docs only when behavior/contracts changed and close related Spec/tracker issues.
 
 ## Objects
 
@@ -27,8 +27,11 @@ Workflow template baseline in this repository: `agentic-workflow-template v0.3.0
 6. Backend-coupled work requires Decision Locks checked before implementation begins.
 7. After major refactors, open one docs-only Task for readability hardening (comments + `docs/PATTERNS.md` updates), with no behavior changes.
 8. For `single` and `gated` modes, create a dedicated branch for the Task issue before implementation (for example: `task-123-short-name`).
+9. After Task PR creation, run a lean reviewer follow-up pass and return `APPROVED` or `ACTIONABLE`.
 
 ## Execution Modes (Choose Before Opening Issues)
+
+Use `single` by default. Use `gated` or `fast` only when explicitly requested.
 
 ### `single` (Default)
 
@@ -87,10 +90,10 @@ A Task can be closed when:
 
 - PR is merged
 - verification commands pass
-- tests and docs for the feature are included in the same Task by default
-- docs are updated if required
+- tests for the feature are included in the same Task by default
+- docs are updated when behavior/contracts changed
 - follow-ups are created
-- required fresh-context review is completed and documented
+- reviewer follow-up is completed with verdict and actionable findings addressed or deferred explicitly
 
 ## Decisions Policy (Locks, Issues, ADRs)
 
@@ -119,17 +122,13 @@ Required order for GH writes:
 3. If it fails, request elevated approval for the exact GH command.
 4. If elevated execution still fails, provide exact manual one-liner + URL.
 
-Do not use queue/outbox fallback flows.
-
-Fresh review loop start condition: tracked and staged diffs must be clean; untracked scratch files are allowed.
-
 ## Codex + GitHub CLI Playbook
 
 If using Codex in VS Code with GitHub CLI, follow `skills/spec-workflow-gh.md`.
 
 - `mode=single` (default): generate one Task issue body + `gh issue create` command
-- `mode=gated`: generate Spec + Task issue body + commands
-- `mode=fast`: generate quick-fix checklist (no issue commands by default)
+- `mode=gated`: generate Spec + Task issue body + commands (only when explicitly requested)
+- `mode=fast`: generate quick-fix checklist (only when explicitly requested)
 - before GH write commands, run `scripts/gh_preflight.sh`
 
 ### Standard Kickoff Prompt (Single Line)
@@ -141,8 +140,37 @@ Use this canonical kickoff prompt:
 Rules:
 
 - If `mode` is omitted, default to `single`.
+- Do not switch to `gated` or `fast` unless explicitly requested.
 - Output should include: issue body file(s), `gh issue create` command(s), created issue link(s), and a 3-5 step implementation plan.
 - Keep chatter minimal; ask follow-up questions only for hard blockers (auth/permissions/missing required labels).
+
+## Lean Reviewer Follow-Up (Default)
+
+This review step is intentionally narrow and fast.
+
+Flow:
+
+1. Implementation agent opens PR and provides reviewer prompt.
+2. Reviewer inspects major correctness/regression risks and missing tests/docs.
+3. Reviewer returns:
+   - `APPROVED`, or
+   - `ACTIONABLE` with concrete fixes.
+4. If `ACTIONABLE`, implementation agent patches and reruns relevant verification only.
+5. Run second review pass only if explicitly requested.
+
+Reviewer constraints:
+
+- use local diff/repo context first
+- no environment triage loops by default
+- no worktree setup by default
+- no broad verification reruns already reported green
+- no command transcript unless a command failed
+
+Required reviewer output:
+
+1. Verdict: `APPROVED` or `ACTIONABLE`
+2. Findings (if actionable): severity, file/path:line, issue, required fix
+3. Residual risk/testing gaps (up to 3 bullets)
 
 ### Resiliency Checkpoints (Lightweight)
 
