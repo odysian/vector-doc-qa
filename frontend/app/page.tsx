@@ -41,6 +41,12 @@ export default function Home() {
             Sign In
           </Link>
           <Link
+            href="/login"
+            className="inline-flex items-center justify-center py-3 px-8 border border-lapis-500/40 text-lapis-300 hover:bg-lapis-500/10 font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-950 cursor-pointer"
+          >
+            Try Demo
+          </Link>
+          <Link
             href="/register"
             className="inline-flex items-center justify-center py-3 px-8 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-lg border border-zinc-700 transition-colors focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-950 cursor-pointer"
           >
