@@ -228,6 +228,11 @@ async def seed_demo_user(db: AsyncSession) -> None:
 
     try:
         payload = _load_fixture_payload(DEMO_FIXTURE_PATH)
+        if existing_demo is not None and payload is None:
+            logger.info(
+                "Demo seed reconciliation skipped: fixture missing for existing user"
+            )
+            return
         documents_payload = _build_fixture_documents_payload(payload)
 
         if existing_demo is None:

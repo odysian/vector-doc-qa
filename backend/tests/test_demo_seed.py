@@ -476,6 +476,70 @@ class TestDemoSeedService:
         assert document_count == 0
         assert "skipping document seeding" in caplog.text.lower()
 
+    async def test_seed_preserves_existing_demo_data_when_fixture_missing(
+        self,
+        db_session: AsyncSession,
+        monkeypatch,
+        tmp_path: Path,
+    ):
+        missing_fixture_path = tmp_path / "does-not-exist.json"
+        monkeypatch.setattr(demo_seed_service, "DEMO_FIXTURE_PATH", missing_fixture_path)
+
+        demo_user = User(
+            username=demo_seed_service.DEMO_USERNAME,
+            email=demo_seed_service.DEMO_EMAIL,
+            hashed_password="unused",
+            is_demo=True,
+        )
+        db_session.add(demo_user)
+        await db_session.flush()
+
+        existing_document = Document(
+            filename="existing-demo.pdf",
+            file_path="uploads/existing-demo.pdf",
+            file_size=123,
+            status=DocumentStatus.COMPLETED,
+            user_id=demo_user.id,
+        )
+        db_session.add(existing_document)
+        await db_session.flush()
+
+        existing_chunk = Chunk(
+            document_id=existing_document.id,
+            content="existing chunk",
+            chunk_index=0,
+            page_start=None,
+            page_end=None,
+            embedding=[0.1] * 1536,
+        )
+        existing_message = Message(
+            document_id=existing_document.id,
+            user_id=demo_user.id,
+            role="assistant",
+            content="existing message",
+            sources=None,
+        )
+        db_session.add(existing_chunk)
+        db_session.add(existing_message)
+        await db_session.commit()
+
+        document_id = existing_document.id
+        chunk_id = existing_chunk.id
+        message_id = existing_message.id
+
+        await demo_seed_service.seed_demo_user(db_session)
+
+        surviving_document = await db_session.scalar(
+            select(Document).where(Document.id == document_id)
+        )
+        surviving_chunk = await db_session.scalar(select(Chunk).where(Chunk.id == chunk_id))
+        surviving_message = await db_session.scalar(
+            select(Message).where(Message.id == message_id)
+        )
+        assert surviving_document is not None
+        assert surviving_chunk is not None
+        assert surviving_message is not None
+
     async def test_startup_seeded_demo_file_is_fetchable_via_api(
         self,
         db_session: AsyncSession,
