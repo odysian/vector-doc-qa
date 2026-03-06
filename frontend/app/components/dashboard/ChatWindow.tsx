@@ -23,6 +23,7 @@ interface Message {
   sources?: QueryResponse["sources"];
   pipeline_meta?: PipelineMeta;
   streaming?: boolean;
+  retry_query?: string;
 }
 
 interface ChatWindowProps {
@@ -58,6 +59,7 @@ export function ChatWindow({
   const scrollRef = useRef<HTMLDivElement>(null);
   const isMountedRef = useRef(true);
   const activeStreamAbortRef = useRef<AbortController | null>(null);
+  const streamInFlightRef = useRef(false);
   const isStreaming = messages.some((message) => message.streaming);
 
   const isAbortError = (err: unknown): boolean => {
@@ -114,13 +116,13 @@ export function ChatWindow({
     });
   };
 
-  const appendStreamError = (errorMessage: string) => {
+  const appendStreamError = (errorMessage: string, retryQuery: string) => {
     setMessages((prev) => {
       const streamingIndex = prev.findIndex(
         (message) => message.role === "assistant" && message.streaming
       );
       if (streamingIndex === -1) {
-        return [...prev, { role: "assistant", content: errorMessage }];
+        return [...prev, { role: "assistant", content: errorMessage, retry_query: retryQuery }];
       }
 
       const next = [...prev];
@@ -129,16 +131,25 @@ export function ChatWindow({
         ...current,
         content: current.content ? `${current.content}\n\n${errorMessage}` : errorMessage,
         streaming: false,
+        retry_query: retryQuery,
       };
       return next;
     });
   };
 
-  const stopStreamingPlaceholder = () => {
+  const markStreamStopped = (retryQuery: string) => {
     updateStreamingAssistant((message) => ({
       ...message,
+      content: message.content
+        ? `${message.content}\n\nStopped. You can retry this response.`
+        : "Stopped. You can retry this response.",
       streaming: false,
+      retry_query: retryQuery,
     }));
+  };
+
+  const stopActiveStream = () => {
+    activeStreamAbortRef.current?.abort();
   };
 
   useEffect(() => {
@@ -146,6 +157,7 @@ export function ChatWindow({
     return () => {
       isMountedRef.current = false;
       activeStreamAbortRef.current?.abort();
+      streamInFlightRef.current = false;
     };
   }, []);
 
@@ -188,8 +200,9 @@ export function ChatWindow({
 
   const submitQuery = async (query: string) => {
     const trimmed = query.trim();
-    if (!trimmed || isStreaming) return;
+    if (!trimmed || isStreaming || streamInFlightRef.current) return;
 
+    streamInFlightRef.current = true;
     const streamController = new AbortController();
     activeStreamAbortRef.current?.abort();
     activeStreamAbortRef.current = streamController;
@@ -231,16 +244,21 @@ export function ChatWindow({
             streaming: false,
           }));
           activeStreamAbortRef.current = null;
+          streamInFlightRef.current = false;
         },
         onError: (detail) => {
           if (!isMountedRef.current || streamController.signal.aborted) return;
-          appendStreamError(`Error: ${detail}`);
+          appendStreamError(`Error: ${detail}`, trimmed);
           activeStreamAbortRef.current = null;
+          streamInFlightRef.current = false;
         },
       }, { signal: streamController.signal });
     } catch (err) {
       if (isAbortError(err)) {
-        if (isMountedRef.current) stopStreamingPlaceholder();
+        if (isMountedRef.current) {
+          markStreamStopped(trimmed);
+        }
+        streamInFlightRef.current = false;
         return;
       }
 
@@ -261,17 +279,22 @@ export function ChatWindow({
         }
       }
 
-      appendStreamError(errorMessage);
+      appendStreamError(errorMessage, trimmed);
     } finally {
       if (activeStreamAbortRef.current === streamController) {
         activeStreamAbortRef.current = null;
       }
+      streamInFlightRef.current = false;
     }
   };
 
   const handleSubmit = (e: SyntheticEvent) => {
     e.preventDefault();
-    submitQuery(input);
+    void submitQuery(input);
+  };
+
+  const handleRetry = (query: string) => {
+    void submitQuery(query);
   };
 
   const getSourcePageLabel = (pageStart?: number | null, pageEnd?: number | null): string => {
@@ -358,7 +381,9 @@ export function ChatWindow({
                 <button
                   key={prompt}
                   type="button"
-                  onClick={() => submitQuery(prompt)}
+                  onClick={() => {
+                    void submitQuery(prompt);
+                  }}
                   disabled={isStreaming}
                   className="px-3 py-2 rounded-lg bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700 text-zinc-300 text-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
                 >
@@ -451,6 +476,17 @@ export function ChatWindow({
                   </div>
                 )}
               </div>
+            )}
+
+            {msg.role === "assistant" && msg.retry_query && !msg.streaming && (
+              <button
+                type="button"
+                onClick={() => handleRetry(msg.retry_query!)}
+                disabled={isStreaming}
+                className="mt-2 ml-2 text-link-sm text-lapis-300 hover:text-lapis-200 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Retry
+              </button>
             )}
 
             {/* Citations / Sources (collapsed by default, expand on click) */}
@@ -572,13 +608,23 @@ export function ChatWindow({
             placeholder="Ask a question about this document..."
             className="flex-1 bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-lapis-500/20 focus:border-lapis-500 transition-all placeholder-zinc-600"
           />
-          <button
-            type="submit"
-            disabled={isStreaming || !input.trim()}
-            className="bg-lapis-600 hover:bg-lapis-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white px-6 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-lapis-900/20 flex items-center cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
-          >
-            {isStreaming ? "Sending..." : "Send"}
-          </button>
+          {isStreaming ? (
+            <button
+              type="button"
+              onClick={stopActiveStream}
+              className="bg-zinc-700 hover:bg-zinc-600 text-white px-6 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!input.trim()}
+              className="bg-lapis-600 hover:bg-lapis-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white px-6 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-lapis-900/20 flex items-center cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+            >
+              Send
+            </button>
+          )}
         </form>
       </div>
     </div>
