@@ -26,6 +26,11 @@ const PdfViewer = dynamic(
   { ssr: false }
 );
 
+interface CitationTarget {
+  page: number;
+  snippet?: string;
+}
+
 export default function DashboardPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +40,7 @@ export default function DashboardPage() {
   const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
   const [deletingInProgress, setDeletingInProgress] = useState(false);
   const [highlightPage, setHighlightPage] = useState<number | null>(null);
+  const [highlightSnippet, setHighlightSnippet] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<"pdf" | "chat">("chat");
   const [useTabLayout, setUseTabLayout] = useState(getInitialUseTabLayout);
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
@@ -251,6 +257,7 @@ export default function DashboardPage() {
     if (document.status !== "completed") return;
     setSelectedDocument(document);
     setHighlightPage(null);
+    setHighlightSnippet(null);
     setMobileTab("chat");
     setSidebarOpen(false);
   };
@@ -258,14 +265,21 @@ export default function DashboardPage() {
   const handleBackToDocuments = () => {
     setSelectedDocument(null);
     setHighlightPage(null);
+    setHighlightSnippet(null);
     setSidebarOpen(true);
   };
 
-  const handleCitationClick = (page: number) => {
+  const handleCitationClick = ({ page, snippet }: CitationTarget) => {
+    const nextSnippet = snippet?.trim() || null;
     setMobileTab("pdf");
+    setHighlightSnippet(nextSnippet);
     setHighlightPage((current) => {
       if (current === page) {
-        window.setTimeout(() => setHighlightPage(page), 0);
+        setHighlightSnippet(null);
+        window.setTimeout(() => {
+          setHighlightSnippet(nextSnippet);
+          setHighlightPage(page);
+        }, 0);
         return null;
       }
       return page;
@@ -464,6 +478,7 @@ export default function DashboardPage() {
                   <PdfViewer
                     documentId={selectedDocument.id}
                     highlightPage={highlightPage}
+                    highlightSnippet={highlightSnippet}
                     onSessionExpired={handleSessionExpired}
                   />
                 </section>

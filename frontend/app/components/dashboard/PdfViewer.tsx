@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Document as ReactPdfDocument, Page, pdfjs } from "react-pdf";
 import { api, ApiError, SessionExpiredError } from "@/lib/api";
+import { findCitationSpanMatch } from "./pdfCitationMatch";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -12,16 +13,23 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 interface PdfViewerProps {
   documentId: number;
   highlightPage?: number | null;
+  highlightSnippet?: string | null;
   onSessionExpired?: () => void;
 }
 
 const MAX_RENDERED_PAGE_WIDTH = 840;
 const PAGE_WIDTH_STEP = 8;
+const TEXT_HIGHLIGHT_DURATION_MS = 1500;
 
 /**
- * In-app PDF viewer that supports page-level deep links from chat citations.
+ * In-app PDF viewer that supports citation deep links with page-level fallback.
  */
-export function PdfViewer({ documentId, highlightPage, onSessionExpired }: PdfViewerProps) {
+export function PdfViewer({
+  documentId,
+  highlightPage,
+  highlightSnippet,
+  onSessionExpired,
+}: PdfViewerProps) {
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [loadingFile, setLoadingFile] = useState(true);
@@ -32,6 +40,8 @@ export function PdfViewer({ documentId, highlightPage, onSessionExpired }: PdfVi
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pagesContainerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const highlightedTextSpansRef = useRef<HTMLElement[]>([]);
+  const textHighlightTimerRef = useRef<number | null>(null);
 
   const pdfFile = useMemo(() => {
     if (!pdfData) return null;
@@ -115,13 +125,65 @@ export function PdfViewer({ documentId, highlightPage, onSessionExpired }: PdfVi
     };
   }, []);
 
+  const clearTextHighlight = useCallback(() => {
+    highlightedTextSpansRef.current.forEach((span) => {
+      span.classList.remove("citation-text-highlight");
+    });
+    highlightedTextSpansRef.current = [];
+
+    if (textHighlightTimerRef.current !== null) {
+      window.clearTimeout(textHighlightTimerRef.current);
+      textHighlightTimerRef.current = null;
+    }
+  }, []);
+
+  const tryHighlightSnippet = useCallback(
+    (targetPage: number, snippet: string): boolean => {
+      const target = pageRefs.current.get(targetPage);
+      if (!target) return false;
+
+      const spans = Array.from(target.querySelectorAll(".react-pdf__Page__textContent span"))
+        .filter((node): node is HTMLElement => node instanceof HTMLElement);
+      if (spans.length === 0) return false;
+
+      const match = findCitationSpanMatch(
+        spans.map((span) => span.textContent ?? ""),
+        snippet
+      );
+      if (!match) return false;
+
+      clearTextHighlight();
+
+      const matchedSpans = spans.slice(match.startIndex, match.endIndex + 1);
+      matchedSpans.forEach((span) => {
+        span.classList.add("citation-text-highlight");
+      });
+      highlightedTextSpansRef.current = matchedSpans;
+
+      textHighlightTimerRef.current = window.setTimeout(() => {
+        clearTextHighlight();
+      }, TEXT_HIGHLIGHT_DURATION_MS);
+      return true;
+    },
+    [clearTextHighlight]
+  );
+
+  useEffect(() => {
+    return () => {
+      clearTextHighlight();
+    };
+  }, [clearTextHighlight]);
+
   useEffect(() => {
     if (!highlightPage || !numPages) return;
 
     const targetPage = Math.max(1, Math.min(highlightPage, numPages));
+    const snippet = highlightSnippet?.trim() || "";
     let frameId: number | null = null;
+    let snippetFrameId: number | null = null;
     let highlightTimer: number | null = null;
     let attempts = 0;
+    let snippetAttempts = 0;
 
     // Citations can arrive before page wrappers mount, so retry briefly.
     const scrollToTarget = () => {
@@ -136,6 +198,18 @@ export function PdfViewer({ documentId, highlightPage, onSessionExpired }: PdfVi
 
       target.scrollIntoView({ behavior: "smooth", block: "center" });
       setActiveHighlightPage(targetPage);
+      clearTextHighlight();
+      if (snippet) {
+        const highlightSnippetOnceReady = () => {
+          if (tryHighlightSnippet(targetPage, snippet)) return;
+          if (snippetAttempts < 20) {
+            snippetAttempts += 1;
+            snippetFrameId = window.requestAnimationFrame(highlightSnippetOnceReady);
+          }
+        };
+
+        highlightSnippetOnceReady();
+      }
       highlightTimer = window.setTimeout(() => {
         setActiveHighlightPage((current) => (current === targetPage ? null : current));
       }, 1500);
@@ -145,9 +219,10 @@ export function PdfViewer({ documentId, highlightPage, onSessionExpired }: PdfVi
 
     return () => {
       if (frameId !== null) window.cancelAnimationFrame(frameId);
+      if (snippetFrameId !== null) window.cancelAnimationFrame(snippetFrameId);
       if (highlightTimer !== null) window.clearTimeout(highlightTimer);
     };
-  }, [highlightPage, numPages]);
+  }, [highlightPage, highlightSnippet, numPages, clearTextHighlight, tryHighlightSnippet]);
 
   const onDocumentLoadSuccess = ({ numPages: loadedPages }: { numPages: number }) => {
     setNumPages(loadedPages);
@@ -223,7 +298,7 @@ export function PdfViewer({ documentId, highlightPage, onSessionExpired }: PdfVi
                         pageNumber={pageNumber}
                         width={pageWidth}
                         renderAnnotationLayer={false}
-                        renderTextLayer={false}
+                        renderTextLayer
                         loading={null}
                       />
                     </div>

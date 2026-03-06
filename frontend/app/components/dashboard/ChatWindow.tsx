@@ -26,10 +26,15 @@ interface Message {
   retry_query?: string;
 }
 
+interface CitationTarget {
+  page: number;
+  snippet?: string;
+}
+
 interface ChatWindowProps {
   document: Document;
   onBack: () => void;
-  onCitationClick?: (page: number) => void;
+  onCitationClick?: (citation: CitationTarget) => void;
   onSessionExpired?: () => void;
 }
 
@@ -533,13 +538,19 @@ export function ChatWindow({
                           key={idx}
                           onClick={() => {
                             if (!canJumpToPage || source.page_start === null || source.page_start === undefined) return;
-                            onCitationClick(source.page_start);
+                            onCitationClick({
+                              page: source.page_start,
+                              snippet: source.content,
+                            });
                           }}
                           onKeyDown={(event) => {
                             if (!canJumpToPage || source.page_start === null || source.page_start === undefined) return;
                             if (event.key === "Enter" || event.key === " ") {
                               event.preventDefault();
-                              onCitationClick(source.page_start);
+                              onCitationClick({
+                                page: source.page_start,
+                                snippet: source.content,
+                              });
                             }
                           }}
                           role={canJumpToPage ? "button" : undefined}

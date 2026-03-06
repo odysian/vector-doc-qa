@@ -167,3 +167,8 @@ body {
 .overflow-auto::-webkit-scrollbar-thumb:hover {
   background: #71717a !important;
 }
+
+.citation-text-highlight {
+  background: rgba(122, 159, 248, 0.32);
+  border-radius: 2px;
+}

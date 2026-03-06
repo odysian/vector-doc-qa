@@ -211,6 +211,21 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 
 ---
 
+## Feature: Frontend Citation Precision v2 Spike
+
+### Happy Path
+
+- Clicking a citation source emits page + source snippet payload from ChatWindow
+- PDF viewer scrolls to cited page and applies page-level highlight
+- Viewer attempts text-layer snippet matching on cited page and applies transient text-level highlight on success
+
+### Edge Cases
+
+- If snippet matching fails, page-level citation highlight still works
+- Matching handles punctuation/whitespace normalization between citation snippet and PDF text layer spans
+
+---
+
 ## Feature: Frontend Auth and Dashboard Regression
 
 ### Happy Path
