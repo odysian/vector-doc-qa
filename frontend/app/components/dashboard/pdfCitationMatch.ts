@@ -3,8 +3,9 @@ export interface CitationSpanMatch {
   endIndex: number;
 }
 
-const WINDOW_SIZES = [24, 18, 12, 8, 6];
+const WINDOW_SIZES = [24, 18, 12, 8, 6, 4];
 const MIN_CANDIDATE_CHARS = 24;
+const MAX_CANDIDATES = 120;
 
 export const normalizeCitationText = (value: string): string => {
   return value
@@ -24,12 +25,20 @@ const buildCandidatePhrases = (normalizedSnippet: string): string[] => {
   for (const windowSize of WINDOW_SIZES) {
     if (words.length < windowSize) continue;
 
-    const starts = [0, Math.floor((words.length - windowSize) / 2), words.length - windowSize];
+    const starts: number[] = [];
+    const maxStart = words.length - windowSize;
+    const step = Math.max(1, Math.floor(windowSize / 2));
+    for (let start = 0; start <= maxStart; start += step) {
+      starts.push(start);
+    }
+    if (starts[starts.length - 1] !== maxStart) starts.push(maxStart);
+
     for (const start of starts) {
       const candidate = words.slice(start, start + windowSize).join(" ").trim();
       if (candidate.length < MIN_CANDIDATE_CHARS || seen.has(candidate)) continue;
       seen.add(candidate);
       candidates.push(candidate);
+      if (candidates.length >= MAX_CANDIDATES) return candidates;
     }
   }
 

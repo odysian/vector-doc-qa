@@ -147,18 +147,20 @@ export function PdfViewer({
       if (!target) return false;
 
       const spans = Array.from(target.querySelectorAll(".react-pdf__Page__textContent span"))
+        .concat(Array.from(target.querySelectorAll(".textLayer span")))
         .filter((node): node is HTMLElement => node instanceof HTMLElement);
-      if (spans.length === 0) return false;
+      const uniqueSpans = Array.from(new Set(spans));
+      if (uniqueSpans.length === 0) return false;
 
       const match = findCitationSpanMatch(
-        spans.map((span) => span.textContent ?? ""),
+        uniqueSpans.map((span) => span.textContent ?? ""),
         snippet
       );
       if (!match) return false;
 
       clearTextHighlight();
 
-      const matchedSpans = spans.slice(match.startIndex, match.endIndex + 1);
+      const matchedSpans = uniqueSpans.slice(match.startIndex, match.endIndex + 1);
       matchedSpans.forEach((span) => {
         span.classList.add("citation-text-highlight");
       });
