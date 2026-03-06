@@ -192,6 +192,58 @@ describe("DashboardPage regression behavior", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
+
+  it("closes delete modal when delete is denied for demo account", async () => {
+    const doc = makeDocument({ id: 302 });
+    getDocumentsMock.mockResolvedValueOnce({ documents: [doc], total: 1 });
+    deleteDocumentMock.mockRejectedValueOnce(
+      new ApiError(403, "Demo account cannot delete documents")
+    );
+
+    render(<DashboardPage />);
+
+    await screen.findByText("alpha.pdf");
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]);
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(deleteDocumentMock).toHaveBeenCalledWith(302);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByText("Demo account cannot delete documents")).toBeInTheDocument();
+    });
+  });
+
+  it("replaces delete error with upload error after denied upload attempt", async () => {
+    const doc = makeDocument({ id: 303 });
+    getDocumentsMock.mockResolvedValueOnce({ documents: [doc], total: 1 });
+    deleteDocumentMock.mockRejectedValueOnce(
+      new ApiError(403, "Demo account cannot delete documents")
+    );
+    uploadDocumentMock.mockRejectedValueOnce(
+      new ApiError(403, "Demo account cannot upload documents")
+    );
+
+    render(<DashboardPage />);
+
+    await screen.findByText("alpha.pdf");
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await screen.findByText("Demo account cannot delete documents");
+
+    const fileInput = screen.getByLabelText("Upload PDF");
+    const file = new File(["%PDF"], "upload.pdf", { type: "application/pdf" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(uploadDocumentMock).toHaveBeenCalledWith(file);
+      expect(screen.getByText("Demo account cannot upload documents")).toBeInTheDocument();
+      expect(screen.queryByText("Demo account cannot delete documents")).not.toBeInTheDocument();
+    });
+  });
 });
 
 describe("DashboardPage layout contracts", () => {

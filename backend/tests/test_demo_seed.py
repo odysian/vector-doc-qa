@@ -17,14 +17,20 @@ import app.main as app_main
 from app.core.security import create_access_token
 from app.database import get_db
 from app.models.base import Chunk, Document, DocumentStatus
+from app.models.message import Message
 from app.models.user import User
 from app.services import demo_seed_service
 
 
-def _write_fixture(path: Path, *, include_file_content: bool = False) -> None:
+def _write_fixture(
+    path: Path,
+    *,
+    include_file_content: bool = False,
+    filename: str = "demo-fixture.pdf",
+) -> None:
     document_payload = {
-        "filename": "demo-fixture.pdf",
-        "file_path": "uploads/demo-fixture.pdf",
+        "filename": filename,
+        "file_path": f"uploads/{filename}",
         "file_size": 123,
         "status": "completed",
         "chunks": [
@@ -187,6 +193,174 @@ class TestDemoSeedService:
             content_type="application/pdf",
         )
 
+    async def test_seed_skips_reconciliation_when_fixture_filenames_match(
+        self,
+        db_session: AsyncSession,
+        monkeypatch,
+        tmp_path: Path,
+    ):
+        fixture_path = tmp_path / "demo_seed_data.json"
+        _write_fixture(fixture_path, filename="demo-fixture.pdf")
+        monkeypatch.setattr(demo_seed_service, "DEMO_FIXTURE_PATH", fixture_path)
+
+        demo_user = User(
+            username=demo_seed_service.DEMO_USERNAME,
+            email=demo_seed_service.DEMO_EMAIL,
+            hashed_password="unused",
+            is_demo=True,
+        )
+        db_session.add(demo_user)
+        await db_session.flush()
+
+        existing_document = Document(
+            filename="demo-fixture.pdf",
+            file_path="uploads/demo-fixture.pdf",
+            file_size=123,
+            status=DocumentStatus.COMPLETED,
+            user_id=demo_user.id,
+        )
+        db_session.add(existing_document)
+        await db_session.flush()
+
+        existing_document_id = existing_document.id
+        mock_write = AsyncMock(return_value=None)
+        monkeypatch.setattr(demo_seed_service, "write_file_bytes", mock_write)
+
+        await demo_seed_service.seed_demo_user(db_session)
+
+        refreshed_documents = list(
+            await db_session.scalars(
+                select(Document).where(Document.user_id == demo_user.id)
+            )
+        )
+        assert len(refreshed_documents) == 1
+        assert refreshed_documents[0].id == existing_document_id
+        mock_write.assert_not_awaited()
+
+    async def test_seed_reconciles_documents_on_filename_mismatch(
+        self,
+        db_session: AsyncSession,
+        monkeypatch,
+        tmp_path: Path,
+    ):
+        fixture_path = tmp_path / "demo_seed_data.json"
+        _write_fixture(fixture_path, filename="reconciled-demo.pdf")
+        monkeypatch.setattr(demo_seed_service, "DEMO_FIXTURE_PATH", fixture_path)
+        monkeypatch.setattr(
+            demo_seed_service,
+            "read_file_bytes",
+            AsyncMock(side_effect=FileNotFoundError("missing")),
+        )
+        monkeypatch.setattr(
+            demo_seed_service,
+            "write_file_bytes",
+            AsyncMock(return_value=None),
+        )
+
+        demo_user = User(
+            username=demo_seed_service.DEMO_USERNAME,
+            email=demo_seed_service.DEMO_EMAIL,
+            hashed_password="unused",
+            is_demo=True,
+        )
+        db_session.add(demo_user)
+        await db_session.flush()
+
+        stale_document = Document(
+            filename="stale-demo.pdf",
+            file_path="uploads/stale-demo.pdf",
+            file_size=123,
+            status=DocumentStatus.COMPLETED,
+            user_id=demo_user.id,
+        )
+        db_session.add(stale_document)
+        await db_session.commit()
+
+        await demo_seed_service.seed_demo_user(db_session)
+
+        demo_documents = list(
+            await db_session.scalars(select(Document).where(Document.user_id == demo_user.id))
+        )
+        assert len(demo_documents) == 1
+        assert demo_documents[0].filename == "reconciled-demo.pdf"
+
+        stale_count = await db_session.scalar(
+            select(func.count())
+            .select_from(Document)
+            .where(Document.filename == "stale-demo.pdf")
+        )
+        assert stale_count == 0
+
+    async def test_seed_reconciliation_cascades_chunk_and_message_cleanup(
+        self,
+        db_session: AsyncSession,
+        monkeypatch,
+        tmp_path: Path,
+    ):
+        fixture_path = tmp_path / "demo_seed_data.json"
+        _write_fixture(fixture_path, filename="fresh-demo.pdf")
+        monkeypatch.setattr(demo_seed_service, "DEMO_FIXTURE_PATH", fixture_path)
+        monkeypatch.setattr(
+            demo_seed_service,
+            "read_file_bytes",
+            AsyncMock(side_effect=FileNotFoundError("missing")),
+        )
+        monkeypatch.setattr(
+            demo_seed_service,
+            "write_file_bytes",
+            AsyncMock(return_value=None),
+        )
+
+        demo_user = User(
+            username=demo_seed_service.DEMO_USERNAME,
+            email=demo_seed_service.DEMO_EMAIL,
+            hashed_password="unused",
+            is_demo=True,
+        )
+        db_session.add(demo_user)
+        await db_session.flush()
+
+        stale_document = Document(
+            filename="stale-with-relations.pdf",
+            file_path="uploads/stale-with-relations.pdf",
+            file_size=123,
+            status=DocumentStatus.COMPLETED,
+            user_id=demo_user.id,
+        )
+        db_session.add(stale_document)
+        await db_session.flush()
+
+        stale_chunk = Chunk(
+            document_id=stale_document.id,
+            content="stale chunk",
+            chunk_index=0,
+            page_start=None,
+            page_end=None,
+            embedding=[0.1] * 1536,
+        )
+        stale_message = Message(
+            document_id=stale_document.id,
+            user_id=demo_user.id,
+            role="user",
+            content="stale message",
+            sources=None,
+        )
+        db_session.add(stale_chunk)
+        db_session.add(stale_message)
+        await db_session.commit()
+
+        stale_chunk_id = stale_chunk.id
+        stale_message_id = stale_message.id
+
+        await demo_seed_service.seed_demo_user(db_session)
+
+        surviving_chunk = await db_session.scalar(select(Chunk).where(Chunk.id == stale_chunk_id))
+        surviving_message = await db_session.scalar(
+            select(Message).where(Message.id == stale_message_id)
+        )
+        assert surviving_chunk is None
+        assert surviving_message is None
+
     async def test_seed_is_idempotent_when_demo_user_exists(
         self,
         db_session: AsyncSession,
@@ -301,6 +475,70 @@ class TestDemoSeedService:
         )
         assert document_count == 0
         assert "skipping document seeding" in caplog.text.lower()
+
+    async def test_seed_preserves_existing_demo_data_when_fixture_missing(
+        self,
+        db_session: AsyncSession,
+        monkeypatch,
+        tmp_path: Path,
+    ):
+        missing_fixture_path = tmp_path / "does-not-exist.json"
+        monkeypatch.setattr(demo_seed_service, "DEMO_FIXTURE_PATH", missing_fixture_path)
+
+        demo_user = User(
+            username=demo_seed_service.DEMO_USERNAME,
+            email=demo_seed_service.DEMO_EMAIL,
+            hashed_password="unused",
+            is_demo=True,
+        )
+        db_session.add(demo_user)
+        await db_session.flush()
+
+        existing_document = Document(
+            filename="existing-demo.pdf",
+            file_path="uploads/existing-demo.pdf",
+            file_size=123,
+            status=DocumentStatus.COMPLETED,
+            user_id=demo_user.id,
+        )
+        db_session.add(existing_document)
+        await db_session.flush()
+
+        existing_chunk = Chunk(
+            document_id=existing_document.id,
+            content="existing chunk",
+            chunk_index=0,
+            page_start=None,
+            page_end=None,
+            embedding=[0.1] * 1536,
+        )
+        existing_message = Message(
+            document_id=existing_document.id,
+            user_id=demo_user.id,
+            role="assistant",
+            content="existing message",
+            sources=None,
+        )
+        db_session.add(existing_chunk)
+        db_session.add(existing_message)
+        await db_session.commit()
+
+        document_id = existing_document.id
+        chunk_id = existing_chunk.id
+        message_id = existing_message.id
+
+        await demo_seed_service.seed_demo_user(db_session)
+
+        surviving_document = await db_session.scalar(
+            select(Document).where(Document.id == document_id)
+        )
+        surviving_chunk = await db_session.scalar(select(Chunk).where(Chunk.id == chunk_id))
+        surviving_message = await db_session.scalar(
+            select(Message).where(Message.id == message_id)
+        )
+        assert surviving_document is not None
+        assert surviving_chunk is not None
+        assert surviving_message is not None
 
     async def test_startup_seeded_demo_file_is_fetchable_via_api(
         self,

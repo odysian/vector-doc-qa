@@ -70,6 +70,25 @@ def _load_fixture_payload(path: Path) -> dict[str, Any] | None:
     return payload
 
 
+def _build_fixture_documents_payload(payload: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if payload is None:
+        return []
+
+    documents_payload = payload.get("documents", [])
+    if not isinstance(documents_payload, list):
+        return []
+
+    return [doc for doc in documents_payload if isinstance(doc, dict)]
+
+
+def _fixture_filename_set(documents_payload: list[dict[str, Any]]) -> set[str]:
+    filenames: set[str] = set()
+    for index, doc_payload in enumerate(documents_payload, start=1):
+        filename = str(doc_payload.get("filename", f"demo-document-{index}.pdf"))
+        filenames.add(filename)
+    return filenames
+
+
 async def _ensure_seeded_file(
     *,
     file_path: str,
@@ -108,98 +127,150 @@ async def _ensure_seeded_file(
     return len(DEMO_PLACEHOLDER_PDF_BYTES)
 
 
+async def _seed_documents(
+    db: AsyncSession,
+    *,
+    demo_user_id: int,
+    documents_payload: list[dict[str, Any]],
+) -> None:
+    for index, doc_payload in enumerate(documents_payload, start=1):
+        filename = str(doc_payload.get("filename", f"demo-document-{index}.pdf"))
+        file_path = str(doc_payload.get("file_path", "")).strip()
+        if not file_path:
+            file_path = f"uploads/demo-seed-{index}.pdf"
+
+        resolved_file_size = await _ensure_seeded_file(
+            file_path=file_path,
+            filename=filename,
+            encoded_content=(
+                str(doc_payload.get("file_content_base64"))
+                if doc_payload.get("file_content_base64")
+                else None
+            ),
+        )
+        fixture_file_size = _coerce_int(doc_payload.get("file_size"), default=0)
+
+        document = Document(
+            filename=filename,
+            file_path=file_path,
+            file_size=fixture_file_size if fixture_file_size > 0 else resolved_file_size,
+            status=DocumentStatus.COMPLETED,
+            user_id=demo_user_id,
+            processed_at=datetime.utcnow(),
+            error_message=None,
+        )
+        db.add(document)
+        await db.flush()
+
+        chunks_payload = doc_payload.get("chunks", [])
+        if not isinstance(chunks_payload, list):
+            continue
+
+        for chunk_payload in chunks_payload:
+            if not isinstance(chunk_payload, dict):
+                continue
+
+            raw_embedding = chunk_payload.get("embedding", [])
+            embedding = (
+                [float(value) for value in raw_embedding]
+                if isinstance(raw_embedding, list)
+                else []
+            )
+
+            db.add(
+                Chunk(
+                    document_id=document.id,
+                    content=str(chunk_payload.get("content", "")),
+                    chunk_index=_coerce_int(chunk_payload.get("chunk_index"), default=0),
+                    page_start=None,
+                    page_end=None,
+                    embedding=embedding,
+                )
+            )
+
+
+async def _reconcile_documents_for_existing_demo_user(
+    db: AsyncSession,
+    *,
+    demo_user: User,
+    documents_payload: list[dict[str, Any]],
+) -> int:
+    existing_documents = list(
+        await db.scalars(select(Document).where(Document.user_id == demo_user.id))
+    )
+    fixture_filenames = _fixture_filename_set(documents_payload)
+    existing_filenames = {document.filename for document in existing_documents}
+
+    if fixture_filenames == existing_filenames:
+        logger.info("Demo seed no-op: fixture filenames unchanged")
+        return len(existing_documents)
+
+    for document in existing_documents:
+        await db.delete(document)
+    await db.flush()
+
+    await _seed_documents(db, demo_user_id=demo_user.id, documents_payload=documents_payload)
+    logger.info(
+        "Demo seed reconciled: deleted=%s, seeded=%s",
+        len(existing_documents),
+        len(documents_payload),
+    )
+    return len(documents_payload)
+
+
 async def seed_demo_user(db: AsyncSession) -> None:
-    """Seed the demo user and fixture-backed documents if the demo user is absent."""
+    """Seed or reconcile demo user documents from fixture data on startup."""
     existing_demo = await db.scalar(
-        select(User.id).where(
+        select(User).where(
             or_(User.username == DEMO_USERNAME, User.email == DEMO_EMAIL)
         )
     )
-    if existing_demo is not None:
-        logger.info("Demo user/email already exists; skipping seed")
-        return
-
-    try:
-        demo_user = User(
-            username=DEMO_USERNAME,
-            email=DEMO_EMAIL,
-            hashed_password=get_password_hash(DEMO_PASSWORD),
-            is_demo=True,
-        )
-        db.add(demo_user)
-        await db.flush()
-    except IntegrityError:
-        await db.rollback()
-        logger.info("Demo seed skipped due to concurrent unique-key conflict")
-        return
 
     try:
         payload = _load_fixture_payload(DEMO_FIXTURE_PATH)
-        documents_payload = payload.get("documents", []) if payload else []
-
-        for index, doc_payload in enumerate(documents_payload, start=1):
-            if not isinstance(doc_payload, dict):
-                continue
-
-            filename = str(doc_payload.get("filename", f"demo-document-{index}.pdf"))
-            file_path = str(doc_payload.get("file_path", "")).strip()
-            if not file_path:
-                file_path = f"uploads/demo-seed-{index}.pdf"
-
-            resolved_file_size = await _ensure_seeded_file(
-                file_path=file_path,
-                filename=filename,
-                encoded_content=(
-                    str(doc_payload.get("file_content_base64"))
-                    if doc_payload.get("file_content_base64")
-                    else None
-                ),
+        if existing_demo is not None and payload is None:
+            logger.info(
+                "Demo seed reconciliation skipped: fixture missing for existing user"
             )
-            fixture_file_size = _coerce_int(doc_payload.get("file_size"), default=0)
+            return
+        documents_payload = _build_fixture_documents_payload(payload)
 
-            document = Document(
-                filename=filename,
-                file_path=file_path,
-                file_size=fixture_file_size if fixture_file_size > 0 else resolved_file_size,
-                status=DocumentStatus.COMPLETED,
-                user_id=demo_user.id,
-                processed_at=datetime.utcnow(),
-                error_message=None,
+        if existing_demo is None:
+            try:
+                demo_user = User(
+                    username=DEMO_USERNAME,
+                    email=DEMO_EMAIL,
+                    hashed_password=get_password_hash(DEMO_PASSWORD),
+                    is_demo=True,
+                )
+                db.add(demo_user)
+                await db.flush()
+            except IntegrityError:
+                await db.rollback()
+                logger.info("Demo seed skipped due to concurrent unique-key conflict")
+                return
+
+            await _seed_documents(
+                db,
+                demo_user_id=demo_user.id,
+                documents_payload=documents_payload,
             )
-            db.add(document)
-            await db.flush()
-
-            chunks_payload = doc_payload.get("chunks", [])
-            if not isinstance(chunks_payload, list):
-                continue
-
-            for chunk_payload in chunks_payload:
-                if not isinstance(chunk_payload, dict):
-                    continue
-
-                raw_embedding = chunk_payload.get("embedding", [])
-                embedding = (
-                    [float(value) for value in raw_embedding]
-                    if isinstance(raw_embedding, list)
-                    else []
-                )
-
-                db.add(
-                    Chunk(
-                        document_id=document.id,
-                        content=str(chunk_payload.get("content", "")),
-                        chunk_index=_coerce_int(chunk_payload.get("chunk_index"), default=0),
-                        page_start=None,
-                        page_end=None,
-                        embedding=embedding,
-                    )
-                )
+            seeded_count = len(documents_payload)
+        else:
+            if not existing_demo.is_demo:
+                logger.info("Demo seed skipped: matching user/email exists but is not demo")
+                return
+            seeded_count = await _reconcile_documents_for_existing_demo_user(
+                db,
+                demo_user=existing_demo,
+                documents_payload=documents_payload,
+            )
 
         await db.commit()
         logger.info(
             "Demo seed complete: user_id=%s, documents=%s",
-            demo_user.id,
-            len(documents_payload),
+            (existing_demo.id if existing_demo is not None else demo_user.id),
+            seeded_count,
         )
 
     except Exception:
