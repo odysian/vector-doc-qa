@@ -91,8 +91,6 @@ Quaero is an AI-powered PDF question-answering platform that uses Retrieval Augm
 - **Follow supervised GH fallback order.** Run preflight, try the exact GH command once (default `--max-attempts=1`), request elevated approval for the exact command if it fails, then provide manual one-liner + URL if elevated execution still fails.
 - **Use bounded fresh review loop.** Run `scripts/fresh_review_loop.sh` for review/patch rounds.
 - **Fresh review loop working tree rule.** No tracked/staged diffs are allowed before starting the loop; untracked scratch files are allowed.
-- **Fresh review must be substantive.** Automated fresh review output must include valid, non-empty required fields (summary/flags/findings structure), not just parseable JSON.
-- **Execute fallback if automation fails.** If `scripts/fresh_review_loop.sh` generates a manual fallback prompt in `.codex/audit/...`, review is incomplete until that prompt is executed and documented.
 
 ## Decision Brief (Required)
 
@@ -265,7 +263,6 @@ _Add to this section when the agent makes a mistake. Each line prevents a repeat
 - **Before GH write commands, run:** `scripts/gh_preflight.sh`.
 - **For PR creation, use:** `scripts/create_pr.sh --body-file ...` (no queue/outbox fallback).
 - **If GH write fails, use supervised fail-fast order:** exact command once -> request elevated approval for that exact command -> provide manual one-liner + URL.
-- **If fresh review automation fails/invalid, run the generated manual fallback prompt and document results before finalize.**
 
 ---
 

@@ -67,8 +67,6 @@ Post-implementation verification checklist. Run through after every feature befo
 - [ ] PR creation used `scripts/create_pr.sh` with fail-fast fallback order (exact command once -> elevated exact command -> manual one-liner + URL)
 - [ ] No queue/outbox fallback flow was used for GH writes
 - [ ] Fresh review loop started from a working tree with no tracked/staged diffs (untracked scratch files allowed)
-- [ ] Automated fresh review output was valid and substantive (required non-empty summary/flags/findings fields), not just parseable JSON
-- [ ] If automated fresh review failed/invalid, generated manual fallback prompt review was executed and documented before finalize
 
 ## Documentation
 

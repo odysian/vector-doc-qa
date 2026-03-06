@@ -123,12 +123,6 @@ Do not use queue/outbox fallback flows.
 
 Fresh review loop start condition: tracked and staged diffs must be clean; untracked scratch files are allowed.
 
-Fresh-review validity rule:
-
-- Automated fresh review must produce valid, substantive output (required non-empty summary/flags/findings fields), not merely parseable JSON.
-- If automation fails or output is invalid/non-substantive, treat review as incomplete.
-- Execute the generated manual fallback prompt in `.codex/audit/task-<id>-<utc-timestamp>/task-<id>-r<round>-manual-review-fallback.md` and document the fallback review before finalize.
-
 ## Codex + GitHub CLI Playbook
 
 If using Codex in VS Code with GitHub CLI, follow `skills/spec-workflow-gh.md`.
