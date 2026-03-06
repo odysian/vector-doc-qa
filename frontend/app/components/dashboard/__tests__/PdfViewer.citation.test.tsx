@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useEffect, type ReactNode } from "react";
 import { PdfViewer } from "@/app/components/dashboard/PdfViewer";
@@ -121,12 +121,99 @@ describe("PdfViewer citation highlight behavior", () => {
     await waitFor(() => {
       expect(scrollIntoViewSpy).toHaveBeenCalled();
       const highlighted = container.querySelectorAll(".citation-text-highlight");
-      expect(highlighted.length).toBeGreaterThan(0);
+      expect(highlighted).toHaveLength(3);
     });
 
     await waitFor(() => {
       expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(0);
     }, { timeout: 2500 });
+  });
+
+  it("reapplies text highlight when the same-page citation is retriggered", async () => {
+    mockPdfState.spansByPage.set(1, [
+      "Acme Corp posted",
+      "Q4 revenue",
+      "of $5M with strong growth",
+      "and expanded margins",
+    ]);
+
+    const { container, rerender } = render(
+      <PdfViewer
+        documentId={7}
+        highlightPage={1}
+        highlightSnippet="Q4 revenue of $5M with strong growth and expanded margins."
+      />
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(3);
+    });
+    await waitFor(() => {
+      expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(0);
+    }, { timeout: 2500 });
+
+    rerender(<PdfViewer documentId={7} highlightPage={null} highlightSnippet={null} />);
+    rerender(
+      <PdfViewer
+        documentId={7}
+        highlightPage={1}
+        highlightSnippet="Q4 revenue of $5M with strong growth and expanded margins."
+      />
+    );
+
+    await waitFor(() => {
+      expect(scrollIntoViewSpy).toHaveBeenCalledTimes(2);
+      expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(3);
+    });
+  });
+
+  it("highlights snippet when text layer becomes available during retry window", async () => {
+    const queuedFrames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      queuedFrames.push(callback);
+      return queuedFrames.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+
+    const { container, rerender } = render(
+      <PdfViewer
+        documentId={7}
+        highlightPage={1}
+        highlightSnippet="Q4 revenue of $5M with strong growth and expanded margins."
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Page 1")).toBeInTheDocument();
+      expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(0);
+      expect(queuedFrames.length).toBeGreaterThan(0);
+    });
+
+    mockPdfState.spansByPage.set(1, [
+      "Acme Corp posted",
+      "Q4 revenue",
+      "of $5M with strong growth",
+      "and expanded margins",
+    ]);
+    rerender(
+      <PdfViewer
+        documentId={7}
+        highlightPage={1}
+        highlightSnippet="Q4 revenue of $5M with strong growth and expanded margins."
+      />
+    );
+
+    await act(async () => {
+      while (queuedFrames.length > 0) {
+        const callback = queuedFrames.shift();
+        callback?.(performance.now());
+        await Promise.resolve();
+      }
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(3);
+    });
   });
 
   it("falls back to page-level highlight when snippet does not match", async () => {
