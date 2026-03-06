@@ -126,7 +126,7 @@ describe("PdfViewer citation highlight behavior", () => {
 
     await waitFor(() => {
       expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(0);
-    }, { timeout: 2500 });
+    }, { timeout: 4200 });
   });
 
   it("reapplies text highlight when the same-page citation is retriggered", async () => {
@@ -150,7 +150,7 @@ describe("PdfViewer citation highlight behavior", () => {
     });
     await waitFor(() => {
       expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(0);
-    }, { timeout: 2500 });
+    }, { timeout: 4200 });
 
     rerender(<PdfViewer documentId={7} highlightPage={null} highlightSnippet={null} />);
     rerender(

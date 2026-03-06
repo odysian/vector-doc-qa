@@ -19,9 +19,11 @@ interface PdfViewerProps {
 
 const MAX_RENDERED_PAGE_WIDTH = 840;
 const PAGE_WIDTH_STEP = 8;
-const TEXT_HIGHLIGHT_DURATION_MS = 1500;
+const TEXT_HIGHLIGHT_DURATION_MS = 3000;
 const PAGE_HIGHLIGHT_START_DELAY_MS = 300;
 const PAGE_HIGHLIGHT_DURATION_MS = 2500;
+const SNIPPET_HIGHLIGHT_START_DELAY_MS = 200;
+const MAX_SNIPPET_HIGHLIGHT_RETRY_FRAMES = 120;
 
 /**
  * In-app PDF viewer that supports citation deep links with page-level fallback.
@@ -183,6 +185,7 @@ export function PdfViewer({
     const snippet = highlightSnippet?.trim() || "";
     let frameId: number | null = null;
     let snippetFrameId: number | null = null;
+    let snippetStartTimer: number | null = null;
     let highlightStartTimer: number | null = null;
     let highlightTimer: number | null = null;
     let attempts = 0;
@@ -213,13 +216,16 @@ export function PdfViewer({
       if (snippet) {
         const highlightSnippetOnceReady = () => {
           if (tryHighlightSnippet(targetPage, snippet)) return;
-          if (snippetAttempts < 20) {
+          if (snippetAttempts < MAX_SNIPPET_HIGHLIGHT_RETRY_FRAMES) {
             snippetAttempts += 1;
             snippetFrameId = window.requestAnimationFrame(highlightSnippetOnceReady);
           }
         };
 
-        highlightSnippetOnceReady();
+        // Let smooth scrolling begin before trying transient text highlight.
+        snippetStartTimer = window.setTimeout(() => {
+          highlightSnippetOnceReady();
+        }, SNIPPET_HIGHLIGHT_START_DELAY_MS);
       }
     };
 
@@ -228,6 +234,7 @@ export function PdfViewer({
     return () => {
       if (frameId !== null) window.cancelAnimationFrame(frameId);
       if (snippetFrameId !== null) window.cancelAnimationFrame(snippetFrameId);
+      if (snippetStartTimer !== null) window.clearTimeout(snippetStartTimer);
       if (highlightStartTimer !== null) window.clearTimeout(highlightStartTimer);
       if (highlightTimer !== null) window.clearTimeout(highlightTimer);
     };
