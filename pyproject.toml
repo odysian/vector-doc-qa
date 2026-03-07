@@ -1,8 +1,8 @@
 [tool.ruff]
-cache-dir = "backend/.ruff_cache"
+cache-dir = ".ruff_cache"
 
 [tool.mypy]
-cache_dir = "backend/.mypy_cache"
+cache_dir = ".mypy_cache"
 
 [tool.pytest.ini_options]
-cache_dir = "backend/.pytest_cache"
+cache_dir = ".pytest_cache"
