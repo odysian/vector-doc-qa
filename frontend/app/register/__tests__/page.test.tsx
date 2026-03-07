@@ -51,6 +51,7 @@ describe("RegisterPage form behavior", () => {
       id: number;
       username: string;
       email: string;
+      is_demo: boolean;
       created_at: string;
     }>();
     registerMock.mockReturnValueOnce(pendingRegistration.promise);
@@ -80,6 +81,7 @@ describe("RegisterPage form behavior", () => {
       id: 1,
       username: "alice",
       email: "alice@example.com",
+      is_demo: false,
       created_at: "2026-03-02T10:00:00Z",
     });
 

@@ -4,19 +4,34 @@
  */
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { isLoggedIn } from "@/lib/api";
+import { isLoggedIn, loginAsDemo } from "@/lib/api";
 
 export default function Home() {
   const router = useRouter();
+  const [loadingDemo, setLoadingDemo] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (isLoggedIn()) {
       router.replace("/dashboard");
     }
   }, [router]);
+
+  const handleTryDemo = async () => {
+    setError("");
+    setLoadingDemo(true);
+    try {
+      await loginAsDemo();
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Demo login failed");
+    } finally {
+      setLoadingDemo(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-950 p-4">
@@ -40,6 +55,14 @@ export default function Home() {
           >
             Sign In
           </Link>
+          <button
+            type="button"
+            onClick={handleTryDemo}
+            disabled={loadingDemo}
+            className="inline-flex items-center justify-center py-3 px-8 border border-lapis-500/40 text-lapis-300 hover:bg-lapis-500/10 font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-950 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loadingDemo ? "Accessing..." : "Try Demo"}
+          </button>
           <Link
             href="/register"
             className="inline-flex items-center justify-center py-3 px-8 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-lg border border-zinc-700 transition-colors focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-950 cursor-pointer"
@@ -47,6 +70,7 @@ export default function Home() {
             Register
           </Link>
         </div>
+        {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
       </main>
     </div>
   );

@@ -21,6 +21,7 @@ vi.mock("@/lib/api", async () => {
     isLoggedIn: vi.fn(),
     api: {
       ...actual.api,
+      getCurrentUser: vi.fn(),
       getDocuments: vi.fn(),
       uploadDocument: vi.fn(),
       processDocument: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock("@/lib/api", async () => {
 });
 
 const isLoggedInMock = vi.mocked(isLoggedIn);
+const getCurrentUserMock = vi.mocked(api.getCurrentUser);
 const getDocumentsMock = vi.mocked(api.getDocuments);
 const uploadDocumentMock = vi.mocked(api.uploadDocument);
 const processDocumentMock = vi.mocked(api.processDocument);
@@ -56,10 +58,22 @@ function makeDocument(
   };
 }
 
+function makeUser(overrides: Partial<Awaited<ReturnType<typeof api.getCurrentUser>>> = {}) {
+  return {
+    id: 1,
+    username: "alice",
+    email: "alice@example.com",
+    is_demo: false,
+    created_at: "2026-03-01T10:00:00Z",
+    ...overrides,
+  };
+}
+
 describe("DashboardPage regression behavior", () => {
   beforeEach(() => {
     pushMock.mockReset();
     isLoggedInMock.mockReset();
+    getCurrentUserMock.mockReset();
     getDocumentsMock.mockReset();
     uploadDocumentMock.mockReset();
     processDocumentMock.mockReset();
@@ -68,6 +82,7 @@ describe("DashboardPage regression behavior", () => {
     getMessagesMock.mockReset();
 
     isLoggedInMock.mockReturnValue(true);
+    getCurrentUserMock.mockResolvedValue(makeUser());
     getDocumentsMock.mockResolvedValue({ documents: [], total: 0 });
     getMessagesMock.mockResolvedValue({ messages: [], total: 0 });
     uploadDocumentMock.mockResolvedValue(makeDocument());
@@ -193,56 +208,33 @@ describe("DashboardPage regression behavior", () => {
     });
   });
 
-  it("closes delete modal when delete is denied for demo account", async () => {
+  it("hides demo-restricted controls and shows demo banner for demo users", async () => {
     const doc = makeDocument({ id: 302 });
+    getCurrentUserMock.mockResolvedValueOnce(makeUser({ is_demo: true }));
     getDocumentsMock.mockResolvedValueOnce({ documents: [doc], total: 1 });
-    deleteDocumentMock.mockRejectedValueOnce(
-      new ApiError(403, "Demo account cannot delete documents")
-    );
 
     render(<DashboardPage />);
 
     await screen.findByText("alpha.pdf");
-    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]);
-
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
-
-    await waitFor(() => {
-      expect(deleteDocumentMock).toHaveBeenCalledWith(302);
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(screen.getByText("Demo account cannot delete documents")).toBeInTheDocument();
-    });
+    expect(
+      screen.getByText(/You're using a demo account\./)
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Upload PDF")).toBeDisabled();
+    expect(screen.getByText("Uploads are disabled for demo accounts")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
   });
 
-  it("replaces delete error with upload error after denied upload attempt", async () => {
+  it("keeps upload and delete controls for non-demo users", async () => {
     const doc = makeDocument({ id: 303 });
+    getCurrentUserMock.mockResolvedValueOnce(makeUser({ is_demo: false }));
     getDocumentsMock.mockResolvedValueOnce({ documents: [doc], total: 1 });
-    deleteDocumentMock.mockRejectedValueOnce(
-      new ApiError(403, "Demo account cannot delete documents")
-    );
-    uploadDocumentMock.mockRejectedValueOnce(
-      new ApiError(403, "Demo account cannot upload documents")
-    );
 
     render(<DashboardPage />);
 
     await screen.findByText("alpha.pdf");
-    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]);
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
-
-    await screen.findByText("Demo account cannot delete documents");
-
-    const fileInput = screen.getByLabelText("Upload PDF");
-    const file = new File(["%PDF"], "upload.pdf", { type: "application/pdf" });
-    fireEvent.change(fileInput, { target: { files: [file] } });
-
-    await waitFor(() => {
-      expect(uploadDocumentMock).toHaveBeenCalledWith(file);
-      expect(screen.getByText("Demo account cannot upload documents")).toBeInTheDocument();
-      expect(screen.queryByText("Demo account cannot delete documents")).not.toBeInTheDocument();
-    });
+    expect(screen.queryByText(/You're using a demo account\./)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Upload PDF")).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
   });
 });
 
@@ -264,10 +256,12 @@ describe("DashboardPage layout contracts", () => {
   beforeEach(() => {
     pushMock.mockReset();
     isLoggedInMock.mockReset();
+    getCurrentUserMock.mockReset();
     getDocumentsMock.mockReset();
     getMessagesMock.mockReset();
 
     isLoggedInMock.mockReturnValue(true);
+    getCurrentUserMock.mockResolvedValue(makeUser());
     getMessagesMock.mockResolvedValue({ messages: [], total: 0 });
   });
 

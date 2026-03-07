@@ -6,7 +6,7 @@
 import { useState, type SyntheticEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, saveTokens } from "@/lib/api";
+import { api, saveTokens, loginAsDemo } from "@/lib/api";
 
 /**
  * Renders centered login form. Submits to api.login, saves csrf_token to
@@ -19,14 +19,37 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleSubmit = async (e: SyntheticEvent) => {
-    e.preventDefault();
+  const submitLogin = async (nextUsername: string, nextPassword: string) => {
     setError("");
     setLoading(true);
 
     try {
-      const response = await api.login({ username, password });
+      const response = await api.login({
+        username: nextUsername,
+        password: nextPassword,
+      });
       saveTokens(response);
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: SyntheticEvent) => {
+    e.preventDefault();
+    await submitLogin(username, password);
+  };
+
+  const handleTryDemo = async () => {
+    setUsername("demo");
+    setPassword("demo");
+    setError("");
+    setLoading(true);
+
+    try {
+      await loginAsDemo();
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -99,6 +122,15 @@ export default function LoginPage() {
               className="w-full py-3 bg-lapis-600 hover:bg-lapis-500 disabled:bg-lapis-800 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors shadow-lg shadow-lapis-900/20 cursor-pointer"
             >
               {loading ? "Accessing..." : "Sign In"}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleTryDemo}
+              disabled={loading}
+              className="w-full py-3 border border-lapis-500/40 text-lapis-300 hover:bg-lapis-500/10 disabled:opacity-60 disabled:cursor-not-allowed font-medium rounded-lg transition-colors cursor-pointer"
+            >
+              Try Demo
             </button>
           </form>
 

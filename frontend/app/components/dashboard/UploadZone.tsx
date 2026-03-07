@@ -9,6 +9,7 @@ import { useState } from "react";
 interface UploadZoneProps {
   onUpload: (file: File) => Promise<void>;
   disabled?: boolean;
+  disabledReason?: string;
 }
 
 /**
@@ -22,7 +23,7 @@ function isPdf(file: File): boolean {
   );
 }
 
-export function UploadZone({ onUpload, disabled }: UploadZoneProps) {
+export function UploadZone({ onUpload, disabled, disabledReason }: UploadZoneProps) {
   const [uploading, setUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -43,18 +44,21 @@ export function UploadZone({ onUpload, disabled }: UploadZoneProps) {
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (disabled || uploading) return;
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(true);
   };
 
   const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    if (disabled || uploading) return;
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
   };
 
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    if (disabled || uploading) return;
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
@@ -71,7 +75,9 @@ export function UploadZone({ onUpload, disabled }: UploadZoneProps) {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={`relative border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
-            isDragging
+            disabled
+              ? "border-zinc-800 bg-zinc-800/30"
+              : isDragging
               ? "border-lapis-500 bg-lapis-500/10"
               : "border-zinc-700 hover:border-lapis-500/50"
           }`}
@@ -85,9 +91,15 @@ export function UploadZone({ onUpload, disabled }: UploadZoneProps) {
             aria-label="Upload PDF"
           />
           <p className="text-zinc-300 text-body-sm mb-1">
-            {uploading ? "Uploading..." : "Upload PDF or drag a file here"}
+            {disabled
+              ? "Uploads are disabled for demo accounts"
+              : uploading
+              ? "Uploading..."
+              : "Upload PDF or drag a file here"}
           </p>
-          <p className="text-helper">Max 10MB</p>
+          <p className="text-helper">
+            {disabled ? disabledReason || "Create an account to upload your own documents." : "Max 10MB"}
+          </p>
         </div>
       </label>
     </div>

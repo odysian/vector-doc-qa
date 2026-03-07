@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { PanelLeft, X, FileUp } from "lucide-react";
 import { api, isLoggedIn, type Document, ApiError, SessionExpiredError } from "@/lib/api";
 import { UploadZone } from "../components/dashboard/UploadZone";
@@ -45,6 +46,7 @@ export default function DashboardPage() {
   const [useTabLayout, setUseTabLayout] = useState(getInitialUseTabLayout);
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   const [workspaceElement, setWorkspaceElement] = useState<HTMLDivElement | null>(null);
+  const [isDemoUser, setIsDemoUser] = useState(false);
   const documentsRef = useRef<Document[]>([]);
   const workspaceRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -82,15 +84,37 @@ export default function DashboardPage() {
       setDocuments(response.documents);
     } catch (err) {
       handleApiError(err, "Failed to load documents");
-    } finally {
-      setLoading(false);
     }
   }, [handleApiError]);
 
   useEffect(() => {
     if (!isLoggedIn()) return handleSessionExpired();
-    loadDocuments();
-  }, [handleSessionExpired, loadDocuments]);
+    let cancelled = false;
+
+    const loadInitialData = async () => {
+      try {
+        const [userResponse, documentsResponse] = await Promise.all([
+          api.getCurrentUser(),
+          api.getDocuments(),
+        ]);
+        if (cancelled) return;
+        setIsDemoUser(userResponse.is_demo);
+        setDocuments(documentsResponse.documents);
+      } catch (err) {
+        if (!cancelled) {
+          handleApiError(err, "Failed to load documents");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void loadInitialData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [handleSessionExpired, handleApiError]);
 
   useEffect(() => {
     documentsRef.current = documents;
@@ -334,7 +358,11 @@ export default function DashboardPage() {
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        <UploadZone onUpload={handleUpload} />
+        <UploadZone
+          onUpload={handleUpload}
+          disabled={isDemoUser}
+          disabledReason="Create an account to upload your own documents."
+        />
         {error && (
           <div className="bg-red-900/20 border border-red-900/50 text-error p-3 rounded-lg text-body-sm">
             {error}
@@ -348,6 +376,7 @@ export default function DashboardPage() {
             onDocumentClick={handleDocumentClick}
             onProcessDocument={handleProcessDocument}
             onDeleteDocument={handleDeleteDocument}
+            hideDeleteActions={isDemoUser}
           />
         )}
       </div>
@@ -430,6 +459,15 @@ export default function DashboardPage() {
 
         {/* Main: chat or empty state */}
         <main className="flex-1 min-w-0 min-h-0 flex flex-col p-4 xl:p-6">
+          {isDemoUser && (
+            <div className="mb-4 rounded-lg border border-amber-700/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+              You&apos;re using a demo account.{" "}
+              <Link href="/register" className="font-medium underline hover:text-amber-200">
+                Create an account
+              </Link>{" "}
+              to upload your own documents.
+            </div>
+          )}
           {loading ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-6">
               <h2
@@ -510,7 +548,11 @@ export default function DashboardPage() {
                 files.
               </p>
               <div className="w-full">
-                <UploadZone onUpload={handleUpload} />
+                <UploadZone
+                  onUpload={handleUpload}
+                  disabled={isDemoUser}
+                  disabledReason="Create an account to upload your own documents."
+                />
               </div>
             </div>
           ) : (
