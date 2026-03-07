@@ -81,6 +81,20 @@ export function saveTokens(tokens: AuthResponse): void {
   localStorage.setItem("csrf_token", tokens.csrf_token);
 }
 
+const DEMO_CREDENTIALS: LoginCredentials = {
+  username: "demo",
+  password: "demo",
+};
+
+/**
+ * Log in with the seeded demo account and persist csrf_token locally.
+ * Used by both landing and login "Try Demo" entrypoints.
+ */
+export async function loginAsDemo(): Promise<void> {
+  const response = await api.login(DEMO_CREDENTIALS);
+  saveTokens(response);
+}
+
 /**
  * Clear the CSRF token from localStorage on logout or session expiry.
  * Also removes legacy auth keys left over from before the cookie migration.

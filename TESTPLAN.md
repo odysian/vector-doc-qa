@@ -240,6 +240,7 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 - Dashboard route boundary redirects to `/login` when API calls surface `SessionExpiredError`
 - Dashboard shows demo-account banner and hides upload/delete controls when `GET /api/auth/me` returns `is_demo=true`
 - Dashboard keeps upload/delete controls enabled for non-demo users
+- Landing `Try Demo` logs in with demo credentials and routes directly to `/dashboard`
 - Login form disables submit while request is in flight and re-enables after completion
 - Login `Try Demo` shortcut submits `demo` credentials and redirects to `/dashboard` on success
 - Register form disables submit while request is in flight and re-enables after completion

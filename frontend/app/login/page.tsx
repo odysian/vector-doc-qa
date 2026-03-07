@@ -6,10 +6,7 @@
 import { useState, type SyntheticEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, saveTokens } from "@/lib/api";
-
-const DEMO_USERNAME = "demo";
-const DEMO_PASSWORD = "demo";
+import { api, saveTokens, loginAsDemo } from "@/lib/api";
 
 /**
  * Renders centered login form. Submits to api.login, saves csrf_token to
@@ -46,9 +43,19 @@ export default function LoginPage() {
   };
 
   const handleTryDemo = async () => {
-    setUsername(DEMO_USERNAME);
-    setPassword(DEMO_PASSWORD);
-    await submitLogin(DEMO_USERNAME, DEMO_PASSWORD);
+    setUsername("demo");
+    setPassword("demo");
+    setError("");
+    setLoading(true);
+
+    try {
+      await loginAsDemo();
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
