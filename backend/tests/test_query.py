@@ -205,6 +205,9 @@ class TestQuery:
         assert isinstance(data["sources"], list)
         assert "pipeline_meta" in data
         assert data["pipeline_meta"]["chunks_retrieved"] == len(data["sources"])
+        assert "chunks_above_threshold" in data["pipeline_meta"]
+        assert "similarity_spread" in data["pipeline_meta"]
+        assert "chat_history_turns_included" in data["pipeline_meta"]
 
     async def test_query_saves_user_and_assistant_messages(
         self,
@@ -236,8 +239,10 @@ class TestQuery:
         assert messages[0].content == "Tell me about the content"
         assert messages[1].role == "assistant"
         assert len(messages[1].content) > 0
-        # Assistant message should have sources stored as JSONB
-        assert messages[1].sources is not None
+        # Assistant message stores sources plus pipeline metadata in JSONB.
+        assert isinstance(messages[1].sources, dict)
+        assert isinstance(messages[1].sources.get("sources"), list)
+        assert isinstance(messages[1].sources.get("pipeline_meta"), dict)
 
     async def test_query_passes_bounded_ordered_history_to_prompt(
         self,
@@ -429,6 +434,9 @@ class TestQueryStream:
             "top_similarity",
             "avg_similarity",
             "chunks_retrieved",
+            "chunks_above_threshold",
+            "similarity_spread",
+            "chat_history_turns_included",
         }
 
         done_payload = json.loads(events[5][1])
@@ -805,7 +813,21 @@ class TestMessages:
             user_id=test_user.id,
             role="assistant",
             content="This is a test document.",
-            sources=[{"chunk_id": 1, "content": "test", "similarity": 0.9, "chunk_index": 0}],
+            sources={
+                "sources": [{"chunk_id": 1, "content": "test", "similarity": 0.9, "chunk_index": 0}],
+                "pipeline_meta": {
+                    "embed_ms": 10,
+                    "retrieval_ms": 20,
+                    "llm_ms": 30,
+                    "total_ms": 60,
+                    "top_similarity": 0.9,
+                    "avg_similarity": 0.9,
+                    "chunks_retrieved": 1,
+                    "chunks_above_threshold": 1,
+                    "similarity_spread": 0.0,
+                    "chat_history_turns_included": 0,
+                },
+            },
         )
         db_session.add(user_msg)
         db_session.add(asst_msg)
@@ -822,6 +844,7 @@ class TestMessages:
         assert data["messages"][0]["role"] == "user"
         assert data["messages"][1]["role"] == "assistant"
         assert data["messages"][1]["sources"] is not None
+        assert data["messages"][1]["pipeline_meta"]["chunks_above_threshold"] == 1
 
     async def test_get_messages_returns_empty_for_no_messages(
         self, client, auth_headers, processed_document
@@ -835,6 +858,35 @@ class TestMessages:
         data = response.json()
         assert data["total"] == 0
         assert data["messages"] == []
+
+    async def test_get_messages_supports_legacy_sources_payload(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        db_session: AsyncSession,
+        test_user: User,
+    ):
+        db_session.add(
+            Message(
+                document_id=processed_document.id,
+                user_id=test_user.id,
+                role="assistant",
+                content="Legacy message",
+                sources=[{"chunk_id": 1, "content": "legacy", "similarity": 0.8, "chunk_index": 0}],
+            )
+        )
+        await db_session.flush()
+
+        response = await client.get(
+            f"/api/documents/{processed_document.id}/messages",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["messages"][0]["sources"] is not None
+        assert data["messages"][0]["pipeline_meta"] is None
 
     async def test_get_messages_returns_404_for_other_users_document(
         self, client, second_user_headers, processed_document

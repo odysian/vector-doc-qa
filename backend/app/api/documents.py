@@ -3,6 +3,7 @@ import time
 from collections.abc import AsyncGenerator
 from urllib.parse import quote
 
+from pydantic import ValidationError
 from app.api.dependencies import get_current_user
 from app.database import AsyncSessionLocal, get_db
 from app.models.base import Chunk, Document, DocumentStatus
@@ -35,6 +36,7 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 CONVERSATION_HISTORY_WINDOW_TURNS = 5
+SIMILARITY_THRESHOLD = 0.75
 
 
 def _elapsed_ms(start_time: float) -> int:
@@ -63,6 +65,7 @@ def _encode_sse_event(event: ServerSentEvent) -> bytes:
 def _build_pipeline_meta(
     *,
     search_results: list[dict],
+    conversation_history: list[dict[str, str]],
     embed_ms: int,
     retrieval_ms: int,
     llm_ms: int,
@@ -71,6 +74,7 @@ def _build_pipeline_meta(
     similarities = [result["similarity"] for result in search_results]
     top_similarity = max(similarities) if similarities else 0.0
     avg_similarity = (sum(similarities) / len(similarities)) if similarities else 0.0
+    similarity_spread = (max(similarities) - min(similarities)) if similarities else 0.0
 
     return PipelineMeta(
         embed_ms=embed_ms,
@@ -80,7 +84,45 @@ def _build_pipeline_meta(
         top_similarity=round(top_similarity, 4),
         avg_similarity=round(avg_similarity, 4),
         chunks_retrieved=len(search_results),
+        chunks_above_threshold=sum(
+            1 for similarity in similarities if similarity > SIMILARITY_THRESHOLD
+        ),
+        similarity_spread=round(similarity_spread, 4),
+        chat_history_turns_included=len(conversation_history) // 2,
     )
+
+
+def _build_message_sources_payload(
+    *,
+    sources: list[dict],
+    pipeline_meta: PipelineMeta | None,
+) -> dict:
+    payload: dict = {"sources": sources}
+    if pipeline_meta is not None:
+        payload["pipeline_meta"] = pipeline_meta.model_dump()
+    return payload
+
+
+def _extract_sources_and_pipeline_meta(raw_sources: object) -> tuple[list[dict] | None, PipelineMeta | None]:
+    if isinstance(raw_sources, list):
+        return raw_sources, None
+
+    if not isinstance(raw_sources, dict):
+        return None, None
+
+    sources_payload = raw_sources.get("sources")
+    sources = sources_payload if isinstance(sources_payload, list) else None
+
+    pipeline_meta_payload = raw_sources.get("pipeline_meta")
+    if not isinstance(pipeline_meta_payload, dict):
+        return sources, None
+
+    try:
+        pipeline_meta = PipelineMeta.model_validate(pipeline_meta_payload)
+    except ValidationError:
+        pipeline_meta = None
+
+    return sources, pipeline_meta
 
 
 async def _search_chunks_from_embedding(
@@ -604,6 +646,7 @@ async def query_document(
         sources = [SearchResult(**result) for result in search_results]
         pipeline_meta = _build_pipeline_meta(
             search_results=search_results,
+            conversation_history=conversation_history,
             embed_ms=embed_ms,
             retrieval_ms=retrieval_ms,
             llm_ms=llm_ms,
@@ -618,7 +661,10 @@ async def query_document(
             user_id=current_user.id,
             role="assistant",
             content=answer,
-            sources=sources_dict,
+            sources=_build_message_sources_payload(
+                sources=sources_dict,
+                pipeline_meta=pipeline_meta,
+            ),
         )
         db.add(assistant_message)
         await db.commit()
@@ -727,7 +773,7 @@ async def query_document_stream(
         async def _persist_assistant_message(
             *,
             content: str,
-            sources_payload: list[dict] | None,
+            sources_payload: dict | None,
         ) -> int | None:
             try:
                 async with AsyncSessionLocal() as write_db:
@@ -781,7 +827,10 @@ async def query_document_stream(
             )
             await _persist_assistant_message(
                 content=assistant_content,
-                sources_payload=sources_dict,
+                sources_payload=_build_message_sources_payload(
+                    sources=sources_dict,
+                    pipeline_meta=None,
+                ),
             )
             yield ServerSentEvent(event="error", raw_data=json.dumps({"detail": "Query failed"}))
             return
@@ -789,6 +838,7 @@ async def query_document_stream(
         llm_ms = _elapsed_ms(llm_start)
         pipeline_meta = _build_pipeline_meta(
             search_results=search_results,
+            conversation_history=conversation_history,
             embed_ms=embed_ms,
             retrieval_ms=retrieval_ms,
             llm_ms=llm_ms,
@@ -799,7 +849,10 @@ async def query_document_stream(
         answer = "".join(answer_tokens)
         assistant_message_id = await _persist_assistant_message(
             content=answer,
-            sources_payload=sources_dict,
+            sources_payload=_build_message_sources_payload(
+                sources=sources_dict,
+                pipeline_meta=pipeline_meta,
+            ),
         )
         if assistant_message_id is None:
             # Best effort fallback so chat history still has a terminal assistant turn.
@@ -856,7 +909,23 @@ async def get_document_messages(
     )
     messages = (await db.scalars(msg_stmt)).all()
 
+    response_messages: list[MessageResponse] = []
+    for msg in messages:
+        sources, pipeline_meta = _extract_sources_and_pipeline_meta(msg.sources)
+        response_messages.append(
+            MessageResponse(
+                id=msg.id,
+                document_id=msg.document_id,
+                user_id=msg.user_id,
+                role=msg.role,
+                content=msg.content,
+                sources=sources,
+                pipeline_meta=pipeline_meta,
+                created_at=msg.created_at,
+            )
+        )
+
     return MessageListResponse(
-        messages=[MessageResponse.model_validate(msg) for msg in messages],
+        messages=response_messages,
         total=len(messages),
     )

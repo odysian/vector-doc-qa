@@ -6,7 +6,7 @@
 "use client";
 
 import { useState, useRef, useEffect, SyntheticEvent } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Settings2 } from "lucide-react";
 import {
   type Document,
   api,
@@ -43,6 +43,7 @@ const SUGGESTED_PROMPTS = [
   "What are the main points?",
   "Find key dates or numbers",
 ];
+const DEBUG_MODE_STORAGE_KEY = "quaero_debug_mode";
 
 /**
  * Renders the pop up window with query input and message history.
@@ -56,11 +57,9 @@ export function ChatWindow({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [debugMode, setDebugMode] = useState(false);
   const [expandedSourceIndices, setExpandedSourceIndices] = useState<Set<number>>(new Set());
   const [expandedSourceCards, setExpandedSourceCards] = useState<Set<string>>(new Set());
-  const [expandedPipelineMetaIndices, setExpandedPipelineMetaIndices] = useState<Set<number>>(
-    new Set()
-  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const isMountedRef = useRef(true);
   const activeStreamAbortRef = useRef<AbortController | null>(null);
@@ -98,14 +97,12 @@ export function ChatWindow({
     });
   };
 
-  /** Toggle pipeline timing metadata for an assistant message. */
-  const togglePipelineMeta = (messageIndex: number) => {
-    setExpandedPipelineMetaIndices((prev) => {
-      const next = new Set(prev);
-      if (next.has(messageIndex)) next.delete(messageIndex);
-      else next.add(messageIndex);
-      return next;
-    });
+  const toggleDebugMode = () => {
+    const nextDebugMode = !debugMode;
+    setDebugMode(nextDebugMode);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(DEBUG_MODE_STORAGE_KEY, nextDebugMode ? "true" : "false");
+    }
   };
 
   const updateStreamingAssistant = (updater: (message: Message) => Message) => {
@@ -166,6 +163,11 @@ export function ChatWindow({
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setDebugMode(localStorage.getItem(DEBUG_MODE_STORAGE_KEY) === "true");
+  }, []);
+
 
   useEffect(() => {
     const loadHistory = async () => {
@@ -177,6 +179,7 @@ export function ChatWindow({
           role: msg.role,
           content: msg.content,
           sources: msg.sources as QueryResponse["sources"],
+          pipeline_meta: msg.pipeline_meta,
         }));
         setMessages(loadedMessages);
       } catch (err) {
@@ -310,6 +313,12 @@ export function ChatWindow({
     return `Pages ${pageStart}-${pageEnd}`;
   };
 
+  const getConfidence = (topSimilarity: number): "high" | "medium" | "low" => {
+    if (topSimilarity >= 0.85) return "high";
+    if (topSimilarity >= 0.7) return "medium";
+    return "low";
+  };
+
   return (
     <div className="flex flex-col w-full h-full min-h-0 max-h-full bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shadow-xl">
       {/* Header */}
@@ -334,6 +343,19 @@ export function ChatWindow({
             </p>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={toggleDebugMode}
+          aria-pressed={debugMode}
+          className={`ml-3 shrink-0 inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-900 ${
+            debugMode
+              ? "border-lapis-500/60 bg-lapis-500/10 text-lapis-300"
+              : "border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500"
+          }`}
+        >
+          <Settings2 size={14} aria-hidden />
+          <span>{debugMode ? "Debug on" : "Debug off"}</span>
+        </button>
       </div>
 
       {/* Messages Area */}
@@ -437,15 +459,11 @@ export function ChatWindow({
               )}
             </div>
 
-            {msg.role === "assistant" && msg.pipeline_meta && (
-              <div className="mt-2 ml-2 max-w-[85%] text-xs text-zinc-500">
-                <button
-                  type="button"
-                  onClick={() => togglePipelineMeta(i)}
-                  className="flex items-center gap-2 hover:text-zinc-300 transition-colors cursor-pointer"
-                >
+            {debugMode && msg.role === "assistant" && msg.pipeline_meta && (
+              <details className="mt-2 ml-2 max-w-[85%] text-xs text-zinc-400 group">
+                <summary className="cursor-pointer list-none flex items-center gap-2 hover:text-zinc-200 transition-colors">
                   <svg
-                    className={`w-3 h-3 shrink-0 transition-transform ${expandedPipelineMetaIndices.has(i) ? "rotate-90" : ""}`}
+                    className="w-3 h-3 shrink-0 transition-transform group-open:rotate-90"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -462,25 +480,24 @@ export function ChatWindow({
                     {(msg.pipeline_meta.total_ms / 1000).toFixed(1)}s ·{" "}
                     {(msg.pipeline_meta.avg_similarity * 100).toFixed(0)}% retrieval ·{" "}
                     {msg.pipeline_meta.chunks_retrieved}{" "}
-                    {msg.pipeline_meta.chunks_retrieved === 1 ? "source" : "sources"}
+                    {msg.pipeline_meta.chunks_retrieved === 1 ? "source" : "sources"} ·{" "}
+                    {getConfidence(msg.pipeline_meta.top_similarity)} confidence
                   </span>
-                </button>
-
-                {expandedPipelineMetaIndices.has(i) && (
-                  <div className="mt-2 ml-5 space-y-1">
-                    <p>Embedding: {msg.pipeline_meta.embed_ms}ms</p>
-                    <p>
-                      Retrieval: {msg.pipeline_meta.retrieval_ms}ms (
-                      {msg.pipeline_meta.chunks_retrieved} chunks,{" "}
-                      {(msg.pipeline_meta.avg_similarity * 100).toFixed(0)}% avg)
-                    </p>
-                    <p>Generation: {msg.pipeline_meta.llm_ms}ms</p>
-                    <div className="border-t border-zinc-700/50 pt-1 mt-1">
-                      <p>Total: {msg.pipeline_meta.total_ms}ms</p>
-                    </div>
+                </summary>
+                <div className="mt-2 ml-5 space-y-1">
+                  <p>Embedding: {msg.pipeline_meta.embed_ms}ms</p>
+                  <p>Retrieval: {msg.pipeline_meta.retrieval_ms}ms</p>
+                  <p>Generation: {msg.pipeline_meta.llm_ms}ms</p>
+                  <p>Top similarity: {(msg.pipeline_meta.top_similarity * 100).toFixed(1)}%</p>
+                  <p>Average similarity: {(msg.pipeline_meta.avg_similarity * 100).toFixed(1)}%</p>
+                  <p>Chunks above 0.75: {msg.pipeline_meta.chunks_above_threshold}</p>
+                  <p>Similarity spread: {(msg.pipeline_meta.similarity_spread * 100).toFixed(1)}%</p>
+                  <p>History turns included: {msg.pipeline_meta.chat_history_turns_included}</p>
+                  <div className="border-t border-zinc-700/50 pt-1 mt-1">
+                    <p>Total: {msg.pipeline_meta.total_ms}ms</p>
                   </div>
-                )}
-              </div>
+                </div>
+              </details>
             )}
 
             {msg.role === "assistant" && msg.retry_query && !msg.streaming && (
@@ -565,9 +582,11 @@ export function ChatWindow({
                             <span className="badge-sm bg-lapis-600 text-white px-2 py-0.5 rounded">
                               {idx + 1}
                             </span>
-                            <span className="text-meta-bright">
-                              Relevance: {(source.similarity * 100).toFixed(0)}%
-                            </span>
+                            {debugMode && (
+                              <span className="text-meta-bright">
+                                Similarity: {(source.similarity * 100).toFixed(1)}%
+                              </span>
+                            )}
                             <span className="text-meta-bright">
                               Excerpt {source.chunk_index}
                             </span>

@@ -321,4 +321,55 @@ describe("ChatWindow streaming lifecycle", () => {
       snippet: "Cited section content for pages three and four.",
     });
   });
+
+  it("toggles debug mode and shows pipeline metadata/similarity from history", async () => {
+    localStorage.removeItem("quaero_debug_mode");
+    getMessagesMock.mockResolvedValueOnce({
+      messages: [
+        {
+          id: 2,
+          document_id: documentFixture.id,
+          user_id: documentFixture.user_id,
+          role: "assistant",
+          content: "Debuggable answer.",
+          sources: [
+            {
+              chunk_id: 3,
+              content: "Debug source content.",
+              similarity: 0.91,
+              chunk_index: 0,
+            },
+          ],
+          pipeline_meta: {
+            embed_ms: 11,
+            retrieval_ms: 12,
+            llm_ms: 13,
+            total_ms: 36,
+            top_similarity: 0.91,
+            avg_similarity: 0.89,
+            chunks_retrieved: 1,
+            chunks_above_threshold: 1,
+            similarity_spread: 0,
+            chat_history_turns_included: 2,
+          },
+          created_at: "2026-03-02T12:02:00Z",
+        },
+      ],
+      total: 1,
+    });
+
+    render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
+    await screen.findByText("Debuggable answer.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sources (1)" }));
+    expect(screen.queryByText(/Similarity:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/confidence/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Debug off" }));
+
+    expect(screen.getByRole("button", { name: "Debug on" })).toBeInTheDocument();
+    expect(localStorage.getItem("quaero_debug_mode")).toBe("true");
+    expect(screen.getByText(/confidence/)).toBeInTheDocument();
+    expect(screen.getByText("Similarity: 91.0%")).toBeInTheDocument();
+  });
 });

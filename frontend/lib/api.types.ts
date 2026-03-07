@@ -96,6 +96,9 @@ export interface PipelineMeta {
   top_similarity: number;
   avg_similarity: number;
   chunks_retrieved: number;
+  chunks_above_threshold: number;
+  similarity_spread: number;
+  chat_history_turns_included: number;
 }
 
 // Messages
@@ -106,6 +109,7 @@ export interface MessageResponse {
   role: "user" | "assistant";
   content: string;
   sources?: SearchResult[];
+  pipeline_meta?: PipelineMeta;
   created_at: string;
 }
 

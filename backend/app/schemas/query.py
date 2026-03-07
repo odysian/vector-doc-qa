@@ -19,6 +19,9 @@ class PipelineMeta(BaseModel):
     top_similarity: float
     avg_similarity: float
     chunks_retrieved: int
+    chunks_above_threshold: int
+    similarity_spread: float
+    chat_history_turns_included: int
 
 
 class QueryResponse(BaseModel):

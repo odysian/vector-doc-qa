@@ -161,7 +161,7 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 ### Happy Path
 
 - POST /api/documents/{id}/query with valid query returns answer with sources
-- POST /api/documents/{id}/query includes pipeline_meta timing/similarity fields
+- POST /api/documents/{id}/query includes pipeline_meta timing/similarity fields including `chunks_above_threshold`, `similarity_spread`, and `chat_history_turns_included`
 - POST /api/documents/{id}/query/stream returns SSE events in order: sources -> token* -> meta -> done
 - Answer includes cited chunks from the document
 - User message and assistant response are saved to messages table
@@ -198,6 +198,8 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 - ChatWindow send controls enter streaming state during an active stream and return to normal after `done`
 - ChatWindow shows a `Stop` control only during active streaming and aborts stream updates when clicked
 - ChatWindow `Retry` re-submits the same query after a stopped/failed assistant response and completes on `done`
+- Debug mode toggle persists in localStorage (`quaero_debug_mode`) and gates retrieval metadata visibility
+- When debug mode is on, assistant messages render pipeline metadata and citations render per-source similarity scores
 
 ### Error Cases
 
@@ -274,7 +276,7 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 
 - GET /api/documents/{id}/messages returns all messages for a document
 - Messages are ordered by created_at
-- Assistant messages include sources (JSONB)
+- Assistant messages include sources (JSONB) and optional `pipeline_meta` for historical debug rendering
 
 ### Error Cases
 
