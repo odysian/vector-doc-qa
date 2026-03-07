@@ -26,6 +26,9 @@ PYTHONPATH=. .venv/bin/python scripts/run_mini_eval.py \
   --output-dir reports/mini_eval \
   --top-k 5 \
   --user-id 1 \
+  --min-answer-fact-recall 0.8 \
+  --high-confidence-precision-target 0.9 \
+  --medium-confidence-precision-target 0.7 \
   --db-connect-timeout-seconds 10 \
   --case-timeout-seconds 60
 ```
@@ -59,6 +62,10 @@ Example:
 - Latency: `embed_ms`, `retrieval_ms`, `llm_ms`, `total_ms`
 - Retrieval proxies: `top_similarity`, `avg_similarity`, `chunks_retrieved`
 - Quality proxy: expected fact recall in answer text and retrieved chunk text
+- Confidence calibration recommendations:
+  - Computes `high` and `medium` suggested `top_similarity` cutoffs from observed eval outcomes.
+  - Treats a case as "correct" when `answer.fact_recall >= --min-answer-fact-recall`.
+  - Chooses thresholds that maximize coverage while meeting each precision target when possible.
 
 ## Extending Cases
 
@@ -76,3 +83,6 @@ Example:
 - Fact matching is case-insensitive substring matching; keep `expected_facts` specific enough to avoid accidental partial matches.
 - Each case runs in a separate database session for isolation.
 - If a target document is missing or ambiguous, that case is marked as `error` in the report.
+- Report summary includes a `confidence_calibration` block in JSON and a Markdown table with:
+  - recommended minimum `top_similarity` for `high` and `medium` bands
+  - observed precision/coverage at those thresholds
