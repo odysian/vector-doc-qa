@@ -180,8 +180,18 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 | documents | status | BTREE | Filter by processing state |
 | documents | user_id | BTREE | User's document list |
 | chunks | document_id | BTREE | Chunk retrieval for a document |
+| chunks | embedding (`WHERE embedding IS NOT NULL`) | HNSW (`vector_cosine_ops`) | ANN acceleration for cosine similarity search |
 | refresh_tokens | token | UNIQUE | Token lookup on every refresh request |
 | refresh_tokens | user_id | BTREE | Cleanup queries / revoke all sessions |
+
+### ANN Verification Notes
+
+- Prerequisite: pgvector build must expose `hnsw` + `vector_cosine_ops` support; otherwise migration logs a notice and skips ANN index creation.
+- Verify index exists:
+  - `psql "$DATABASE_URL" -c "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'quaero' AND tablename = 'chunks' AND indexname = 'ix_quaero_chunks_embedding_hnsw';"`
+- Inspect planner behavior on representative vector query:
+  - `psql "$DATABASE_URL" -c "EXPLAIN (ANALYZE, BUFFERS) SELECT id FROM quaero.chunks WHERE embedding IS NOT NULL ORDER BY embedding <=> (SELECT embedding FROM quaero.chunks WHERE embedding IS NOT NULL LIMIT 1) LIMIT 5;"`
+- Planner caveat: current retrieval also filters by `document_id`; for small/selective documents PostgreSQL may still prefer BTREE + sort over ANN.
 
 ---
 
