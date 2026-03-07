@@ -8,9 +8,9 @@ verify: backend-verify frontend-verify ## Run all verification checks
 backend-verify: ## Lint, type-check, test, and security-scan the backend
 	@test -x backend/.venv/bin/ruff || (echo "Missing backend/.venv. Run: cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt" && exit 1)
 	@cd backend && \
-		.venv/bin/ruff check . && \
-		.venv/bin/mypy . --ignore-missing-imports --explicit-package-bases && \
-		.venv/bin/pytest -v && \
+		.venv/bin/ruff check . --cache-dir .ruff_cache && \
+		.venv/bin/mypy . --ignore-missing-imports --explicit-package-bases --cache-dir .mypy_cache && \
+		.venv/bin/pytest -v -o cache_dir=.pytest_cache && \
 		.venv/bin/bandit -r app/ -ll
 
 frontend-verify: ## Type-check, test, lint, and build the frontend
