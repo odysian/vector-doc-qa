@@ -25,6 +25,10 @@ class EvalCase:
     expected_facts: list[str]
 
 
+def _is_valid_rate(value: float) -> bool:
+    return 0.0 <= value <= 1.0
+
+
 def _elapsed_ms(start_time: float) -> int:
     return int((time.perf_counter() - start_time) * 1000)
 
@@ -237,7 +241,155 @@ def _avg_metric(case_results: list[dict[str, Any]], metric_name: str) -> float:
     return round(float(sum(values)) / float(len(values)), 4)
 
 
-def _build_summary(case_results: list[dict[str, Any]]) -> dict[str, Any]:
+def _threshold_stats(
+    *,
+    scored_cases: list[tuple[float, bool]],
+    threshold: float,
+) -> dict[str, Any]:
+    selected = [is_positive for score, is_positive in scored_cases if score >= threshold]
+    selected_cases = len(selected)
+    positive_cases = sum(1 for is_positive in selected if is_positive)
+    precision = round(positive_cases / selected_cases, 4) if selected_cases else 0.0
+    coverage = round(selected_cases / len(scored_cases), 4) if scored_cases else 0.0
+    return {
+        "selected_cases": selected_cases,
+        "positive_cases": positive_cases,
+        "precision": precision,
+        "coverage": coverage,
+    }
+
+
+def _recommend_threshold(
+    *,
+    scored_cases: list[tuple[float, bool]],
+    target_precision: float,
+    max_threshold: float | None = None,
+) -> dict[str, Any] | None:
+    if not scored_cases:
+        return None
+
+    candidates = sorted(
+        {
+            score
+            for score, _ in scored_cases
+            if max_threshold is None or score <= max_threshold
+        },
+        reverse=True,
+    )
+    if not candidates:
+        return None
+
+    best_meeting_target: dict[str, Any] | None = None
+    for threshold in candidates:
+        stats = _threshold_stats(scored_cases=scored_cases, threshold=threshold)
+        if stats["precision"] < target_precision:
+            continue
+        candidate = {
+            "threshold": round(threshold, 4),
+            "target_met": True,
+            **stats,
+        }
+        if best_meeting_target is None:
+            best_meeting_target = candidate
+            continue
+        if candidate["coverage"] > best_meeting_target["coverage"]:
+            best_meeting_target = candidate
+            continue
+        if (
+            candidate["coverage"] == best_meeting_target["coverage"]
+            and candidate["threshold"] < best_meeting_target["threshold"]
+        ):
+            best_meeting_target = candidate
+
+    if best_meeting_target is not None:
+        return best_meeting_target
+
+    fallback: dict[str, Any] | None = None
+    for threshold in candidates:
+        stats = _threshold_stats(scored_cases=scored_cases, threshold=threshold)
+        candidate = {
+            "threshold": round(threshold, 4),
+            "target_met": False,
+            **stats,
+        }
+        if fallback is None:
+            fallback = candidate
+            continue
+        if candidate["precision"] > fallback["precision"]:
+            fallback = candidate
+            continue
+        if (
+            candidate["precision"] == fallback["precision"]
+            and candidate["coverage"] > fallback["coverage"]
+        ):
+            fallback = candidate
+
+    return fallback
+
+
+def _build_confidence_calibration(
+    *,
+    successful_cases: list[dict[str, Any]],
+    min_answer_fact_recall: float,
+    high_precision_target: float,
+    medium_precision_target: float,
+) -> dict[str, Any]:
+    scored_cases: list[tuple[float, bool]] = []
+    for case in successful_cases:
+        metrics = case.get("metrics", {})
+        quality = case.get("quality", {})
+        answer_quality = quality.get("answer", {})
+        top_similarity = metrics.get("top_similarity")
+        answer_recall = answer_quality.get("fact_recall")
+        if not isinstance(top_similarity, (int, float)):
+            continue
+        if not isinstance(answer_recall, (int, float)):
+            continue
+        scored_cases.append(
+            (
+                float(top_similarity),
+                float(answer_recall) >= min_answer_fact_recall,
+            )
+        )
+
+    positive_cases = sum(1 for _, is_positive in scored_cases if is_positive)
+    high_band = _recommend_threshold(
+        scored_cases=scored_cases,
+        target_precision=high_precision_target,
+    )
+    medium_band = _recommend_threshold(
+        scored_cases=scored_cases,
+        target_precision=medium_precision_target,
+        max_threshold=high_band["threshold"] if high_band is not None else None,
+    )
+
+    return {
+        "metric": "top_similarity",
+        "min_answer_fact_recall": round(min_answer_fact_recall, 4),
+        "high_precision_target": round(high_precision_target, 4),
+        "medium_precision_target": round(medium_precision_target, 4),
+        "sample_size": len(scored_cases),
+        "positive_cases": positive_cases,
+        "recommended": {
+            "high_min_top_similarity": (
+                high_band["threshold"] if high_band is not None else None
+            ),
+            "medium_min_top_similarity": (
+                medium_band["threshold"] if medium_band is not None else None
+            ),
+        },
+        "high_band": high_band,
+        "medium_band": medium_band,
+    }
+
+
+def _build_summary(
+    case_results: list[dict[str, Any]],
+    *,
+    min_answer_fact_recall: float = 0.8,
+    high_precision_target: float = 0.9,
+    medium_precision_target: float = 0.7,
+) -> dict[str, Any]:
     successful_cases = [case for case in case_results if case["status"] == "ok"]
     failed_cases = [case for case in case_results if case["status"] != "ok"]
 
@@ -267,6 +419,12 @@ def _build_summary(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "avg_top_similarity": _avg_metric(successful_cases, "top_similarity"),
         "avg_avg_similarity": _avg_metric(successful_cases, "avg_similarity"),
         "avg_chunks_retrieved": _avg_metric(successful_cases, "chunks_retrieved"),
+        "confidence_calibration": _build_confidence_calibration(
+            successful_cases=successful_cases,
+            min_answer_fact_recall=min_answer_fact_recall,
+            high_precision_target=high_precision_target,
+            medium_precision_target=medium_precision_target,
+        ),
     }
 
 
@@ -289,6 +447,34 @@ def _to_markdown(report: dict[str, Any]) -> str:
         f"{summary['avg_answer_fact_recall']} | {summary['avg_retrieval_fact_recall']} | "
         f"{summary['avg_total_ms']} |"
     )
+    lines.append("")
+    lines.append("## Confidence Calibration")
+    lines.append("")
+    calibration = summary["confidence_calibration"]
+    lines.append(
+        f"- Correctness label: `answer.fact_recall >= {calibration['min_answer_fact_recall']}`"
+    )
+    lines.append(
+        f"- Sample size: `{calibration['sample_size']}` "
+        f"(positives: `{calibration['positive_cases']}`)"
+    )
+    lines.append("")
+    lines.append(
+        "| band | target_precision | recommended_min_top_similarity | observed_precision | coverage | selected_cases |"
+    )
+    lines.append("|---|---|---|---|---|---|")
+    for band_name, target_key in (
+        ("high", "high_precision_target"),
+        ("medium", "medium_precision_target"),
+    ):
+        band = calibration[f"{band_name}_band"]
+        if band is None:
+            lines.append(f"| {band_name} | {calibration[target_key]} | - | - | - | - |")
+            continue
+        lines.append(
+            f"| {band_name} | {calibration[target_key]} | {band['threshold']} | "
+            f"{band['precision']} | {band['coverage']} | {band['selected_cases']} |"
+        )
     lines.append("")
     lines.append("## Per-case Results")
     lines.append("")
@@ -362,7 +548,35 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Optional document owner scope when resolving target_document filenames.",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--min-answer-fact-recall",
+        type=float,
+        default=0.8,
+        help="Fact-recall cutoff used to mark an eval case as correct.",
+    )
+    parser.add_argument(
+        "--high-confidence-precision-target",
+        type=float,
+        default=0.9,
+        help="Target precision for the recommended high-confidence threshold.",
+    )
+    parser.add_argument(
+        "--medium-confidence-precision-target",
+        type=float,
+        default=0.7,
+        help="Target precision for the recommended medium-confidence threshold.",
+    )
+    args = parser.parse_args()
+
+    for arg_name in (
+        "min_answer_fact_recall",
+        "high_confidence_precision_target",
+        "medium_confidence_precision_target",
+    ):
+        value = float(getattr(args, arg_name))
+        if not _is_valid_rate(value):
+            raise ValueError(f"--{arg_name.replace('_', '-')} must be between 0.0 and 1.0")
+    return args
 
 
 async def _run_eval(args: argparse.Namespace) -> dict[str, Any]:
@@ -394,7 +608,12 @@ async def _run_eval(args: argparse.Namespace) -> dict[str, Any]:
             "generated_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "fixture_path": str(args.fixture),
             "cases": case_results,
-            "summary": _build_summary(case_results),
+            "summary": _build_summary(
+                case_results,
+                min_answer_fact_recall=args.min_answer_fact_recall,
+                high_precision_target=args.high_confidence_precision_target,
+                medium_precision_target=args.medium_confidence_precision_target,
+            ),
         }
 
     for eval_case in cases:
@@ -432,7 +651,12 @@ async def _run_eval(args: argparse.Namespace) -> dict[str, Any]:
         "generated_at": generated_at,
         "fixture_path": str(args.fixture),
         "cases": case_results,
-        "summary": _build_summary(case_results),
+        "summary": _build_summary(
+            case_results,
+            min_answer_fact_recall=args.min_answer_fact_recall,
+            high_precision_target=args.high_confidence_precision_target,
+            medium_precision_target=args.medium_confidence_precision_target,
+        ),
     }
 
 

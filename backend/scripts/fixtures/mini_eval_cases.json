@@ -37,6 +37,258 @@
         "eye",
         "police"
       ]
+    },
+    {
+      "case_id": "case-005-access-owner-effective-date",
+      "question": "Who owns the access control policy and what is its effective date?",
+      "target_document": "access-control-policy.pdf",
+      "expected_facts": [
+        "Mira Solano",
+        "2026-02-01"
+      ]
+    },
+    {
+      "case_id": "case-006-access-mfa-threshold",
+      "question": "At what privilege level does the policy require MFA?",
+      "target_document": "access-control-policy.pdf",
+      "expected_facts": [
+        "MFA required for roles P3 and above",
+        "P3"
+      ]
+    },
+    {
+      "case_id": "case-007-access-contractor-review-cadence",
+      "question": "How long until inactive contractor access expires, and how often are privileged access reviews required?",
+      "target_document": "access-control-policy.pdf",
+      "expected_facts": [
+        "contractor access expires after 14 days of inactivity",
+        "privileged access review every 45 days"
+      ]
+    },
+    {
+      "case_id": "case-008-access-mailbox-sla-compare",
+      "question": "Which values define the shared mailbox delegate cap and the approval SLA?",
+      "target_document": "access-control-policy.pdf",
+      "expected_facts": [
+        "max shared mailbox delegates 3",
+        "approval SLA 8 business hours"
+      ]
+    },
+    {
+      "case_id": "case-009-privacy-version-publication",
+      "question": "What notice version is published, and on what date?",
+      "target_document": "privacy-notice-platform.pdf",
+      "expected_facts": [
+        "v3.2",
+        "2026-01-15"
+      ]
+    },
+    {
+      "case_id": "case-010-privacy-request-workflow",
+      "question": "What code is used for structured privacy requests, and which privacy contact alias is listed?",
+      "target_document": "privacy-notice-platform.pdf",
+      "expected_facts": [
+        "PRIV-7",
+        "privacy@northlight.test"
+      ]
+    },
+    {
+      "case_id": "case-011-privacy-retention-deletion",
+      "question": "What are the retention period for analytics data and the deletion fulfillment target?",
+      "target_document": "privacy-notice-platform.pdf",
+      "expected_facts": [
+        "analytics data retained 13 months",
+        "account deletion fulfillment within 21 days"
+      ]
+    },
+    {
+      "case_id": "case-012-privacy-age-cookie-refresh",
+      "question": "What minimum age floor applies, and how frequently are cookie preferences refreshed?",
+      "target_document": "privacy-notice-platform.pdf",
+      "expected_facts": [
+        "minor account age floor 16",
+        "cookie preference refresh every 180 days"
+      ]
+    },
+    {
+      "case_id": "case-013-sensor-model-firmware",
+      "question": "Which model and firmware baseline does the manual cover?",
+      "target_document": "product-manual-sensor-hub.pdf",
+      "expected_facts": [
+        "SH-88",
+        "2.4.1"
+      ]
+    },
+    {
+      "case_id": "case-014-sensor-default-pin",
+      "question": "What default admin PIN is required for first-time setup access?",
+      "target_document": "product-manual-sensor-hub.pdf",
+      "expected_facts": [
+        "default admin PIN 481920",
+        "local setup interface"
+      ]
+    },
+    {
+      "case_id": "case-015-sensor-temp-calibration",
+      "question": "What operating temperature range is supported and what is the calibration interval?",
+      "target_document": "product-manual-sensor-hub.pdf",
+      "expected_facts": [
+        "operating temp -10°C to 55°C",
+        "calibration interval 120 days"
+      ]
+    },
+    {
+      "case_id": "case-016-sensor-pairing-timeout-limits",
+      "question": "What are the maximum paired sensor count and setup timeout?",
+      "target_document": "product-manual-sensor-hub.pdf",
+      "expected_facts": [
+        "max paired sensors 32",
+        "setup timeout 12 minutes"
+      ]
+    },
+    {
+      "case_id": "case-017-incident-id-date",
+      "question": "What incident ID and outage date are listed for the payments outage?",
+      "target_document": "incident-report-payments-outage.pdf",
+      "expected_facts": [
+        "INC-4471",
+        "2026-02-19"
+      ]
+    },
+    {
+      "case_id": "case-018-incident-root-cause",
+      "question": "What service was identified as the root cause, and which deploy build triggered the issue?",
+      "target_document": "incident-report-payments-outage.pdf",
+      "expected_facts": [
+        "ledger-sync",
+        "failed deploy build b781"
+      ]
+    },
+    {
+      "case_id": "case-019-incident-detect-recover-times",
+      "question": "When was the outage detected and when was full recovery declared?",
+      "target_document": "incident-report-payments-outage.pdf",
+      "expected_facts": [
+        "09:14 UTC",
+        "10:02 UTC"
+      ]
+    },
+    {
+      "case_id": "case-020-incident-region-impact",
+      "question": "Which region was impacted and how many transactions were impacted?",
+      "target_document": "incident-report-payments-outage.pdf",
+      "expected_facts": [
+        "us-east-2",
+        "impacted transactions 18,240"
+      ]
+    },
+    {
+      "case_id": "case-021-finance-code-period",
+      "question": "What memo code and period identify the quarterly finance memo?",
+      "target_document": "quarterly-finance-memo-q2.pdf",
+      "expected_facts": [
+        "FIN-Q2-26-04",
+        "Q2 FY2026"
+      ]
+    },
+    {
+      "case_id": "case-022-finance-hiring-exception-threshold",
+      "question": "What ARR threshold is used for hiring freeze exception escalation?",
+      "target_document": "quarterly-finance-memo-q2.pdf",
+      "expected_facts": [
+        "hiring freeze exception threshold >$180,000 ARR",
+        "exception review"
+      ]
+    },
+    {
+      "case_id": "case-023-finance-revenue-target-forecast",
+      "question": "What are the quarter revenue target and actual forecast values?",
+      "target_document": "quarterly-finance-memo-q2.pdf",
+      "expected_facts": [
+        "revenue target $8.4M",
+        "actual forecast $8.1M"
+      ]
+    },
+    {
+      "case_id": "case-024-finance-travel-software-controls",
+      "question": "What values define the travel control and software spend review threshold?",
+      "target_document": "quarterly-finance-memo-q2.pdf",
+      "expected_facts": [
+        "travel cap reduction 12%",
+        "software spend review threshold $9,000"
+      ]
+    },
+    {
+      "case_id": "case-025-acme-arr-retention",
+      "question": "What were the quarter's ARR value and net revenue retention rate?",
+      "target_document": "acme-q4-report.pdf",
+      "expected_facts": [
+        "$16.2M",
+        "113%"
+      ]
+    },
+    {
+      "case_id": "case-026-acme-forward-guidance-ranges",
+      "question": "What revenue guidance did management issue for Q1 FY2025 and for full-year FY2025?",
+      "target_document": "acme-q4-report.pdf",
+      "expected_facts": [
+        "$5.2M to $5.5M",
+        "$22M to $24M"
+      ]
+    },
+    {
+      "case_id": "case-027-security-policy-metadata",
+      "question": "What are the document ID and version of the Meridian security policy?",
+      "target_document": "security-policy-2025.pdf",
+      "expected_facts": [
+        "SEC-POL-2025-001",
+        "Version 4.2"
+      ]
+    },
+    {
+      "case_id": "case-028-security-password-rotation-cadence",
+      "question": "How often must standard user passwords rotate, and how often must privileged passwords rotate?",
+      "target_document": "security-policy-2025.pdf",
+      "expected_facts": [
+        "every 90 days",
+        "every 30 days"
+      ]
+    },
+    {
+      "case_id": "case-029-security-patching-deadlines",
+      "question": "What are the patch deadlines for standard updates versus critical security patches?",
+      "target_document": "security-policy-2025.pdf",
+      "expected_facts": [
+        "within 14 calendar days",
+        "within 72 hours"
+      ]
+    },
+    {
+      "case_id": "case-030-telltale-eye-description",
+      "question": "How does the narrator describe the old man's eye?",
+      "target_document": "the-tell-tale-heart.pdf",
+      "expected_facts": [
+        "a pale blue eye, with a film over it",
+        "a dull blue, with a hideous veil over it"
+      ]
+    },
+    {
+      "case_id": "case-031-telltale-surveillance-timing",
+      "question": "For how many nights did the narrator watch the old man, and on which night did he act?",
+      "target_document": "the-tell-tale-heart.pdf",
+      "expected_facts": [
+        "seven long nights",
+        "Upon the eighth night"
+      ]
+    },
+    {
+      "case_id": "case-032-telltale-confession-line",
+      "question": "What line does the narrator shout at the end to confess the crime?",
+      "target_document": "the-tell-tale-heart.pdf",
+      "expected_facts": [
+        "tear up the planks",
+        "beating of his hideous heart"
+      ]
     }
   ]
 }

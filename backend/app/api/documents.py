@@ -36,7 +36,8 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 CONVERSATION_HISTORY_WINDOW_TURNS = 5
-SIMILARITY_THRESHOLD = 0.75
+# Practical confidence threshold calibrated from mini-eval snapshots (2026-03-07).
+SIMILARITY_THRESHOLD = 0.60
 
 
 def _elapsed_ms(start_time: float) -> int:
