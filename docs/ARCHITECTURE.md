@@ -148,7 +148,7 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 | user_id | INTEGER | FK → users.id, ON DELETE CASCADE |
 | role | VARCHAR(20) | NOT NULL, CHECK IN ('user', 'assistant') |
 | content | TEXT | NOT NULL |
-| sources | JSONB | nullable (search results for assistant messages) |
+| sources | JSONB | nullable (assistant payload: `sources[]` and optional `pipeline_meta`) |
 | created_at | TIMESTAMP | DEFAULT now(), NOT NULL |
 
 ### refresh_tokens
@@ -323,7 +323,7 @@ back to socket peer IP to prevent header spoofing.
 - **Auth:** Required
 - **Rate Limit:** 10/hour per user/IP
 - **Request Body:** `{ "query": "string" }`
-- **Success (200):** `{ "query": "...", "answer": "...", "sources": [...], "pipeline_meta": { "embed_ms": 12, "retrieval_ms": 8, "llm_ms": 420, "total_ms": 440, "top_similarity": 0.91, "avg_similarity": 0.82, "chunks_retrieved": 5 } }`
+- **Success (200):** `{ "query": "...", "answer": "...", "sources": [...], "pipeline_meta": { "embed_ms": 12, "retrieval_ms": 8, "llm_ms": 420, "total_ms": 440, "top_similarity": 0.91, "avg_similarity": 0.82, "chunks_retrieved": 5, "chunks_above_threshold": 4, "similarity_spread": 0.12, "chat_history_turns_included": 3 } }`
 - **Notes:** Full RAG pipeline — loads bounded recent chat history (oldest -> newest), embeds query, searches chunks, sends to Claude, saves messages
 - **Errors:**
   - 404: Document not found
@@ -335,7 +335,7 @@ back to socket peer IP to prevent header spoofing.
 - **Success (200):** `text/event-stream` with ordered events:
   - `sources`: JSON array of search results
   - `token`: streamed answer token text
-  - `meta`: pipeline metadata (`embed_ms`, `retrieval_ms`, `llm_ms`, `total_ms`, `top_similarity`, `avg_similarity`, `chunks_retrieved`)
+  - `meta`: pipeline metadata (`embed_ms`, `retrieval_ms`, `llm_ms`, `total_ms`, `top_similarity`, `avg_similarity`, `chunks_retrieved`, `chunks_above_threshold`, `similarity_spread`, `chat_history_turns_included`)
   - `done`: `{ "message_id": <int> }`
   - `error`: `{ "detail": "..." }` on failures
 - **Notes:** Uses a two-transaction pattern to avoid holding a DB session while streaming; includes the same bounded recent chat history window used by `/query`
@@ -344,7 +344,7 @@ back to socket peer IP to prevent header spoofing.
 #### GET /api/documents/{document_id}/messages
 - **Auth:** Required
 - **Rate Limit:** 30/hour per user/IP
-- **Success (200):** `{ "messages": [{ "id": 1, "role": "user", "content": "...", "sources": [...], "created_at": "..." }] }`
+- **Success (200):** `{ "messages": [{ "id": 1, "role": "assistant", "content": "...", "sources": [...], "pipeline_meta": { ... }, "created_at": "..." }] }`
 - **Notes:** Returns chat history for a specific document
 
 ---

@@ -33,7 +33,8 @@ describe("api.queryDocumentStream", () => {
         "event: token\ndata: Hel",
         "lo\n\n",
         "event: meta\ndata: {\"embed_ms\":12,\"retrieval_ms\":8,",
-        "\"llm_ms\":40,\"total_ms\":60,\"top_similarity\":0.91,\"avg_similarity\":0.88,\"chunks_retrieved\":1}\n\n",
+        "\"llm_ms\":40,\"total_ms\":60,\"top_similarity\":0.91,\"avg_similarity\":0.88,\"chunks_retrieved\":1,",
+        "\"chunks_above_threshold\":1,\"similarity_spread\":0,\"chat_history_turns_included\":2}\n\n",
         "event: done\ndata: {\"message_id\":77}\n\n",
       ])
     );
@@ -83,6 +84,9 @@ describe("api.queryDocumentStream", () => {
         top_similarity: 0.91,
         avg_similarity: 0.88,
         chunks_retrieved: 1,
+        chunks_above_threshold: 1,
+        similarity_spread: 0,
+        chat_history_turns_included: 2,
       },
     ]);
     expect(donePayloads).toEqual([{ message_id: 77 }]);

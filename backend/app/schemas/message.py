@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
+from app.schemas.query import PipelineMeta
 
 
 class MessageSource(BaseModel):
@@ -28,7 +29,7 @@ class MessageCreate(MessageBase):
 
     document_id: int
     user_id: int
-    sources: Optional[List[dict]] = None
+    sources: Optional[dict | List[dict]] = None
 
 
 class MessageResponse(MessageBase):
@@ -38,6 +39,7 @@ class MessageResponse(MessageBase):
     document_id: int
     user_id: int
     sources: Optional[List[dict]] = None
+    pipeline_meta: PipelineMeta | None = None
     created_at: datetime
 
     class Config:
