@@ -23,7 +23,7 @@ DEMO_USERNAME = "demo"
 DEMO_EMAIL = "demo@quaero.dev"
 DEMO_PASSWORD = "demo"
 DEMO_FIXTURE_PATH = (
-    Path(__file__).resolve().parents[3] / "scripts" / "fixtures" / "demo_seed_data.json"
+    Path(__file__).resolve().parents[2] / "scripts" / "fixtures" / "demo_seed_data.json"
 )
 DEMO_PLACEHOLDER_PDF_BYTES = b"""%PDF-1.4
 1 0 obj
