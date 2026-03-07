@@ -53,6 +53,8 @@ async def _to_serializable_payload(
                 {
                     "content": chunk.content,
                     "chunk_index": chunk.chunk_index,
+                    "page_start": chunk.page_start,
+                    "page_end": chunk.page_end,
                     "embedding": (
                         [float(value) for value in chunk.embedding]
                         if chunk.embedding is not None

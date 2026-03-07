@@ -15,6 +15,7 @@ from app.utils.logging_config import get_logger
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 logger = get_logger(__name__)
 
@@ -54,6 +55,15 @@ def _coerce_int(value: Any, *, default: int = 0) -> int:
         return default
 
 
+def _coerce_optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _load_fixture_payload(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         logger.warning("Demo seed fixture not found at %s; skipping document seeding", path)
@@ -87,6 +97,44 @@ def _fixture_filename_set(documents_payload: list[dict[str, Any]]) -> set[str]:
         filename = str(doc_payload.get("filename", f"demo-document-{index}.pdf"))
         filenames.add(filename)
     return filenames
+
+
+def _fixture_document_signature(
+    documents_payload: list[dict[str, Any]],
+) -> set[tuple[str, int, int]]:
+    signature: set[tuple[str, int, int]] = set()
+    for index, doc_payload in enumerate(documents_payload, start=1):
+        filename = str(doc_payload.get("filename", f"demo-document-{index}.pdf"))
+        chunks_payload = doc_payload.get("chunks", [])
+        if not isinstance(chunks_payload, list):
+            chunks_payload = []
+
+        chunk_count = 0
+        chunks_with_page_metadata = 0
+        for chunk_payload in chunks_payload:
+            if not isinstance(chunk_payload, dict):
+                continue
+            chunk_count += 1
+            page_start = _coerce_optional_int(chunk_payload.get("page_start"))
+            page_end = _coerce_optional_int(chunk_payload.get("page_end"))
+            if page_start is not None or page_end is not None:
+                chunks_with_page_metadata += 1
+
+        signature.add((filename, chunk_count, chunks_with_page_metadata))
+    return signature
+
+
+def _existing_document_signature(existing_documents: list[Document]) -> set[tuple[str, int, int]]:
+    signature: set[tuple[str, int, int]] = set()
+    for document in existing_documents:
+        chunk_count = len(document.chunks)
+        chunks_with_page_metadata = sum(
+            1
+            for chunk in document.chunks
+            if chunk.page_start is not None or chunk.page_end is not None
+        )
+        signature.add((document.filename, chunk_count, chunks_with_page_metadata))
+    return signature
 
 
 async def _ensure_seeded_file(
@@ -182,8 +230,8 @@ async def _seed_documents(
                     document_id=document.id,
                     content=str(chunk_payload.get("content", "")),
                     chunk_index=_coerce_int(chunk_payload.get("chunk_index"), default=0),
-                    page_start=None,
-                    page_end=None,
+                    page_start=_coerce_optional_int(chunk_payload.get("page_start")),
+                    page_end=_coerce_optional_int(chunk_payload.get("page_end")),
                     embedding=embedding,
                 )
             )
@@ -196,13 +244,19 @@ async def _reconcile_documents_for_existing_demo_user(
     documents_payload: list[dict[str, Any]],
 ) -> int:
     existing_documents = list(
-        await db.scalars(select(Document).where(Document.user_id == demo_user.id))
+        await db.scalars(
+            select(Document)
+            .where(Document.user_id == demo_user.id)
+            .options(selectinload(Document.chunks))
+        )
     )
     fixture_filenames = _fixture_filename_set(documents_payload)
     existing_filenames = {document.filename for document in existing_documents}
 
-    if fixture_filenames == existing_filenames:
-        logger.info("Demo seed no-op: fixture filenames unchanged")
+    if fixture_filenames == existing_filenames and _fixture_document_signature(
+        documents_payload
+    ) == _existing_document_signature(existing_documents):
+        logger.info("Demo seed no-op: fixture signature unchanged")
         return len(existing_documents)
 
     for document in existing_documents:

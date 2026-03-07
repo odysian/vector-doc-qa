@@ -37,6 +37,8 @@ def _write_fixture(
             {
                 "content": "Demo chunk content",
                 "chunk_index": 0,
+                "page_start": 2,
+                "page_end": 3,
                 "embedding": [0.1] * 1536,
             }
         ],
@@ -160,6 +162,8 @@ class TestDemoSeedService:
         chunk = await db_session.scalar(select(Chunk).where(Chunk.document_id == document.id))
         assert chunk is not None
         assert chunk.chunk_index == 0
+        assert chunk.page_start == 2
+        assert chunk.page_end == 3
         assert chunk.embedding is not None
         assert len(chunk.embedding) == 1536
 
@@ -220,6 +224,18 @@ class TestDemoSeedService:
             user_id=demo_user.id,
         )
         db_session.add(existing_document)
+        await db_session.flush()
+
+        db_session.add(
+            Chunk(
+                document_id=existing_document.id,
+                content="Demo chunk content",
+                chunk_index=0,
+                page_start=2,
+                page_end=3,
+                embedding=[0.1] * 1536,
+            )
+        )
         await db_session.flush()
 
         existing_document_id = existing_document.id
@@ -290,6 +306,71 @@ class TestDemoSeedService:
             .where(Document.filename == "stale-demo.pdf")
         )
         assert stale_count == 0
+
+    async def test_seed_reconciles_when_page_metadata_mismatch(
+        self,
+        db_session: AsyncSession,
+        monkeypatch,
+        tmp_path: Path,
+    ):
+        fixture_path = tmp_path / "demo_seed_data.json"
+        _write_fixture(fixture_path, filename="demo-fixture.pdf")
+        monkeypatch.setattr(demo_seed_service, "DEMO_FIXTURE_PATH", fixture_path)
+        monkeypatch.setattr(
+            demo_seed_service,
+            "read_file_bytes",
+            AsyncMock(side_effect=FileNotFoundError("missing")),
+        )
+        monkeypatch.setattr(
+            demo_seed_service,
+            "write_file_bytes",
+            AsyncMock(return_value=None),
+        )
+
+        demo_user = User(
+            username=demo_seed_service.DEMO_USERNAME,
+            email=demo_seed_service.DEMO_EMAIL,
+            hashed_password="unused",
+            is_demo=True,
+        )
+        db_session.add(demo_user)
+        await db_session.flush()
+
+        existing_document = Document(
+            filename="demo-fixture.pdf",
+            file_path="uploads/demo-fixture.pdf",
+            file_size=123,
+            status=DocumentStatus.COMPLETED,
+            user_id=demo_user.id,
+        )
+        db_session.add(existing_document)
+        await db_session.flush()
+
+        db_session.add(
+            Chunk(
+                document_id=existing_document.id,
+                content="Demo chunk content",
+                chunk_index=0,
+                page_start=None,
+                page_end=None,
+                embedding=[0.1] * 1536,
+            )
+        )
+        await db_session.commit()
+
+        await demo_seed_service.seed_demo_user(db_session)
+
+        refreshed_document = await db_session.scalar(
+            select(Document).where(Document.user_id == demo_user.id)
+        )
+        assert refreshed_document is not None
+
+        refreshed_chunk = await db_session.scalar(
+            select(Chunk).where(Chunk.document_id == refreshed_document.id)
+        )
+        assert refreshed_chunk is not None
+        assert refreshed_chunk.page_start == 2
+        assert refreshed_chunk.page_end == 3
 
     async def test_seed_reconciliation_cascades_chunk_and_message_cleanup(
         self,
@@ -559,6 +640,8 @@ class TestDemoSeedService:
                         {
                             "content": "Demo startup chunk",
                             "chunk_index": 0,
+                            "page_start": 1,
+                            "page_end": 1,
                             "embedding": [0.1] * 1536,
                         }
                     ],
@@ -598,6 +681,8 @@ class TestDemoSeedService:
                         {
                             "content": "Demo startup embedded chunk",
                             "chunk_index": 0,
+                            "page_start": 1,
+                            "page_end": 1,
                             "embedding": [0.1] * 1536,
                         }
                     ],
