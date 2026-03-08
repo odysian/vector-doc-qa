@@ -6,17 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import Document, DocumentStatus
 from app.models.user import User
+from app.repositories.document_repository import (
+    create_document,
+    get_document_for_user,
+    list_documents_for_user,
+)
 from app.schemas.document import (
     DocumentListResponse,
     DocumentResponse,
     DocumentStatusResponse,
     UploadResponse,
-)
-from app.services.document_service import (
-    create_uploaded_document,
-    get_user_document,
-    list_user_documents,
-    remove_document,
 )
 from app.services.queue_service import enqueue_document_processing
 from app.services.storage_service import delete_file, read_file_bytes
@@ -32,7 +31,7 @@ async def _get_document_for_user_or_404(
     document_id: int,
     user_id: int,
 ) -> Document:
-    document = await get_user_document(
+    document = await get_document_for_user(
         db=db,
         document_id=document_id,
         user_id=user_id,
@@ -65,13 +64,16 @@ async def upload_document_command(
         raise HTTPException(status_code=400, detail="No filename provided")
 
     file_path, file_size = await save_upload_file(file)
-    document = await create_uploaded_document(
+    document = await create_document(
         db=db,
         filename=filename,
         file_path=file_path,
         file_size=file_size,
         user_id=current_user.id,
+        status=DocumentStatus.PENDING,
     )
+    await db.commit()
+    await db.refresh(document)
 
     try:
         await enqueue_document_processing(document.id)
@@ -107,7 +109,7 @@ async def list_documents_command(
     db: AsyncSession,
     user_id: int,
 ) -> DocumentListResponse:
-    documents = await list_user_documents(db=db, user_id=user_id)
+    documents = await list_documents_for_user(db=db, user_id=user_id)
     return DocumentListResponse(
         documents=[DocumentResponse.model_validate(d) for d in documents],
         total=len(documents),
@@ -202,7 +204,7 @@ async def delete_document_command(
     )
 
     await delete_file(document.file_path)
-    await remove_document(db=db, document=document)
+    await db.delete(document)
     await db.commit()
 
     logger.info("Successfully deleted document_id=%s", document_id)
