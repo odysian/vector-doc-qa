@@ -1,2 +1,1 @@
-"""Database repositories for document and message persistence primitives."""
-
+"""Database repositories for auth, document, and message persistence primitives."""

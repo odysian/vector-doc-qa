@@ -5,9 +5,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_access_token
-from app.crud.user import get_user_by_id
 from app.database import get_db
 from app.models.user import User
+from app.repositories.user_repository import get_user_by_id
 
 # auto_error=False: returns None instead of raising 401 when no Bearer header,
 # so we can check for a cookie token first before deciding to 401.
@@ -57,7 +57,7 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = await get_user_by_id(db, uid)
+    user = await get_user_by_id(db=db, user_id=uid)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
