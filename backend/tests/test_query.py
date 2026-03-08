@@ -154,10 +154,10 @@ class TestSearch:
     ):
         with (
             patch(
-                "app.api.documents.search_chunks",
+                "app.services.document_query_service.search_chunks_with_timings",
                 side_effect=RuntimeError("sensitive search payload"),
             ),
-            patch("app.api.documents.logger.error") as mock_error,
+            patch("app.services.document_query_service.logger.error") as mock_error,
         ):
             response = await client.post(
                 f"/api/documents/{processed_document.id}/search",
@@ -318,7 +318,7 @@ class TestQuery:
         test_user: User,
     ):
         raw_query = "sensitive compensation details"
-        with patch("app.api.documents.logger.info") as mock_info:
+        with patch("app.services.document_query_service.logger.info") as mock_info:
             response = await client.post(
                 f"/api/documents/{processed_document.id}/query",
                 headers=auth_headers,
@@ -342,10 +342,10 @@ class TestQuery:
     ):
         with (
             patch(
-                "app.api.documents.generate_embedding",
+                "app.services.document_query_service.search_chunks_with_timings",
                 side_effect=RuntimeError("sensitive query payload"),
             ),
-            patch("app.api.documents.logger.error") as mock_error,
+            patch("app.services.document_query_service.logger.error") as mock_error,
         ):
             response = await client.post(
                 f"/api/documents/{processed_document.id}/query",
