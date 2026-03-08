@@ -338,8 +338,8 @@ def mock_embeddings():
 def mock_anthropic():
     """Mock answer generation at definition + runtime call sites."""
     with patch(
-        # documents API imports generate_answer directly; patch that runtime symbol
-        "app.api.documents.generate_answer",
+        # document_query_service imports generate_answer directly; patch runtime symbol
+        "app.services.document_query_service.generate_answer",
         new_callable=AsyncMock,
         return_value="This is a test answer based on the document.",
     ) as mock_api, patch(

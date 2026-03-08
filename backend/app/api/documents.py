@@ -16,7 +16,7 @@ from app.schemas.document import (
 from app.schemas.message import MessageListResponse, MessageResponse
 from app.schemas.query import PipelineMeta, QueryRequest, QueryResponse
 from app.schemas.search import SearchRequest, SearchResponse, SearchResult
-from app.services.anthropic_service import generate_answer, generate_answer_stream
+from app.services.anthropic_service import generate_answer_stream
 from app.services.document_commands_service import (
     delete_document_command,
     get_document_command,
@@ -26,6 +26,10 @@ from app.services.document_commands_service import (
     process_document_command,
     upload_document_command,
 )
+from app.services.document_query_service import (
+    query_document_command,
+    search_document_command,
+)
 from app.services.embedding_service import generate_embedding
 from app.services.document_service import (
     add_message,
@@ -34,7 +38,7 @@ from app.services.document_service import (
     list_user_document_messages,
     user_document_has_chunks,
 )
-from app.services.search_service import search_chunks, search_chunks_from_embedding
+from app.services.search_service import search_chunks_from_embedding
 from app.utils.logging_config import get_logger
 from app.utils.rate_limit import get_user_or_ip_key, limiter
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
@@ -316,37 +320,12 @@ async def search_document(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _validate_document_for_query(
+    return await search_document_command(
+        db=db,
         document_id=document_id,
         current_user=current_user,
-        db=db,
+        search=search,
     )
-
-    try:
-        results = await search_chunks(
-            query=search.query, document_id=document_id, top_k=search.top_k, db=db
-        )
-
-        search_results = [SearchResult(**result) for result in results]
-        return SearchResponse(
-            query=search.query,
-            document_id=document_id,
-            results=search_results,
-            total_results=len(results),
-        )
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    except Exception as e:
-        logger.error(
-            "Search failed for document_id=%s, user_id=%s, error_class=%s",
-            document_id,
-            current_user.id,
-            type(e).__name__,
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail="Search failed")
 
 
 @router.post("/{document_id}/query", response_model=QueryResponse)
@@ -358,116 +337,14 @@ async def query_document(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Ask a question about a document and get an AI-generated answer.
-
-    Uses semantic search to find relevant chunks, then sends them to Claude
-    for natural language answer generation. Persists both user and assistant
-    messages to the database for chat history.
-    """
-
-    logger.info(
-        f"Query request for document_id={document_id}, user_id={current_user.id}, query_chars={len(body.query)}"
-    )
-
-    await _validate_document_for_query(
+    return await query_document_command(
+        db=db,
         document_id=document_id,
         current_user=current_user,
-        db=db,
+        body=body,
+        history_window_turns=CONVERSATION_HISTORY_WINDOW_TURNS,
+        similarity_threshold=SIMILARITY_THRESHOLD,
     )
-
-    try:
-        conversation_history = await _get_recent_conversation_history(
-            db=db,
-            document_id=document_id,
-            user_id=current_user.id,
-        )
-
-        user_message = await add_message(
-            db=db,
-            document_id=document_id,
-            user_id=current_user.id,
-            role="user",
-            content=body.query,
-            sources=None,
-        )
-
-        pipeline_start = time.perf_counter()
-
-        embedding_start = time.perf_counter()
-        query_embedding = await generate_embedding(body.query)
-        embed_ms = _elapsed_ms(embedding_start)
-
-        retrieval_start = time.perf_counter()
-        search_results = await _search_chunks_from_embedding(
-            db=db,
-            document_id=document_id,
-            query_embedding=query_embedding,
-            top_k=5,
-        )
-        retrieval_ms = _elapsed_ms(retrieval_start)
-
-        llm_start = time.perf_counter()
-        answer = await generate_answer(
-            query=body.query,
-            chunks=search_results,
-            conversation_history=conversation_history,
-        )
-        llm_ms = _elapsed_ms(llm_start)
-        total_ms = _elapsed_ms(pipeline_start)
-
-        # Format sources for response
-        sources = [SearchResult(**result) for result in search_results]
-        pipeline_meta = _build_pipeline_meta(
-            search_results=search_results,
-            conversation_history=conversation_history,
-            embed_ms=embed_ms,
-            retrieval_ms=retrieval_ms,
-            llm_ms=llm_ms,
-            total_ms=total_ms,
-        )
-
-        # Save assistant message to database
-        # Convert SearchResult objects to dicts for JSONB storage
-        sources_dict = [source.model_dump() for source in sources]
-        assistant_message = await add_message(
-            db=db,
-            document_id=document_id,
-            user_id=current_user.id,
-            role="assistant",
-            content=answer,
-            sources=_build_message_sources_payload(
-                sources=sources_dict,
-                pipeline_meta=pipeline_meta,
-            ),
-        )
-        await db.commit()
-
-        logger.info(
-            f"Saved messages for document_id={document_id}: user_msg_id={user_message.id}, assistant_msg_id={assistant_message.id}"
-        )
-
-        return QueryResponse(
-            query=body.query,
-            answer=answer,
-            sources=sources,
-            pipeline_meta=pipeline_meta,
-        )
-
-    except ValueError as e:
-        await db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-
-    except Exception as e:
-        await db.rollback()
-        logger.error(
-            "Query failed for document_id=%s, user_id=%s, error_class=%s",
-            document_id,
-            current_user.id,
-            type(e).__name__,
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail="Query failed")
 
 
 @router.post("/{document_id}/query/stream")
