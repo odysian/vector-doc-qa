@@ -54,6 +54,23 @@ def _write_fixture(
 
 
 class TestDemoSeedService:
+    def test_seed_service_has_no_direct_db_query_or_persistence_primitives(self):
+        # Keep service orchestration-only; SQLAlchemy persistence/query calls belong in repositories.
+        source_text = Path(demo_seed_service.__file__).read_text(encoding="utf-8")
+        forbidden_patterns = (
+            "select(",
+            "db.scalar(",
+            "db.scalars(",
+            "db.execute(",
+            "db.flush(",
+            "db.delete(",
+        )
+
+        for pattern in forbidden_patterns:
+            assert pattern not in source_text, (
+                f"Found forbidden DB primitive '{pattern}' in demo_seed_service.py"
+            )
+
     async def _run_startup_seed_file_fetch_flow(
         self,
         *,
