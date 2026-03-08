@@ -47,7 +47,7 @@ startxref
 async def _upload_pdf(client, headers, content=MINIMAL_PDF, filename="test.pdf"):
     """Helper to upload a PDF file."""
     with patch(
-        "app.api.documents.enqueue_document_processing",
+        "app.services.document_commands_service.enqueue_document_processing",
         new=AsyncMock(return_value=True),
     ):
         return await client.post(
@@ -81,7 +81,7 @@ class TestUpload:
 
     async def test_upload_enqueues_background_processing(self, client, auth_headers):
         with patch(
-            "app.api.documents.enqueue_document_processing",
+            "app.services.document_commands_service.enqueue_document_processing",
             new=AsyncMock(return_value=True),
         ) as mock_enqueue:
             response = await client.post(
@@ -98,7 +98,7 @@ class TestUpload:
         self, client, auth_headers, db_session: AsyncSession
     ):
         with patch(
-            "app.api.documents.enqueue_document_processing",
+            "app.services.document_commands_service.enqueue_document_processing",
             new=AsyncMock(side_effect=RuntimeError("queue unavailable")),
         ):
             response = await client.post(
@@ -255,7 +255,7 @@ class TestGetDocumentFile:
         pdf_bytes = b"%PDF-1.4 test payload"
 
         with patch(
-            "app.api.documents.read_file_bytes",
+            "app.services.document_commands_service.read_file_bytes",
             new=AsyncMock(return_value=pdf_bytes),
         ):
             response = await client.get(
@@ -340,7 +340,7 @@ class TestDeleteDocument:
         await db_session.flush()
 
         with patch(
-            "app.api.documents.delete_file",
+            "app.services.document_commands_service.delete_file",
             new=AsyncMock(return_value=None),
         ) as mock_delete_file:
             response = await client.delete(
@@ -370,7 +370,7 @@ class TestProcessDocument:
         self, client, auth_headers, test_document
     ):
         with patch(
-            "app.api.documents.enqueue_document_processing",
+            "app.services.document_commands_service.enqueue_document_processing",
             new=AsyncMock(return_value=True),
         ) as mock_enqueue:
             response = await client.post(
@@ -427,7 +427,7 @@ class TestProcessDocument:
         await db_session.flush()
 
         with patch(
-            "app.api.documents.enqueue_document_processing",
+            "app.services.document_commands_service.enqueue_document_processing",
             new=AsyncMock(return_value=True),
         ):
             response = await client.post(
@@ -444,7 +444,7 @@ class TestProcessDocument:
         self, client, auth_headers, db_session, test_document
     ):
         with patch(
-            "app.api.documents.enqueue_document_processing",
+            "app.services.document_commands_service.enqueue_document_processing",
             new=AsyncMock(side_effect=RuntimeError("queue unavailable")),
         ):
             response = await client.post(
