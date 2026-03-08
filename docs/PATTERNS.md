@@ -94,6 +94,32 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
     # ... business logic
 ```
 
+### Backend Boundary Model
+
+Enforce explicit backend layer direction:
+
+- `api -> services -> repositories`
+- `services -> integration services` (storage, queue, embeddings, LLM)
+- no cross-layer shortcuts
+
+### Service-Value Rule
+
+Public service functions must add value (orchestration, validation, transaction ownership, policy checks).
+
+- Do not keep pass-through-only public service wrappers in final state.
+- For document flows, endpoint orchestration belongs in command service / query service modules.
+- `document_service.py` stays worker-focused for background processing.
+
+### Structured Lightweight Comment Policy
+
+Use comments sparingly and only where they add non-obvious context:
+
+- transactional boundaries and rollback intent
+- ordering/invariant guarantees
+- external API contract assumptions
+
+Do not add comments that only repeat what the next line already says.
+
 ### Background Job Queueing
 
 HTTP routes should enqueue background work via a service helper, not import ARQ pool logic directly.

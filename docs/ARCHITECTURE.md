@@ -74,6 +74,29 @@ Quaero is a document intelligence platform that allows users to upload PDF docum
               generates RAG answers from retrieved chunks
 ```
 
+### Backend Boundary Model
+
+Current backend layering for document endpoints is:
+
+- `api -> services -> repositories`
+- `services -> integration services`
+- no cross-layer shortcuts
+
+Document domain role split:
+
+- `document_commands_service.py` (command service): upload/process/delete/status/file endpoint orchestration
+- `document_query_service.py` (query service): search/query/stream/messages endpoint orchestration
+- `document_service.py`: worker-focused document processing pipeline only
+
+Service-value rule:
+
+- No pass-through-only public service wrappers in final state.
+- Public service APIs should keep orchestration and policy logic close to endpoint use-cases.
+
+Comment policy:
+
+- Keep comments structured and lightweight; reserve them for invariants, transaction boundaries, and non-obvious integration behavior.
+
 ### Data Flow: Upload → Query
 
 ```

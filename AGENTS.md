@@ -83,6 +83,10 @@ Quaero is an AI-powered PDF question-answering platform that uses Retrieval Augm
 - **Surgical changes only.** Touch only what the task requires. Do not improve adjacent code, comments, or formatting. Match existing style.
 - **Explain what you're doing.** Include brief comments explaining why for non-obvious logic.
 - **Prefer explicit over clever.** Readable, straightforward code. No one-liners that sacrifice clarity.
+- **Respect backend boundaries.** `api -> services -> repositories`; `services -> integration services`; no cross-layer shortcuts.
+- **No pass-through-only public services.** Public service functions must add real orchestration/validation/business value; avoid wrappers that only forward arguments.
+- **Document pipeline roles stay explicit.** `document_service.py` is worker-focused; endpoint orchestration lives in document command service and document query service modules.
+- **Use a structured lightweight comment policy.** Add comments only for non-obvious invariants/transactions/contracts and keep them short; do not restate obvious code.
 
 ## Local Automation Defaults
 

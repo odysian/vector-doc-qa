@@ -528,6 +528,25 @@ async def create_room(
 
 **Services contain all business logic.** They receive a database session and validated data, perform operations, and return results or raise HTTPException.
 
+### Backend Boundary Contract
+
+Use strict layer direction for backend request flows:
+
+- `api -> services -> repositories`
+- `services -> integration services`
+- no cross-layer shortcuts (`api -> repositories`, `api -> integration services`, or repositories calling services)
+
+Service-value rule:
+
+- Do not keep pass-through-only public service functions in final state.
+- Public service APIs should own orchestration, validation, transaction boundaries, or policy decisions.
+- For the documents domain, `document_service.py` remains worker-focused while endpoint orchestration belongs in document command service / query service modules.
+
+Comment policy:
+
+- Use structured lightweight comments for non-obvious invariants, transaction boundaries, and external integration contracts.
+- Do not add comments that only narrate obvious line-by-line behavior.
+
 **Frontend (Next.js App Router):**
 
 ```
