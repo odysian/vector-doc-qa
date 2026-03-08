@@ -1,7 +1,6 @@
 import json
 from collections.abc import AsyncGenerator
 
-from pydantic import ValidationError
 from app.api.dependencies import get_current_user
 from app.database import get_db
 from app.models.user import User
@@ -11,8 +10,8 @@ from app.schemas.document import (
     DocumentStatusResponse,
     UploadResponse,
 )
-from app.schemas.message import MessageListResponse, MessageResponse
-from app.schemas.query import PipelineMeta, QueryRequest, QueryResponse
+from app.schemas.message import MessageListResponse
+from app.schemas.query import QueryRequest, QueryResponse
 from app.schemas.search import SearchRequest, SearchResponse
 from app.services.document_commands_service import (
     delete_document_command,
@@ -24,16 +23,13 @@ from app.services.document_commands_service import (
     upload_document_command,
 )
 from app.services.document_query_service import (
+    get_document_messages_command,
     query_document_command,
     query_document_stream_events_command,
     search_document_command,
 )
-from app.services.document_service import (
-    get_user_document,
-    list_user_document_messages,
-)
 from app.utils.rate_limit import get_user_or_ip_key, limiter
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Request, UploadFile, status
 from fastapi.responses import EventSourceResponse
 from fastapi.sse import ServerSentEvent, format_sse_event
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,28 +56,6 @@ def _encode_sse_event(event: ServerSentEvent) -> bytes:
         retry=event.retry,
         comment=event.comment,
     )
-
-
-def _extract_sources_and_pipeline_meta(raw_sources: object) -> tuple[list[dict] | None, PipelineMeta | None]:
-    if isinstance(raw_sources, list):
-        return raw_sources, None
-
-    if not isinstance(raw_sources, dict):
-        return None, None
-
-    sources_payload = raw_sources.get("sources")
-    sources = sources_payload if isinstance(sources_payload, list) else None
-
-    pipeline_meta_payload = raw_sources.get("pipeline_meta")
-    if not isinstance(pipeline_meta_payload, dict):
-        return sources, None
-
-    try:
-        pipeline_meta = PipelineMeta.model_validate(pipeline_meta_payload)
-    except ValidationError:
-        pipeline_meta = None
-
-    return sources, pipeline_meta
 
 
 @router.post("/upload", response_model=UploadResponse, status_code=201)
@@ -257,44 +231,8 @@ async def get_document_messages(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Get all messages for a specific document.
-
-    Returns messages in chronological order (oldest first).
-    Only returns messages for documents the user owns.
-    """
-    document = await get_user_document(
+    return await get_document_messages_command(
         db=db,
         document_id=document_id,
-        user_id=current_user.id,
-    )
-
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-
-    messages = await list_user_document_messages(
-        db=db,
-        document_id=document_id,
-        user_id=current_user.id,
-    )
-
-    response_messages: list[MessageResponse] = []
-    for msg in messages:
-        sources, pipeline_meta = _extract_sources_and_pipeline_meta(msg.sources)
-        response_messages.append(
-            MessageResponse(
-                id=msg.id,
-                document_id=msg.document_id,
-                user_id=msg.user_id,
-                role=msg.role,
-                content=msg.content,
-                sources=sources,
-                pipeline_meta=pipeline_meta,
-                created_at=msg.created_at,
-            )
-        )
-
-    return MessageListResponse(
-        messages=response_messages,
-        total=len(messages),
+        current_user=current_user,
     )

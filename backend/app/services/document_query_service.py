@@ -4,20 +4,22 @@ from collections.abc import AsyncGenerator
 
 from fastapi import HTTPException
 from fastapi.sse import ServerSentEvent
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
 from app.models.base import Document, DocumentStatus
 from app.models.user import User
+from app.repositories.document_repository import document_has_chunks, get_document_for_user
+from app.repositories.message_repository import (
+    create_message,
+    list_messages_for_document_user,
+    list_recent_message_pairs_for_document_user,
+)
+from app.schemas.message import MessageListResponse, MessageResponse
 from app.schemas.query import PipelineMeta, QueryRequest, QueryResponse
 from app.schemas.search import SearchRequest, SearchResponse, SearchResult
 from app.services.anthropic_service import generate_answer, generate_answer_stream
-from app.services.document_service import (
-    add_message,
-    get_recent_conversation_history,
-    get_user_document,
-    user_document_has_chunks,
-)
 from app.services.embedding_service import generate_embedding
 from app.services.search_service import search_chunks_from_embedding, search_chunks_with_timings
 from app.utils.logging_config import get_logger
@@ -72,6 +74,49 @@ def _build_message_sources_payload(
     return payload
 
 
+def _extract_sources_and_pipeline_meta(
+    raw_sources: object,
+) -> tuple[list[dict] | None, PipelineMeta | None]:
+    if isinstance(raw_sources, list):
+        return raw_sources, None
+
+    if not isinstance(raw_sources, dict):
+        return None, None
+
+    sources_payload = raw_sources.get("sources")
+    sources = sources_payload if isinstance(sources_payload, list) else None
+
+    pipeline_meta_payload = raw_sources.get("pipeline_meta")
+    if not isinstance(pipeline_meta_payload, dict):
+        return sources, None
+
+    try:
+        pipeline_meta = PipelineMeta.model_validate(pipeline_meta_payload)
+    except ValidationError:
+        pipeline_meta = None
+
+    return sources, pipeline_meta
+
+
+async def _build_recent_conversation_history(
+    *,
+    db: AsyncSession,
+    document_id: int,
+    user_id: int,
+    window_turns: int,
+) -> list[dict[str, str]]:
+    if window_turns <= 0:
+        return []
+
+    rows = await list_recent_message_pairs_for_document_user(
+        db=db,
+        document_id=document_id,
+        user_id=user_id,
+        limit=window_turns * 2,
+    )
+    return [{"role": role, "content": content} for role, content in reversed(rows)]
+
+
 async def _validate_document_for_query(
     *,
     document_id: int,
@@ -81,7 +126,7 @@ async def _validate_document_for_query(
     """
     Validate ownership, processing status, and chunk existence for query/search endpoints.
     """
-    document = await get_user_document(
+    document = await get_document_for_user(
         db=db,
         document_id=document_id,
         user_id=current_user.id,
@@ -98,7 +143,7 @@ async def _validate_document_for_query(
             detail=f"Document {document_id} not processed yet",
         )
 
-    if not await user_document_has_chunks(db=db, document_id=document_id):
+    if not await document_has_chunks(db=db, document_id=document_id):
         raise HTTPException(
             status_code=400,
             detail=f"Document {document_id} has no chunks",
@@ -167,14 +212,14 @@ async def query_document_command(
     )
 
     try:
-        conversation_history = await get_recent_conversation_history(
+        conversation_history = await _build_recent_conversation_history(
             db=db,
             document_id=document_id,
             user_id=current_user.id,
             window_turns=history_window_turns,
         )
 
-        user_message = await add_message(
+        user_message = await create_message(
             db=db,
             document_id=document_id,
             user_id=current_user.id,
@@ -212,7 +257,7 @@ async def query_document_command(
         )
 
         sources_dict = [source.model_dump() for source in sources]
-        assistant_message = await add_message(
+        assistant_message = await create_message(
             db=db,
             document_id=document_id,
             user_id=current_user.id,
@@ -270,7 +315,7 @@ async def query_document_stream_events_command(
     )
 
     try:
-        conversation_history = await get_recent_conversation_history(
+        conversation_history = await _build_recent_conversation_history(
             db=db,
             document_id=document_id,
             user_id=current_user.id,
@@ -278,7 +323,7 @@ async def query_document_stream_events_command(
         )
 
         # Transaction 1: persist user message + run retrieval, then commit.
-        await add_message(
+        await create_message(
             db=db,
             document_id=document_id,
             user_id=current_user.id,
@@ -327,7 +372,7 @@ async def query_document_stream_events_command(
     ) -> int | None:
         try:
             async with AsyncSessionLocal() as write_db:
-                assistant_message = await add_message(
+                assistant_message = await create_message(
                     db=write_db,
                     document_id=document_id,
                     user_id=current_user.id,
@@ -420,3 +465,46 @@ async def query_document_stream_events_command(
         )
 
     return _stream_events()
+
+
+async def get_document_messages_command(
+    *,
+    db: AsyncSession,
+    document_id: int,
+    current_user: User,
+) -> MessageListResponse:
+    document = await get_document_for_user(
+        db=db,
+        document_id=document_id,
+        user_id=current_user.id,
+    )
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    messages = await list_messages_for_document_user(
+        db=db,
+        document_id=document_id,
+        user_id=current_user.id,
+    )
+
+    response_messages: list[MessageResponse] = []
+    for message in messages:
+        sources, pipeline_meta = _extract_sources_and_pipeline_meta(message.sources)
+        response_messages.append(
+            MessageResponse(
+                id=message.id,
+                document_id=message.document_id,
+                user_id=message.user_id,
+                role=message.role,
+                content=message.content,
+                sources=sources,
+                pipeline_meta=pipeline_meta,
+                created_at=message.created_at,
+            )
+        )
+
+    return MessageListResponse(
+        messages=response_messages,
+        total=len(messages),
+    )
