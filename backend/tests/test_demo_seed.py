@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import base64
 import json
 from pathlib import Path
@@ -20,6 +21,126 @@ from app.models.base import Chunk, Document, DocumentStatus
 from app.models.message import Message
 from app.models.user import User
 from app.services import demo_seed_service
+
+
+_FORBIDDEN_SESSION_METHODS = {
+    "add",
+    "add_all",
+    "commit",
+    "delete",
+    "execute",
+    "flush",
+    "merge",
+    "rollback",
+    "scalar",
+    "scalars",
+}
+_FORBIDDEN_SQLALCHEMY_CALLS = {"delete", "insert", "select", "text", "update"}
+
+
+def _is_async_session_annotation(node: ast.expr | None) -> bool:
+    if node is None:
+        return False
+    if isinstance(node, ast.Name):
+        return node.id == "AsyncSession"
+    if isinstance(node, ast.Attribute):
+        return node.attr == "AsyncSession"
+    return False
+
+
+def _root_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return _root_name(node.value)
+    return None
+
+
+def _collect_session_aliases(tree: ast.AST) -> set[str]:
+    aliases: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+
+        args = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+        if node.args.vararg is not None:
+            args.append(node.args.vararg)
+        if node.args.kwarg is not None:
+            args.append(node.args.kwarg)
+
+        for arg in args:
+            if arg.arg == "db" or _is_async_session_annotation(arg.annotation):
+                aliases.add(arg.arg)
+
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
+                if node.value.id not in aliases:
+                    continue
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id not in aliases:
+                        aliases.add(target.id)
+                        changed = True
+            if (
+                isinstance(node, ast.AnnAssign)
+                and isinstance(node.target, ast.Name)
+                and isinstance(node.value, ast.Name)
+                and node.value.id in aliases
+                and node.target.id not in aliases
+            ):
+                aliases.add(node.target.id)
+                changed = True
+
+    return aliases
+
+
+def _find_forbidden_db_primitive_calls(source_text: str) -> list[str]:
+    tree = ast.parse(source_text)
+    session_aliases = _collect_session_aliases(tree)
+    sqlalchemy_module_aliases: set[str] = set()
+    sqlalchemy_function_aliases: set[str] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "sqlalchemy":
+                    sqlalchemy_module_aliases.add(alias.asname or alias.name)
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith(
+            "sqlalchemy"
+        ):
+            for alias in node.names:
+                if alias.name in _FORBIDDEN_SQLALCHEMY_CALLS:
+                    sqlalchemy_function_aliases.add(alias.asname or alias.name)
+
+    violations: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+
+        if isinstance(node.func, ast.Name) and node.func.id in sqlalchemy_function_aliases:
+            violations.add(f"{node.func.id}()")
+            continue
+
+        if not isinstance(node.func, ast.Attribute):
+            continue
+
+        root = _root_name(node.func.value)
+        if root is None:
+            continue
+
+        if root in session_aliases and node.func.attr in _FORBIDDEN_SESSION_METHODS:
+            violations.add(f"{root}.{node.func.attr}()")
+            continue
+
+        if (
+            root in sqlalchemy_module_aliases
+            and node.func.attr in _FORBIDDEN_SQLALCHEMY_CALLS
+        ):
+            violations.add(f"{root}.{node.func.attr}()")
+
+    return sorted(violations)
 
 
 def _write_fixture(
@@ -57,19 +178,60 @@ class TestDemoSeedService:
     def test_seed_service_has_no_direct_db_query_or_persistence_primitives(self):
         # Keep service orchestration-only; SQLAlchemy persistence/query calls belong in repositories.
         source_text = Path(demo_seed_service.__file__).read_text(encoding="utf-8")
-        forbidden_patterns = (
-            "select(",
-            "db.scalar(",
-            "db.scalars(",
-            "db.execute(",
-            "db.flush(",
-            "db.delete(",
+        allowed_transaction_calls = {"db.commit()", "db.rollback()"}
+        violations = [
+            violation
+            for violation in _find_forbidden_db_primitive_calls(source_text)
+            if violation not in allowed_transaction_calls
+        ]
+        assert not violations, (
+            "Found forbidden direct DB primitives in demo_seed_service.py: "
+            + ", ".join(violations)
         )
 
-        for pattern in forbidden_patterns:
-            assert pattern not in source_text, (
-                f"Found forbidden DB primitive '{pattern}' in demo_seed_service.py"
-            )
+    def test_layering_guard_detects_session_alias_execute_call(self):
+        source_text = """
+async def seed_demo_user(db):
+    session = db
+    await session.execute("SELECT 1")
+"""
+        violations = _find_forbidden_db_primitive_calls(source_text)
+        assert "session.execute()" in violations
+
+    def test_layering_guard_detects_sqlalchemy_alias_select_call(self):
+        source_text = """
+from sqlalchemy import select as sa_select
+
+def _query():
+    return sa_select(1)
+"""
+        violations = _find_forbidden_db_primitive_calls(source_text)
+        assert "sa_select()" in violations
+
+    def test_layering_guard_detects_persistence_calls(self):
+        source_text = """
+async def _persist(db, record):
+    db.add(record)
+    await db.flush()
+    await db.commit()
+    await db.rollback()
+"""
+        violations = _find_forbidden_db_primitive_calls(source_text)
+        assert "db.add()" in violations
+        assert "db.flush()" in violations
+        assert "db.commit()" in violations
+        assert "db.rollback()" in violations
+
+    def test_layering_guard_allows_repository_only_orchestration(self):
+        source_text = """
+from app.repositories.demo_seed_repository import list_documents_with_chunks_for_user
+
+async def seed_demo_user(db):
+    docs = await list_documents_with_chunks_for_user(db=db, user_id=1)
+    return len(docs)
+"""
+        violations = _find_forbidden_db_primitive_calls(source_text)
+        assert violations == []
 
     async def _run_startup_seed_file_fetch_flow(
         self,
