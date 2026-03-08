@@ -1,14 +1,21 @@
 from app.api.dependencies import get_current_user
 from app.core.security import (
-    consume_refresh_token,
     create_access_token,
-    create_refresh_token,
+    get_password_hash,
     verify_password,
 )
-from app.crud.user import create_user, get_user_by_email, get_user_by_username
 from app.database import get_db
-from app.models.refresh_token import RefreshToken
 from app.models.user import User
+from app.repositories.refresh_token_repository import (
+    consume_refresh_token,
+    create_refresh_token,
+    delete_refresh_token,
+)
+from app.repositories.user_repository import (
+    create_user,
+    get_user_by_email,
+    get_user_by_username,
+)
 from app.schemas.user import (
     CsrfTokenResponse,
     RefreshRequest,
@@ -20,7 +27,6 @@ from app.schemas.user import (
 from app.utils.cookies import clear_auth_cookies, set_auth_cookies
 from app.utils.rate_limit import get_ip_key, limiter
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
-from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
@@ -43,7 +49,7 @@ async def register(
     - Returns created user (without password)
     """
     # Check if username already exists
-    db_user = await get_user_by_username(db, user.username)
+    db_user = await get_user_by_username(db=db, username=user.username)
     if db_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -51,14 +57,18 @@ async def register(
         )
 
     # Check if email already exists
-    db_user = await get_user_by_email(db, user.email)
+    db_user = await get_user_by_email(db=db, email=user.email)
     if db_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
         )
 
-    # Create user (password hashing happens in CRUD)
-    return await create_user(db, user)
+    return await create_user(
+        db=db,
+        username=user.username,
+        email=user.email,
+        hashed_password=get_password_hash(user.password),
+    )
 
 
 @router.post("/login", response_model=Token)
@@ -75,7 +85,7 @@ async def login(
     Sets access/refresh tokens in httpOnly cookies and returns only
     browser-safe fields in the JSON body.
     """
-    db_user = await get_user_by_username(db, user.username)
+    db_user = await get_user_by_username(db=db, username=user.username)
     if not db_user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -89,7 +99,7 @@ async def login(
         )
 
     access_token = create_access_token(data={"sub": str(db_user.id)})
-    refresh_token = await create_refresh_token(db_user.id, db)  # type: ignore
+    refresh_token = await create_refresh_token(db=db, user_id=db_user.id)
     await db.commit()
 
     # Set httpOnly cookies; csrf_value is returned in the body for cross-domain
@@ -125,7 +135,7 @@ async def refresh(
         )
 
     # Single-statement consume gate: only one request can consume a token.
-    user_id = await consume_refresh_token(refresh_token_value, db)
+    user_id = await consume_refresh_token(db=db, token=refresh_token_value)
     if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -133,7 +143,7 @@ async def refresh(
         )
 
     # Rotation: consumed old token + staged new token in one transaction.
-    new_refresh_token = await create_refresh_token(user_id, db)
+    new_refresh_token = await create_refresh_token(db=db, user_id=user_id)
     await db.commit()  # single commit — both operations succeed or both roll back
 
     access_token = create_access_token(data={"sub": str(user_id)})
@@ -163,9 +173,7 @@ async def logout(
         body.refresh_token if body else None
     )
 
-    await db.execute(
-        delete(RefreshToken).where(RefreshToken.token == refresh_token_value)
-    )
+    await delete_refresh_token(db=db, token=refresh_token_value)
     await db.commit()
 
     # Always clear cookies regardless of token source

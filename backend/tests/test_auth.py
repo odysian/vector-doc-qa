@@ -17,15 +17,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.security import (
     create_access_token,
-    create_refresh_token,
     decode_access_token,
     get_password_hash,
-    validate_refresh_token,
 )
 from app.database import get_db
 from app.main import app
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
+from app.repositories.refresh_token_repository import (
+    create_refresh_token,
+    validate_refresh_token,
+)
 from tests.conftest import TEST_PASSWORD, TestAsyncSession
 
 
@@ -37,7 +39,7 @@ from tests.conftest import TEST_PASSWORD, TestAsyncSession
 @pytest.fixture()
 async def refresh_token_str(db_session: AsyncSession, test_user: User) -> str:
     """A valid, unexpired refresh token for test_user persisted in the DB."""
-    return await create_refresh_token(test_user.id, db_session)
+    return await create_refresh_token(db=db_session, user_id=test_user.id)
 
 
 @pytest.fixture()
@@ -414,7 +416,7 @@ class TestRefresh:
                 seed_session.add(user)
                 await seed_session.flush()
                 user_id = user.id
-                refresh_token = await create_refresh_token(user.id, seed_session)
+                refresh_token = await create_refresh_token(db=seed_session, user_id=user.id)
                 await seed_session.commit()
 
             assert user_id is not None
@@ -473,10 +475,11 @@ class TestRefresh:
         monkeypatch: pytest.MonkeyPatch,
     ):
         """If rotation fails before commit, old token must remain valid in DB."""
-        refresh_token = await create_refresh_token(test_user.id, db_session)
+        refresh_token = await create_refresh_token(db=db_session, user_id=test_user.id)
         await db_session.commit()
 
-        async def _raise_during_rotation(_user_id: int, _db: AsyncSession) -> str:
+        async def _raise_during_rotation(*, db: AsyncSession, user_id: int) -> str:
+            del db, user_id
             raise RuntimeError("forced refresh rotation failure")
 
         monkeypatch.setattr("app.api.auth.create_refresh_token", _raise_during_rotation)
@@ -520,7 +523,7 @@ class TestRefreshTokenHelperContract:
 
         monkeypatch.setattr(db_session, "commit", _unexpected_commit)
 
-        row = await validate_refresh_token(expired_token, db_session)
+        row = await validate_refresh_token(db=db_session, token=expired_token)
         assert row is None
 
         deleted_row = await db_session.scalar(
