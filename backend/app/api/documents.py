@@ -4,8 +4,25 @@ from collections.abc import AsyncGenerator
 from urllib.parse import quote
 
 from pydantic import ValidationError
+from app.application.documents.use_cases import (
+    DemoUploadForbiddenError,
+    DocumentAlreadyProcessedError,
+    DocumentAlreadyProcessingError,
+    DocumentNotFoundError,
+    DocumentQueueUnavailableError,
+    ProcessDocumentCommand,
+    ProcessDocumentUseCase,
+    ProcessQueueUnavailableError,
+    UploadDocumentCommand,
+    UploadDocumentUseCase,
+)
 from app.api.dependencies import get_current_user
 from app.database import AsyncSessionLocal, get_db
+from app.infrastructure.documents.adapters import (
+    FileUtilsUploadStorageAdapter,
+    QueueServiceAdapter,
+    SQLAlchemyDocumentCommandAdapter,
+)
 from app.models.base import Chunk, Document, DocumentStatus
 from app.models.message import Message
 from app.models.user import User
@@ -23,7 +40,6 @@ from app.services.embedding_service import generate_embedding
 from app.services.queue_service import enqueue_document_processing
 from app.services.search_service import search_chunks
 from app.services.storage_service import delete_file, read_file_bytes
-from app.utils.file_utils import save_upload_file, validate_file_upload
 from app.utils.logging_config import get_logger
 from app.utils.rate_limit import get_user_or_ip_key, limiter
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
@@ -250,51 +266,48 @@ async def upload_document(
     3. Create database record
     4. Return document info
     """
-    if current_user.is_demo:
+    logger.info(f"Uploading: {file.filename}")
+
+    use_case = UploadDocumentUseCase(
+        storage=FileUtilsUploadStorageAdapter(),
+        documents=SQLAlchemyDocumentCommandAdapter(db=db),
+        queue=QueueServiceAdapter(
+            enqueue_document_processing_fn=enqueue_document_processing,
+        ),
+    )
+
+    try:
+        result = await use_case.execute(
+            UploadDocumentCommand(
+                user_id=current_user.id,
+                user_is_demo=current_user.is_demo,
+                upload_file=file,
+            )
+        )
+    except DemoUploadForbiddenError:
         raise HTTPException(
             status_code=403,
             detail="Demo account cannot upload documents",
         )
-
-    logger.info(f"Uploading: {file.filename}")
-
-    validate_file_upload(file)
-
-    file_path, file_size = await save_upload_file(file)
-
-    document = Document(
-        filename=file.filename,
-        file_path=file_path,
-        file_size=file_size,
-        status=DocumentStatus.PENDING,
-        user_id=current_user.id,
-    )
-
-    db.add(document)
-    await db.commit()
-    await db.refresh(document)  # Get auto-generated ID
-    try:
-        await enqueue_document_processing(document.id)
-    except Exception as exc:
-        # Persist queue failure on the document so the user can retry explicitly.
-        document.status = DocumentStatus.FAILED
-        document.error_message = "Upload succeeded, but queueing failed. Please retry."
-        await db.commit()
-        logger.error(f"Queueing failed for document_id={document.id}: {exc}", exc_info=True)
+    except DocumentQueueUnavailableError as exc:
+        logger.error(
+            f"Queueing failed for document_id={exc.document_id}",
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=503,
             detail="Document uploaded but could not be queued for processing.",
         )
 
-    logger.info(f"Upload complete and queued: document_id={document.id}")
+    logger.info(f"Upload complete and queued: document_id={result.id}")
 
     return UploadResponse(
-        id=document.id,
-        user_id=current_user.id,
-        filename=document.filename,
-        file_size=document.file_size,
-        status=document.status,
-        message="File uploaded successfully. Processing started in background.",
+        id=result.id,
+        user_id=result.user_id,
+        filename=result.filename,
+        file_size=result.file_size,
+        status=result.status,
+        message=result.message,
     )
 
 
@@ -483,53 +496,39 @@ async def process_document(
     """
     logger.info(f"Queue processing request for document_id={document_id}")
 
-    stmt = (
-        select(Document)
-        .where(Document.id == document_id)
-        .where(Document.user_id == current_user.id)
+    use_case = ProcessDocumentUseCase(
+        documents=SQLAlchemyDocumentCommandAdapter(db=db),
+        queue=QueueServiceAdapter(
+            enqueue_document_processing_fn=enqueue_document_processing,
+        ),
     )
-    document = await db.scalar(stmt)
 
-    if not document:
+    try:
+        result = await use_case.execute(
+            ProcessDocumentCommand(
+                document_id=document_id,
+                user_id=current_user.id,
+            )
+        )
+    except DocumentNotFoundError:
         raise HTTPException(
             status_code=404, detail=f"Document with ID {document_id} not found"
         )
-
-    if document.status == DocumentStatus.COMPLETED:
+    except DocumentAlreadyProcessedError:
         raise HTTPException(status_code=400, detail=f"Document {document_id} already processed")
-
-    if document.status == DocumentStatus.PROCESSING:
+    except DocumentAlreadyProcessingError:
         raise HTTPException(
             status_code=400,
             detail=f"Document {document_id} is currently being processed",
         )
-
-    if document.status == DocumentStatus.FAILED:
-        # Reset stale failure details before retry.
-        document.status = DocumentStatus.PENDING
-        document.error_message = None
-        document.processed_at = None
-        await db.commit()
-
-    try:
-        enqueued = await enqueue_document_processing(document_id)
-    except Exception as exc:
-        document.status = DocumentStatus.FAILED
-        document.error_message = "Queueing failed. Please retry processing."
-        await db.commit()
+    except ProcessQueueUnavailableError as exc:
         logger.error(
-            f"Failed to enqueue document_id={document_id}: {exc}",
+            f"Failed to enqueue document_id={exc.document_id}",
             exc_info=True,
         )
         raise HTTPException(status_code=503, detail="Failed to queue document processing")
 
-    message = (
-        f"Document {document_id} processing already queued"
-        if not enqueued
-        else f"Document {document_id} queued for background processing"
-    )
-
-    return {"message": message, "document_id": document_id}
+    return {"message": result.message, "document_id": result.document_id}
 
 
 @router.post("/{document_id}/search", response_model=SearchResponse)
