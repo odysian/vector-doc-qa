@@ -301,9 +301,9 @@ FAKE_EMBEDDING = [0.1] * 1536
 def mock_embeddings():
     """Mock embedding functions at definition + runtime call sites."""
     with (
-        # documents API imports generate_embedding directly; patch runtime symbol
+        # document_query_service imports generate_embedding directly; patch runtime symbol
         patch(
-            "app.api.documents.generate_embedding",
+            "app.services.document_query_service.generate_embedding",
             new_callable=AsyncMock,
             return_value=FAKE_EMBEDDING,
         ) as mock_api_single,

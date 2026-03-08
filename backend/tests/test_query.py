@@ -396,11 +396,11 @@ class TestQueryStream:
 
         with (
             patch(
-                "app.api.documents.generate_answer_stream",
+                "app.services.document_query_service.generate_answer_stream",
                 new=_fake_generate_answer_stream,
             ),
             patch(
-                "app.api.documents.AsyncSessionLocal",
+                "app.services.document_query_service.AsyncSessionLocal",
                 new=lambda: _NoCloseSessionContext(db_session),
             ),
         ):
@@ -482,13 +482,13 @@ class TestQueryStream:
             yield "streamed answer"
 
         with (
-            patch("app.api.documents.logger.info") as mock_info,
+            patch("app.services.document_query_service.logger.info") as mock_info,
             patch(
-                "app.api.documents.generate_answer_stream",
+                "app.services.document_query_service.generate_answer_stream",
                 new=_fake_generate_answer_stream,
             ),
             patch(
-                "app.api.documents.AsyncSessionLocal",
+                "app.services.document_query_service.AsyncSessionLocal",
                 new=lambda: _NoCloseSessionContext(db_session),
             ),
         ):
@@ -517,10 +517,10 @@ class TestQueryStream:
     ):
         with (
             patch(
-                "app.api.documents.generate_embedding",
+                "app.services.document_query_service.generate_embedding",
                 side_effect=RuntimeError("sensitive stream setup payload"),
             ),
-            patch("app.api.documents.logger.error") as mock_error,
+            patch("app.services.document_query_service.logger.error") as mock_error,
         ):
             response = await client.post(
                 f"/api/documents/{processed_document.id}/query/stream",
@@ -561,10 +561,10 @@ class TestQueryStream:
             raise RuntimeError("anthropic stream failed")
 
         with patch(
-            "app.api.documents.generate_answer_stream",
+            "app.services.document_query_service.generate_answer_stream",
             new=_failing_generate_answer_stream,
         ), patch(
-            "app.api.documents.AsyncSessionLocal",
+            "app.services.document_query_service.AsyncSessionLocal",
             new=lambda: _NoCloseSessionContext(db_session),
         ):
             async with client.stream(
@@ -612,14 +612,14 @@ class TestQueryStream:
 
         with (
             patch(
-                "app.api.documents.generate_answer_stream",
+                "app.services.document_query_service.generate_answer_stream",
                 new=_failing_generate_answer_stream,
             ),
             patch(
-                "app.api.documents.AsyncSessionLocal",
+                "app.services.document_query_service.AsyncSessionLocal",
                 new=lambda: _NoCloseSessionContext(db_session),
             ),
-            patch("app.api.documents.logger.error") as mock_error,
+            patch("app.services.document_query_service.logger.error") as mock_error,
         ):
             async with client.stream(
                 "POST",
@@ -678,11 +678,11 @@ class TestQueryStream:
 
         with (
             patch(
-                "app.api.documents.generate_answer_stream",
+                "app.services.document_query_service.generate_answer_stream",
                 new=_fake_generate_answer_stream,
             ),
             patch(
-                "app.api.documents.AsyncSessionLocal",
+                "app.services.document_query_service.AsyncSessionLocal",
                 new=_fail_then_succeed_session,
             ),
         ):
@@ -765,11 +765,11 @@ class TestQueryStream:
 
         with (
             patch(
-                "app.api.documents.generate_answer_stream",
+                "app.services.document_query_service.generate_answer_stream",
                 new=_fake_generate_answer_stream,
             ),
             patch(
-                "app.api.documents.AsyncSessionLocal",
+                "app.services.document_query_service.AsyncSessionLocal",
                 new=lambda: _NoCloseSessionContext(db_session),
             ),
         ):

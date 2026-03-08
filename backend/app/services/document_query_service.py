@@ -1,20 +1,25 @@
+import json
 import time
+from collections.abc import AsyncGenerator
 
 from fastapi import HTTPException
+from fastapi.sse import ServerSentEvent
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import AsyncSessionLocal
 from app.models.base import Document, DocumentStatus
 from app.models.user import User
 from app.schemas.query import PipelineMeta, QueryRequest, QueryResponse
 from app.schemas.search import SearchRequest, SearchResponse, SearchResult
-from app.services.anthropic_service import generate_answer
+from app.services.anthropic_service import generate_answer, generate_answer_stream
 from app.services.document_service import (
     add_message,
     get_recent_conversation_history,
     get_user_document,
     user_document_has_chunks,
 )
-from app.services.search_service import search_chunks_with_timings
+from app.services.embedding_service import generate_embedding
+from app.services.search_service import search_chunks_from_embedding, search_chunks_with_timings
 from app.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -243,3 +248,175 @@ async def query_document_command(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Query failed")
+
+
+async def query_document_stream_events_command(
+    *,
+    db: AsyncSession,
+    document_id: int,
+    current_user: User,
+    body: QueryRequest,
+    history_window_turns: int,
+    similarity_threshold: float,
+) -> AsyncGenerator[ServerSentEvent, None]:
+    logger.info(
+        f"Streaming query request for document_id={document_id}, user_id={current_user.id}, query_chars={len(body.query)}"
+    )
+
+    await _validate_document_for_query(
+        document_id=document_id,
+        current_user=current_user,
+        db=db,
+    )
+
+    try:
+        conversation_history = await get_recent_conversation_history(
+            db=db,
+            document_id=document_id,
+            user_id=current_user.id,
+            window_turns=history_window_turns,
+        )
+
+        # Transaction 1: persist user message + run retrieval, then commit.
+        await add_message(
+            db=db,
+            document_id=document_id,
+            user_id=current_user.id,
+            role="user",
+            content=body.query,
+            sources=None,
+        )
+
+        pipeline_start = time.perf_counter()
+
+        embedding_start = time.perf_counter()
+        query_embedding = await generate_embedding(body.query)
+        embed_ms = _elapsed_ms(embedding_start)
+
+        retrieval_start = time.perf_counter()
+        search_results = await search_chunks_from_embedding(
+            db=db,
+            document_id=document_id,
+            query_embedding=query_embedding,
+            top_k=5,
+        )
+        retrieval_ms = _elapsed_ms(retrieval_start)
+
+        sources = [SearchResult(**result) for result in search_results]
+        sources_dict = [source.model_dump() for source in sources]
+
+        await db.commit()
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        await db.rollback()
+        logger.error(
+            "Streaming query setup failed for document_id=%s, user_id=%s, error_class=%s",
+            document_id,
+            current_user.id,
+            type(exc).__name__,
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Query failed")
+
+    async def _persist_assistant_message(
+        *,
+        content: str,
+        sources_payload: dict | None,
+    ) -> int | None:
+        try:
+            async with AsyncSessionLocal() as write_db:
+                assistant_message = await add_message(
+                    db=write_db,
+                    document_id=document_id,
+                    user_id=current_user.id,
+                    role="assistant",
+                    content=content,
+                    sources=sources_payload,
+                )
+                message_id = assistant_message.id
+                await write_db.commit()
+                return message_id
+        except Exception as exc:
+            logger.error(
+                "Failed to persist streamed assistant message for document_id=%s, user_id=%s, error_class=%s",
+                document_id,
+                current_user.id,
+                type(exc).__name__,
+                exc_info=True,
+            )
+            return None
+
+    async def _stream_events() -> AsyncGenerator[ServerSentEvent, None]:
+        answer_tokens: list[str] = []
+        llm_start = time.perf_counter()
+
+        try:
+            yield ServerSentEvent(event="sources", raw_data=json.dumps(sources_dict))
+            async for token in generate_answer_stream(
+                query=body.query,
+                chunks=search_results,
+                conversation_history=conversation_history,
+            ):
+                answer_tokens.append(token)
+                yield ServerSentEvent(event="token", raw_data=token)
+        except Exception as exc:
+            logger.error(
+                "Streaming query failed for document_id=%s, user_id=%s, error_class=%s",
+                document_id,
+                current_user.id,
+                type(exc).__name__,
+                exc_info=True,
+            )
+            partial_answer = "".join(answer_tokens).strip()
+            assistant_content = (
+                partial_answer
+                if partial_answer
+                else "I encountered an error communicating with the AI service. Please try again later."
+            )
+            await _persist_assistant_message(
+                content=assistant_content,
+                sources_payload=_build_message_sources_payload(
+                    sources=sources_dict,
+                    pipeline_meta=None,
+                ),
+            )
+            yield ServerSentEvent(event="error", raw_data=json.dumps({"detail": "Query failed"}))
+            return
+
+        llm_ms = _elapsed_ms(llm_start)
+        pipeline_meta = _build_pipeline_meta(
+            search_results=search_results,
+            conversation_history=conversation_history,
+            embed_ms=embed_ms,
+            retrieval_ms=retrieval_ms,
+            llm_ms=llm_ms,
+            total_ms=_elapsed_ms(pipeline_start),
+            similarity_threshold=similarity_threshold,
+        )
+        yield ServerSentEvent(event="meta", raw_data=pipeline_meta.model_dump_json())
+
+        answer = "".join(answer_tokens)
+        assistant_message_id = await _persist_assistant_message(
+            content=answer,
+            sources_payload=_build_message_sources_payload(
+                sources=sources_dict,
+                pipeline_meta=pipeline_meta,
+            ),
+        )
+        if assistant_message_id is None:
+            # Best effort fallback so chat history still has a terminal assistant turn.
+            await _persist_assistant_message(
+                content="I encountered an internal error saving the final response. Please retry.",
+                sources_payload=None,
+            )
+            yield ServerSentEvent(event="error", raw_data=json.dumps({"detail": "Query failed"}))
+            return
+
+        yield ServerSentEvent(
+            event="done",
+            raw_data=json.dumps({"message_id": assistant_message_id}),
+        )
+
+    return _stream_events()
