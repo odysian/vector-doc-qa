@@ -8,14 +8,20 @@ from pathlib import Path
 from typing import Any
 
 from app.core.security import get_password_hash
-from app.models.base import Chunk, Document, DocumentStatus
+from app.models.base import Document
 from app.models.user import User
+from app.repositories.demo_seed_repository import (
+    create_completed_document,
+    create_demo_user,
+    create_document_chunk,
+    delete_documents,
+    get_user_by_username_or_email,
+    list_documents_with_chunks_for_user,
+)
 from app.services.storage_service import read_file_bytes, write_file_bytes
 from app.utils.logging_config import get_logger
-from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 logger = get_logger(__name__)
 
@@ -198,17 +204,14 @@ async def _seed_documents(
         )
         fixture_file_size = _coerce_int(doc_payload.get("file_size"), default=0)
 
-        document = Document(
+        document = await create_completed_document(
+            db=db,
+            user_id=demo_user_id,
             filename=filename,
             file_path=file_path,
             file_size=fixture_file_size if fixture_file_size > 0 else resolved_file_size,
-            status=DocumentStatus.COMPLETED,
-            user_id=demo_user_id,
             processed_at=datetime.utcnow(),
-            error_message=None,
         )
-        db.add(document)
-        await db.flush()
 
         chunks_payload = doc_payload.get("chunks", [])
         if not isinstance(chunks_payload, list):
@@ -225,15 +228,14 @@ async def _seed_documents(
                 else []
             )
 
-            db.add(
-                Chunk(
-                    document_id=document.id,
-                    content=str(chunk_payload.get("content", "")),
-                    chunk_index=_coerce_int(chunk_payload.get("chunk_index"), default=0),
-                    page_start=_coerce_optional_int(chunk_payload.get("page_start")),
-                    page_end=_coerce_optional_int(chunk_payload.get("page_end")),
-                    embedding=embedding,
-                )
+            await create_document_chunk(
+                db=db,
+                document_id=document.id,
+                content=str(chunk_payload.get("content", "")),
+                chunk_index=_coerce_int(chunk_payload.get("chunk_index"), default=0),
+                page_start=_coerce_optional_int(chunk_payload.get("page_start")),
+                page_end=_coerce_optional_int(chunk_payload.get("page_end")),
+                embedding=embedding,
             )
 
 
@@ -243,12 +245,9 @@ async def _reconcile_documents_for_existing_demo_user(
     demo_user: User,
     documents_payload: list[dict[str, Any]],
 ) -> int:
-    existing_documents = list(
-        await db.scalars(
-            select(Document)
-            .where(Document.user_id == demo_user.id)
-            .options(selectinload(Document.chunks))
-        )
+    existing_documents = await list_documents_with_chunks_for_user(
+        db=db,
+        user_id=demo_user.id,
     )
     fixture_filenames = _fixture_filename_set(documents_payload)
     existing_filenames = {document.filename for document in existing_documents}
@@ -259,9 +258,7 @@ async def _reconcile_documents_for_existing_demo_user(
         logger.info("Demo seed no-op: fixture signature unchanged")
         return len(existing_documents)
 
-    for document in existing_documents:
-        await db.delete(document)
-    await db.flush()
+    await delete_documents(db=db, documents=existing_documents)
 
     await _seed_documents(db, demo_user_id=demo_user.id, documents_payload=documents_payload)
     logger.info(
@@ -274,10 +271,10 @@ async def _reconcile_documents_for_existing_demo_user(
 
 async def seed_demo_user(db: AsyncSession) -> None:
     """Seed or reconcile demo user documents from fixture data on startup."""
-    existing_demo = await db.scalar(
-        select(User).where(
-            or_(User.username == DEMO_USERNAME, User.email == DEMO_EMAIL)
-        )
+    existing_demo = await get_user_by_username_or_email(
+        db=db,
+        username=DEMO_USERNAME,
+        email=DEMO_EMAIL,
     )
 
     try:
@@ -291,14 +288,12 @@ async def seed_demo_user(db: AsyncSession) -> None:
 
         if existing_demo is None:
             try:
-                demo_user = User(
+                demo_user = await create_demo_user(
+                    db=db,
                     username=DEMO_USERNAME,
                     email=DEMO_EMAIL,
                     hashed_password=get_password_hash(DEMO_PASSWORD),
-                    is_demo=True,
                 )
-                db.add(demo_user)
-                await db.flush()
             except IntegrityError:
                 await db.rollback()
                 logger.info("Demo seed skipped due to concurrent unique-key conflict")
