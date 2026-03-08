@@ -4,6 +4,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import EMBEDDING_BATCH_SIZE
 from app.models.base import Chunk, Document, DocumentStatus
+from app.models.message import Message
+from app.repositories.document_repository import (
+    create_document,
+    delete_document,
+    document_has_chunks,
+    get_document_for_user,
+    list_documents_for_user,
+)
+from app.repositories.message_repository import (
+    create_message,
+    list_messages_for_document_user,
+    list_recent_message_pairs_for_document_user,
+)
 from app.services.embedding_service import generate_embeddings_batch
 from app.services.storage_service import read_file_bytes
 from app.utils.logging_config import get_logger
@@ -13,6 +26,115 @@ from app.utils.pdf_utils import (
 )
 
 logger = get_logger(__name__)
+
+
+async def create_uploaded_document(
+    *,
+    db: AsyncSession,
+    filename: str,
+    file_path: str,
+    file_size: int,
+    user_id: int,
+) -> Document:
+    document = await create_document(
+        db=db,
+        filename=filename,
+        file_path=file_path,
+        file_size=file_size,
+        user_id=user_id,
+        status=DocumentStatus.PENDING,
+    )
+    await db.commit()
+    await db.refresh(document)
+    return document
+
+
+async def list_user_documents(
+    *,
+    db: AsyncSession,
+    user_id: int,
+) -> list[Document]:
+    return await list_documents_for_user(db=db, user_id=user_id)
+
+
+async def get_user_document(
+    *,
+    db: AsyncSession,
+    document_id: int,
+    user_id: int,
+) -> Document | None:
+    return await get_document_for_user(
+        db=db,
+        document_id=document_id,
+        user_id=user_id,
+    )
+
+
+async def get_recent_conversation_history(
+    *,
+    db: AsyncSession,
+    document_id: int,
+    user_id: int,
+    window_turns: int,
+) -> list[dict[str, str]]:
+    if window_turns <= 0:
+        return []
+
+    rows = await list_recent_message_pairs_for_document_user(
+        db=db,
+        document_id=document_id,
+        user_id=user_id,
+        limit=window_turns * 2,
+    )
+    return [{"role": role, "content": content} for role, content in reversed(rows)]
+
+
+async def list_user_document_messages(
+    *,
+    db: AsyncSession,
+    document_id: int,
+    user_id: int,
+) -> list[Message]:
+    return await list_messages_for_document_user(
+        db=db,
+        document_id=document_id,
+        user_id=user_id,
+    )
+
+
+async def add_message(
+    *,
+    db: AsyncSession,
+    document_id: int,
+    user_id: int,
+    role: str,
+    content: str,
+    sources: dict | None,
+) -> Message:
+    return await create_message(
+        db=db,
+        document_id=document_id,
+        user_id=user_id,
+        role=role,
+        content=content,
+        sources=sources,
+    )
+
+
+async def remove_document(
+    *,
+    db: AsyncSession,
+    document: Document,
+) -> None:
+    await delete_document(db=db, document=document)
+
+
+async def user_document_has_chunks(
+    *,
+    db: AsyncSession,
+    document_id: int,
+) -> bool:
+    return await document_has_chunks(db=db, document_id=document_id)
 
 
 async def process_document_text(document_id: int, db: AsyncSession) -> None:

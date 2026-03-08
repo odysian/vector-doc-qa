@@ -6,8 +6,7 @@ from urllib.parse import quote
 from pydantic import ValidationError
 from app.api.dependencies import get_current_user
 from app.database import AsyncSessionLocal, get_db
-from app.models.base import Chunk, Document, DocumentStatus
-from app.models.message import Message
+from app.models.base import Document, DocumentStatus
 from app.models.user import User
 from app.schemas.document import (
     DocumentListResponse,
@@ -21,7 +20,17 @@ from app.schemas.search import SearchRequest, SearchResponse, SearchResult
 from app.services.anthropic_service import generate_answer, generate_answer_stream
 from app.services.embedding_service import generate_embedding
 from app.services.queue_service import enqueue_document_processing
-from app.services.search_service import search_chunks
+from app.services.document_service import (
+    add_message,
+    create_uploaded_document,
+    get_recent_conversation_history,
+    get_user_document,
+    list_user_document_messages,
+    list_user_documents,
+    remove_document,
+    user_document_has_chunks,
+)
+from app.services.search_service import search_chunks, search_chunks_from_embedding
 from app.services.storage_service import delete_file, read_file_bytes
 from app.utils.file_utils import save_upload_file, validate_file_upload
 from app.utils.logging_config import get_logger
@@ -29,7 +38,6 @@ from app.utils.rate_limit import get_user_or_ip_key, limiter
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import EventSourceResponse, Response
 from fastapi.sse import ServerSentEvent, format_sse_event
-from sqlalchemy import literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
@@ -136,37 +144,12 @@ async def _search_chunks_from_embedding(
     """
     Search document chunks using a precomputed query embedding.
     """
-    distance_expr = Chunk.embedding.cosine_distance(query_embedding).label("distance")
-    stmt = (
-        select(
-            Chunk.id,
-            Chunk.content,
-            Chunk.chunk_index,
-            Chunk.page_start,
-            Chunk.page_end,
-            distance_expr,
-        )
-        .where(Chunk.document_id == document_id)
-        .where(Chunk.embedding.isnot(None))
-        .order_by(distance_expr)
-        .limit(top_k)
+    return await search_chunks_from_embedding(
+        db=db,
+        document_id=document_id,
+        query_embedding=query_embedding,
+        top_k=top_k,
     )
-
-    rows = (await db.execute(stmt)).all()
-
-    results: list[dict] = []
-    for chunk_id, content, chunk_index, page_start, page_end, distance in rows:
-        results.append(
-            {
-                "chunk_id": chunk_id,
-                "content": content,
-                "similarity": round(1 - distance, 4),
-                "chunk_index": chunk_index,
-                "page_start": page_start,
-                "page_end": page_end,
-            }
-        )
-    return results
 
 
 async def _validate_document_for_query(
@@ -178,11 +161,10 @@ async def _validate_document_for_query(
     """
     Validate ownership, processing status, and chunk existence for query/search endpoints.
     """
-    document = await db.scalar(
-        select(Document).where(
-            Document.id == document_id,
-            Document.user_id == current_user.id,
-        )
+    document = await get_user_document(
+        db=db,
+        document_id=document_id,
+        user_id=current_user.id,
     )
     if not document:
         raise HTTPException(
@@ -192,10 +174,7 @@ async def _validate_document_for_query(
     if document.status != DocumentStatus.COMPLETED:
         raise HTTPException(status_code=400, detail=f"Document {document_id} not processed yet")
 
-    chunk_exists = await db.scalar(
-        select(literal(1)).where(Chunk.document_id == document_id).limit(1)
-    )
-    if chunk_exists is None:
+    if not await user_document_has_chunks(db=db, document_id=document_id):
         raise HTTPException(status_code=400, detail=f"Document {document_id} has no chunks")
 
     return document
@@ -214,23 +193,12 @@ async def _get_recent_conversation_history(
     A turn is treated as two messages (user + assistant), so we load up to N*2
     recent messages and reverse them to chronological order.
     """
-    if window_turns <= 0:
-        return []
-
-    message_limit = window_turns * 2
-    stmt = (
-        select(Message.role, Message.content)
-        .where(Message.document_id == document_id)
-        .where(Message.user_id == user_id)
-        .order_by(Message.created_at.desc(), Message.id.desc())
-        .limit(message_limit)
+    return await get_recent_conversation_history(
+        db=db,
+        document_id=document_id,
+        user_id=user_id,
+        window_turns=window_turns,
     )
-    rows = (await db.execute(stmt)).all()
-
-    return [
-        {"role": role, "content": content}
-        for role, content in reversed(rows)
-    ]
 
 
 @router.post("/upload", response_model=UploadResponse, status_code=201)
@@ -259,20 +227,20 @@ async def upload_document(
     logger.info(f"Uploading: {file.filename}")
 
     validate_file_upload(file)
+    filename = file.filename
+    if filename is None:
+        # Defensive guard for static typing; validate_file_upload already rejects missing names.
+        raise HTTPException(status_code=400, detail="No filename provided")
 
     file_path, file_size = await save_upload_file(file)
 
-    document = Document(
-        filename=file.filename,
+    document = await create_uploaded_document(
+        db=db,
+        filename=filename,
         file_path=file_path,
         file_size=file_size,
-        status=DocumentStatus.PENDING,
         user_id=current_user.id,
     )
-
-    db.add(document)
-    await db.commit()
-    await db.refresh(document)  # Get auto-generated ID
     try:
         await enqueue_document_processing(document.id)
     except Exception as exc:
@@ -308,12 +276,7 @@ async def get_documents(
     """
     Get all uploaded documents.
     """
-    stmt = (
-        select(Document)
-        .where(Document.user_id == current_user.id)
-        .order_by(Document.uploaded_at.desc())
-    )
-    documents = (await db.scalars(stmt)).all()
+    documents = await list_user_documents(db=db, user_id=current_user.id)
 
     return DocumentListResponse(
         documents=[DocumentResponse.model_validate(d) for d in documents],
@@ -332,12 +295,11 @@ async def get_document(
     """
     Get a specific document by ID.
     """
-    stmt = (
-        select(Document)
-        .where(Document.id == document_id)
-        .where(Document.user_id == current_user.id)
+    document = await get_user_document(
+        db=db,
+        document_id=document_id,
+        user_id=current_user.id,
     )
-    document = await db.scalar(stmt)
 
     if not document:
         raise HTTPException(
@@ -358,12 +320,11 @@ async def get_document_file(
     """
     Return raw PDF bytes for a document the current user owns.
     """
-    stmt = (
-        select(Document)
-        .where(Document.id == document_id)
-        .where(Document.user_id == current_user.id)
+    document = await get_user_document(
+        db=db,
+        document_id=document_id,
+        user_id=current_user.id,
     )
-    document = await db.scalar(stmt)
 
     if not document:
         raise HTTPException(
@@ -407,12 +368,11 @@ async def get_document_status(
 
     Intended for frequent polling from the dashboard while background jobs run.
     """
-    stmt = (
-        select(Document)
-        .where(Document.id == document_id)
-        .where(Document.user_id == current_user.id)
+    document = await get_user_document(
+        db=db,
+        document_id=document_id,
+        user_id=current_user.id,
     )
-    document = await db.scalar(stmt)
 
     if not document:
         raise HTTPException(
@@ -446,12 +406,11 @@ async def delete_document(
 
     logger.info(f"Deleting document_id={document_id}")
 
-    stmt = (
-        select(Document)
-        .where(Document.id == document_id)
-        .where(Document.user_id == current_user.id)
+    document = await get_user_document(
+        db=db,
+        document_id=document_id,
+        user_id=current_user.id,
     )
-    document = await db.scalar(stmt)
 
     if not document:
         raise HTTPException(
@@ -462,7 +421,7 @@ async def delete_document(
     await delete_file(document.file_path)
 
     # Delete from database (cascades to chunks)
-    await db.delete(document)
+    await remove_document(db=db, document=document)
     await db.commit()
 
     logger.info(f"Successfully deleted document_id={document_id}")
@@ -483,12 +442,11 @@ async def process_document(
     """
     logger.info(f"Queue processing request for document_id={document_id}")
 
-    stmt = (
-        select(Document)
-        .where(Document.id == document_id)
-        .where(Document.user_id == current_user.id)
+    document = await get_user_document(
+        db=db,
+        document_id=document_id,
+        user_id=current_user.id,
     )
-    document = await db.scalar(stmt)
 
     if not document:
         raise HTTPException(
@@ -608,16 +566,14 @@ async def query_document(
             user_id=current_user.id,
         )
 
-        # Save user message to database
-        user_message = Message(
+        user_message = await add_message(
+            db=db,
             document_id=document_id,
             user_id=current_user.id,
             role="user",
             content=body.query,
             sources=None,
         )
-        db.add(user_message)
-        await db.flush()
 
         pipeline_start = time.perf_counter()
 
@@ -657,7 +613,8 @@ async def query_document(
         # Save assistant message to database
         # Convert SearchResult objects to dicts for JSONB storage
         sources_dict = [source.model_dump() for source in sources]
-        assistant_message = Message(
+        assistant_message = await add_message(
+            db=db,
             document_id=document_id,
             user_id=current_user.id,
             role="assistant",
@@ -667,7 +624,6 @@ async def query_document(
                 pipeline_meta=pipeline_meta,
             ),
         )
-        db.add(assistant_message)
         await db.commit()
 
         logger.info(
@@ -727,15 +683,14 @@ async def query_document_stream(
         )
 
         # Transaction 1: persist user message + run retrieval, then commit.
-        user_message = Message(
+        await add_message(
+            db=db,
             document_id=document_id,
             user_id=current_user.id,
             role="user",
             content=body.query,
             sources=None,
         )
-        db.add(user_message)
-        await db.flush()
 
         pipeline_start = time.perf_counter()
 
@@ -774,19 +729,18 @@ async def query_document_stream(
         async def _persist_assistant_message(
             *,
             content: str,
-            sources_payload: dict | None,
+                sources_payload: dict | None,
         ) -> int | None:
             try:
                 async with AsyncSessionLocal() as write_db:
-                    assistant_message = Message(
+                    assistant_message = await add_message(
                         document_id=document_id,
                         user_id=current_user.id,
                         role="assistant",
                         content=content,
                         sources=sources_payload,
+                        db=write_db,
                     )
-                    write_db.add(assistant_message)
-                    await write_db.flush()
                     message_id = assistant_message.id
                     await write_db.commit()
                     return message_id
@@ -890,25 +844,20 @@ async def get_document_messages(
     Returns messages in chronological order (oldest first).
     Only returns messages for documents the user owns.
     """
-    # Verify document exists and user owns it
-    stmt = (
-        select(Document)
-        .where(Document.id == document_id)
-        .where(Document.user_id == current_user.id)
+    document = await get_user_document(
+        db=db,
+        document_id=document_id,
+        user_id=current_user.id,
     )
-    document = await db.scalar(stmt)
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Get messages for this document and user, ordered by creation time
-    msg_stmt = (
-        select(Message)
-        .where(Message.document_id == document_id)
-        .where(Message.user_id == current_user.id)
-        .order_by(Message.created_at.asc())
+    messages = await list_user_document_messages(
+        db=db,
+        document_id=document_id,
+        user_id=current_user.id,
     )
-    messages = (await db.scalars(msg_stmt)).all()
 
     response_messages: list[MessageResponse] = []
     for msg in messages:
