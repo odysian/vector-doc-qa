@@ -227,12 +227,16 @@ async def upload_document(
     logger.info(f"Uploading: {file.filename}")
 
     validate_file_upload(file)
+    filename = file.filename
+    if filename is None:
+        # Defensive guard for static typing; validate_file_upload already rejects missing names.
+        raise HTTPException(status_code=400, detail="No filename provided")
 
     file_path, file_size = await save_upload_file(file)
 
     document = await create_uploaded_document(
         db=db,
-        filename=file.filename,
+        filename=filename,
         file_path=file_path,
         file_size=file_size,
         user_id=current_user.id,

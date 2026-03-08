@@ -39,7 +39,8 @@ async def list_recent_message_pairs_for_document_user(
         .order_by(Message.created_at.desc(), Message.id.desc())
         .limit(limit)
     )
-    return (await db.execute(stmt)).all()
+    rows = (await db.execute(stmt)).all()
+    return [(role, content) for role, content in rows]
 
 
 async def list_messages_for_document_user(
@@ -54,5 +55,4 @@ async def list_messages_for_document_user(
         .where(Message.user_id == user_id)
         .order_by(Message.created_at.asc())
     )
-    return (await db.scalars(stmt)).all()
-
+    return list((await db.scalars(stmt)).all())

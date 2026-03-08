@@ -35,7 +35,7 @@ async def list_documents_for_user(
         .where(Document.user_id == user_id)
         .order_by(Document.uploaded_at.desc())
     )
-    return (await db.scalars(stmt)).all()
+    return list((await db.scalars(stmt)).all())
 
 
 async def get_document_for_user(
@@ -102,5 +102,8 @@ async def search_document_chunks_by_embedding(
         .order_by(distance_expr)
         .limit(top_k)
     )
-    return (await db.execute(stmt)).all()
-
+    rows = (await db.execute(stmt)).all()
+    return [
+        (chunk_id, content, chunk_index, page_start, page_end, distance)
+        for chunk_id, content, chunk_index, page_start, page_end, distance in rows
+    ]
