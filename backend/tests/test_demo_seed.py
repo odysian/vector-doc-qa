@@ -53,6 +53,28 @@ def _root_name(node: ast.AST) -> str | None:
         return node.id
     if isinstance(node, ast.Attribute):
         return _root_name(node.value)
+    if isinstance(node, ast.Call):
+        return _root_name(node.func)
+    if isinstance(node, ast.Subscript):
+        return _root_name(node.value)
+    return None
+
+
+def _render_call_expression(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        base = _render_call_expression(node.value)
+        if base is None:
+            return None
+        return f"{base}.{node.attr}"
+    if isinstance(node, ast.Call):
+        base = _render_call_expression(node.func)
+        if base is None:
+            return None
+        return f"{base}()"
+    if isinstance(node, ast.Subscript):
+        return _render_call_expression(node.value)
     return None
 
 
@@ -129,16 +151,19 @@ def _find_forbidden_db_primitive_calls(source_text: str) -> list[str]:
         root = _root_name(node.func.value)
         if root is None:
             continue
+        expression = _render_call_expression(node.func)
+        if expression is None:
+            continue
 
         if root in session_aliases and node.func.attr in _FORBIDDEN_SESSION_METHODS:
-            violations.add(f"{root}.{node.func.attr}()")
+            violations.add(f"{expression}()")
             continue
 
         if (
             root in sqlalchemy_module_aliases
             and node.func.attr in _FORBIDDEN_SQLALCHEMY_CALLS
         ):
-            violations.add(f"{root}.{node.func.attr}()")
+            violations.add(f"{expression}()")
 
     return sorted(violations)
 
@@ -197,6 +222,14 @@ async def seed_demo_user(db):
 """
         violations = _find_forbidden_db_primitive_calls(source_text)
         assert "session.execute()" in violations
+
+    def test_layering_guard_detects_session_alias_chained_call_execute(self):
+        source_text = """
+async def seed_demo_user(db):
+    await db.connection().execute("SELECT 1")
+"""
+        violations = _find_forbidden_db_primitive_calls(source_text)
+        assert "db.connection().execute()" in violations
 
     def test_layering_guard_detects_sqlalchemy_alias_select_call(self):
         source_text = """
