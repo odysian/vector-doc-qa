@@ -1,9 +1,14 @@
 # backend/app/services/document_service.py
-from sqlalchemy import delete, func, select
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import EMBEDDING_BATCH_SIZE
-from app.models.base import Chunk, Document, DocumentStatus
+from app.models.base import DocumentStatus
+from app.repositories.document_repository import (
+    create_chunks_for_document,
+    delete_chunks_for_document,
+    get_document_by_id,
+)
 from app.services.embedding_service import generate_embeddings_batch
 from app.services.storage_service import read_file_bytes
 from app.utils.logging_config import get_logger
@@ -31,8 +36,7 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
     logger.info(f"Starting document processing: document_id={document_id}")
 
     # Get document
-    stmt = select(Document).where(Document.id == document_id)
-    document = await db.scalar(stmt)
+    document = await get_document_by_id(db=db, document_id=document_id)
 
     if not document:
         logger.error(f"Document not found: document_id={document_id}")
@@ -51,7 +55,7 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
         document.processed_at = None
 
         # Retry semantics: always rebuild from scratch to avoid duplicate chunks.
-        await db.execute(delete(Chunk).where(Chunk.document_id == document.id))
+        await delete_chunks_for_document(db=db, document_id=document.id)
         await db.commit()
 
         # Extract text from pdf (CPU-bound, offloaded to process pool)
@@ -71,21 +75,14 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
         )
         logger.info(f"Created {len(chunks)} chunks")
 
-        # Build chunks and add to db, chunk_objects list preserves order for embeddings
-        chunk_objects = []
-        for i, chunk_payload in enumerate(chunks):
-            chunk = Chunk(
-                document_id=document.id,
-                content=chunk_payload.content,
-                chunk_index=i,
-                page_start=chunk_payload.page_start,
-                page_end=chunk_payload.page_end,
-            )
-            chunk_objects.append(chunk)
-            db.add(chunk)
-
-        # Flush to get chunk IDs without committing
-        await db.flush()
+        chunk_payloads = [
+            (chunk.content, chunk.page_start, chunk.page_end) for chunk in chunks
+        ]
+        chunk_objects = await create_chunks_for_document(
+            db=db,
+            document_id=document.id,
+            chunk_payloads=chunk_payloads,
+        )
 
         # Generate embeddings in bounded batches to keep memory stable for large docs.
         logger.info(f"Generating embeddings for {len(chunks)} chunks")
@@ -121,9 +118,7 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
         # Explicitly clear the current unit of work so flushed chunk rows are not committed.
         await db.rollback()
 
-        failed_document = await db.scalar(
-            select(Document).where(Document.id == document_id)
-        )
+        failed_document = await get_document_by_id(db=db, document_id=document_id)
         if failed_document:
             failed_document.status = DocumentStatus.FAILED
             failed_document.error_message = str(e)
