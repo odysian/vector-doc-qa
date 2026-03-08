@@ -376,6 +376,7 @@ After implementing tests AND feature code, the agent must run verification befor
 ```bash
 # Preferred verification entrypoints from repo root
 make backend-verify
+# (runs scripts/check_backend_boundaries.sh before backend lint/type/test/security checks)
 
 # If frontend changed
 make frontend-verify

@@ -7,7 +7,8 @@ help: ## Show available targets
 
 verify: backend-verify frontend-verify ## Run all verification checks
 
-backend-verify: ## Lint, type-check, test, and security-scan the backend
+backend-verify: ## Boundary-check, lint, type-check, test, and security-scan the backend
+	@bash scripts/check_backend_boundaries.sh
 	@test -x backend/.venv/bin/ruff || (echo "Missing backend/.venv. Run: cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt" && exit 1)
 	@cd backend && \
 		.venv/bin/ruff check . --cache-dir .ruff_cache && \
