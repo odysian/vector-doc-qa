@@ -40,19 +40,6 @@ async def search_chunks_from_embedding(
     return search_results
 
 
-async def search_chunks(query: str, document_id: int, top_k: int, db: AsyncSession) -> list[dict]:
-    """
-    Search for chunks semantically similar to the query.
-    """
-    search_results, _, _ = await search_chunks_with_timings(
-        query=query,
-        document_id=document_id,
-        top_k=top_k,
-        db=db,
-    )
-    return search_results
-
-
 async def search_chunks_with_timings(
     *,
     query: str,

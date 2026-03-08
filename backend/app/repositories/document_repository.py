@@ -1,4 +1,4 @@
-from sqlalchemy import literal, select
+from sqlalchemy import delete, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import Chunk, Document, DocumentStatus
@@ -67,6 +67,37 @@ async def delete_document(
     document: Document,
 ) -> None:
     await db.delete(document)
+
+
+async def delete_chunks_for_document(
+    *,
+    db: AsyncSession,
+    document_id: int,
+) -> None:
+    stmt = delete(Chunk).where(Chunk.document_id == document_id)
+    await db.execute(stmt)
+
+
+async def create_chunks_for_document(
+    *,
+    db: AsyncSession,
+    document_id: int,
+    chunk_payloads: list[tuple[str, int | None, int | None]],
+) -> list[Chunk]:
+    chunks: list[Chunk] = []
+    for chunk_index, (content, page_start, page_end) in enumerate(chunk_payloads):
+        chunk = Chunk(
+            document_id=document_id,
+            content=content,
+            chunk_index=chunk_index,
+            page_start=page_start,
+            page_end=page_end,
+        )
+        db.add(chunk)
+        chunks.append(chunk)
+
+    await db.flush()
+    return chunks
 
 
 async def document_has_chunks(
