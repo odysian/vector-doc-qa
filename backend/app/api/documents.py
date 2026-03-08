@@ -1,7 +1,6 @@
 import json
 import time
 from collections.abc import AsyncGenerator
-from urllib.parse import quote
 
 from pydantic import ValidationError
 from app.api.dependencies import get_current_user
@@ -18,25 +17,28 @@ from app.schemas.message import MessageListResponse, MessageResponse
 from app.schemas.query import PipelineMeta, QueryRequest, QueryResponse
 from app.schemas.search import SearchRequest, SearchResponse, SearchResult
 from app.services.anthropic_service import generate_answer, generate_answer_stream
+from app.services.document_commands_service import (
+    delete_document_command,
+    get_document_command,
+    get_document_file_command,
+    get_document_status_command,
+    list_documents_command,
+    process_document_command,
+    upload_document_command,
+)
 from app.services.embedding_service import generate_embedding
-from app.services.queue_service import enqueue_document_processing
 from app.services.document_service import (
     add_message,
-    create_uploaded_document,
     get_recent_conversation_history,
     get_user_document,
     list_user_document_messages,
-    list_user_documents,
-    remove_document,
     user_document_has_chunks,
 )
 from app.services.search_service import search_chunks, search_chunks_from_embedding
-from app.services.storage_service import delete_file, read_file_bytes
-from app.utils.file_utils import save_upload_file, validate_file_upload
 from app.utils.logging_config import get_logger
 from app.utils.rate_limit import get_user_or_ip_key, limiter
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
-from fastapi.responses import EventSourceResponse, Response
+from fastapi.responses import EventSourceResponse
 from fastapi.sse import ServerSentEvent, format_sse_event
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -209,60 +211,10 @@ async def upload_document(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Upload a PDF document.
-
-    Steps:
-    1. Validate file (type, size)
-    2. Save to disk
-    3. Create database record
-    4. Return document info
-    """
-    if current_user.is_demo:
-        raise HTTPException(
-            status_code=403,
-            detail="Demo account cannot upload documents",
-        )
-
-    logger.info(f"Uploading: {file.filename}")
-
-    validate_file_upload(file)
-    filename = file.filename
-    if filename is None:
-        # Defensive guard for static typing; validate_file_upload already rejects missing names.
-        raise HTTPException(status_code=400, detail="No filename provided")
-
-    file_path, file_size = await save_upload_file(file)
-
-    document = await create_uploaded_document(
+    return await upload_document_command(
         db=db,
-        filename=filename,
-        file_path=file_path,
-        file_size=file_size,
-        user_id=current_user.id,
-    )
-    try:
-        await enqueue_document_processing(document.id)
-    except Exception as exc:
-        # Persist queue failure on the document so the user can retry explicitly.
-        document.status = DocumentStatus.FAILED
-        document.error_message = "Upload succeeded, but queueing failed. Please retry."
-        await db.commit()
-        logger.error(f"Queueing failed for document_id={document.id}: {exc}", exc_info=True)
-        raise HTTPException(
-            status_code=503,
-            detail="Document uploaded but could not be queued for processing.",
-        )
-
-    logger.info(f"Upload complete and queued: document_id={document.id}")
-
-    return UploadResponse(
-        id=document.id,
-        user_id=current_user.id,
-        filename=document.filename,
-        file_size=document.file_size,
-        status=document.status,
-        message="File uploaded successfully. Processing started in background.",
+        current_user=current_user,
+        file=file,
     )
 
 
@@ -273,14 +225,9 @@ async def get_documents(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Get all uploaded documents.
-    """
-    documents = await list_user_documents(db=db, user_id=current_user.id)
-
-    return DocumentListResponse(
-        documents=[DocumentResponse.model_validate(d) for d in documents],
-        total=len(documents),
+    return await list_documents_command(
+        db=db,
+        user_id=current_user.id,
     )
 
 
@@ -292,21 +239,11 @@ async def get_document(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Get a specific document by ID.
-    """
-    document = await get_user_document(
+    return await get_document_command(
         db=db,
         document_id=document_id,
         user_id=current_user.id,
     )
-
-    if not document:
-        raise HTTPException(
-            status_code=404, detail=f"Document with ID {document_id} not found"
-        )
-
-    return document
 
 
 @router.get("/{document_id}/file")
@@ -317,41 +254,10 @@ async def get_document_file(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Return raw PDF bytes for a document the current user owns.
-    """
-    document = await get_user_document(
+    return await get_document_file_command(
         db=db,
         document_id=document_id,
         user_id=current_user.id,
-    )
-
-    if not document:
-        raise HTTPException(
-            status_code=404, detail=f"Document with ID {document_id} not found"
-        )
-
-    try:
-        pdf_bytes = await read_file_bytes(document.file_path)
-    except (FileNotFoundError, OSError):
-        raise HTTPException(
-            status_code=404, detail="Document file not available"
-        )
-
-    # RFC 6266: ASCII-safe filename + UTF-8 extended filename for non-ASCII
-    safe_filename = document.filename.replace('"', "")
-    encoded_filename = quote(document.filename)
-
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": (
-                f'inline; filename="{safe_filename}"; '
-                f"filename*=UTF-8''{encoded_filename}"
-            ),
-            "Cache-Control": "private, max-age=3600",
-        },
     )
 
 
@@ -363,27 +269,10 @@ async def get_document_status(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Get lightweight processing status for one document.
-
-    Intended for frequent polling from the dashboard while background jobs run.
-    """
-    document = await get_user_document(
+    return await get_document_status_command(
         db=db,
         document_id=document_id,
         user_id=current_user.id,
-    )
-
-    if not document:
-        raise HTTPException(
-            status_code=404, detail=f"Document with ID {document_id} not found"
-        )
-
-    return DocumentStatusResponse(
-        id=document.id,
-        status=document.status,
-        processed_at=document.processed_at,
-        error_message=document.error_message,
     )
 
 
@@ -395,37 +284,11 @@ async def delete_document(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Delete a document and its file.
-    """
-    if current_user.is_demo:
-        raise HTTPException(
-            status_code=403,
-            detail="Demo account cannot delete documents",
-        )
-
-    logger.info(f"Deleting document_id={document_id}")
-
-    document = await get_user_document(
+    return await delete_document_command(
         db=db,
         document_id=document_id,
-        user_id=current_user.id,
+        current_user=current_user,
     )
-
-    if not document:
-        raise HTTPException(
-            status_code=404, detail=f"Document with ID {document_id} not found"
-        )
-
-    # Delete file from configured storage backend.
-    await delete_file(document.file_path)
-
-    # Delete from database (cascades to chunks)
-    await remove_document(db=db, document=document)
-    await db.commit()
-
-    logger.info(f"Successfully deleted document_id={document_id}")
-    return {"message": f"Document {document_id} deleted successfully"}
 
 
 # PROCESS DOCUMENT
@@ -437,57 +300,11 @@ async def process_document(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Queue document processing in the background worker.
-    """
-    logger.info(f"Queue processing request for document_id={document_id}")
-
-    document = await get_user_document(
+    return await process_document_command(
         db=db,
         document_id=document_id,
         user_id=current_user.id,
     )
-
-    if not document:
-        raise HTTPException(
-            status_code=404, detail=f"Document with ID {document_id} not found"
-        )
-
-    if document.status == DocumentStatus.COMPLETED:
-        raise HTTPException(status_code=400, detail=f"Document {document_id} already processed")
-
-    if document.status == DocumentStatus.PROCESSING:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Document {document_id} is currently being processed",
-        )
-
-    if document.status == DocumentStatus.FAILED:
-        # Reset stale failure details before retry.
-        document.status = DocumentStatus.PENDING
-        document.error_message = None
-        document.processed_at = None
-        await db.commit()
-
-    try:
-        enqueued = await enqueue_document_processing(document_id)
-    except Exception as exc:
-        document.status = DocumentStatus.FAILED
-        document.error_message = "Queueing failed. Please retry processing."
-        await db.commit()
-        logger.error(
-            f"Failed to enqueue document_id={document_id}: {exc}",
-            exc_info=True,
-        )
-        raise HTTPException(status_code=503, detail="Failed to queue document processing")
-
-    message = (
-        f"Document {document_id} processing already queued"
-        if not enqueued
-        else f"Document {document_id} queued for background processing"
-    )
-
-    return {"message": message, "document_id": document_id}
 
 
 @router.post("/{document_id}/search", response_model=SearchResponse)
