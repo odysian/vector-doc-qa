@@ -43,6 +43,10 @@ Post-implementation verification checklist. Run through after every feature befo
 - [ ] Consistent with patterns in PATTERNS.md
 - [ ] No dead code, commented-out code, or debug print statements
 - [ ] No `console.log` left in frontend code
+- [ ] Backend layering is preserved (`api -> services -> repositories`, `services -> integration services`) with no cross-layer shortcuts
+- [ ] Public services are not pass-through-only wrappers; they add orchestration/validation/policy value
+- [ ] Document pipeline parity holds: endpoint orchestration in command service / query service, `document_service.py` remains worker-focused
+- [ ] Comments follow the structured lightweight comment policy (non-obvious context only)
 
 ## Database
 
