@@ -482,7 +482,10 @@ class TestRefresh:
             del db, user_id
             raise RuntimeError("forced refresh rotation failure")
 
-        monkeypatch.setattr("app.api.auth.create_refresh_token", _raise_during_rotation)
+        monkeypatch.setattr(
+            "app.services.auth_commands_service.create_refresh_token",
+            _raise_during_rotation,
+        )
 
         with pytest.raises(RuntimeError):
             await client.post(

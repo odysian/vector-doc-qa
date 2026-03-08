@@ -1,21 +1,6 @@
 from app.api.dependencies import get_current_user
-from app.core.security import (
-    create_access_token,
-    get_password_hash,
-    verify_password,
-)
 from app.database import get_db
 from app.models.user import User
-from app.repositories.refresh_token_repository import (
-    consume_refresh_token,
-    create_refresh_token,
-    delete_refresh_token,
-)
-from app.repositories.user_repository import (
-    create_user,
-    get_user_by_email,
-    get_user_by_username,
-)
 from app.schemas.user import (
     CsrfTokenResponse,
     RefreshRequest,
@@ -24,9 +9,19 @@ from app.schemas.user import (
     UserLogin,
     UserResponse,
 )
+from app.services.auth_commands_service import (
+    login_user_command,
+    logout_user_command,
+    refresh_auth_tokens_command,
+    register_user_command,
+)
+from app.services.auth_query_service import (
+    get_csrf_token_query,
+    get_refresh_token_from_request_query,
+)
 from app.utils.cookies import clear_auth_cookies, set_auth_cookies
 from app.utils.rate_limit import get_ip_key, limiter
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Body, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
@@ -41,34 +36,8 @@ async def register(
     user: UserCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Register a new user.
-
-    - Checks if username or email already exists
-    - Hashes password before storing
-    - Returns created user (without password)
-    """
-    # Check if username already exists
-    db_user = await get_user_by_username(db=db, username=user.username)
-    if db_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered",
-        )
-
-    # Check if email already exists
-    db_user = await get_user_by_email(db=db, email=user.email)
-    if db_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
-        )
-
-    return await create_user(
-        db=db,
-        username=user.username,
-        email=user.email,
-        hashed_password=get_password_hash(user.password),
-    )
+    del request
+    return await register_user_command(db=db, user=user)
 
 
 @router.post("/login", response_model=Token)
@@ -79,32 +48,9 @@ async def login(
     user: UserLogin,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Login with username and password.
-
-    Sets access/refresh tokens in httpOnly cookies and returns only
-    browser-safe fields in the JSON body.
-    """
-    db_user = await get_user_by_username(db=db, username=user.username)
-    if not db_user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-        )
-
-    if not verify_password(user.password, db_user.hashed_password):  # type: ignore
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-        )
-
-    access_token = create_access_token(data={"sub": str(db_user.id)})
-    refresh_token = await create_refresh_token(db=db, user_id=db_user.id)
-    await db.commit()
-
-    # Set httpOnly cookies; csrf_value is returned in the body for cross-domain
-    # clients that cannot read a cookie set on a different origin (see ADR-001).
-    csrf_value = set_auth_cookies(response, access_token, refresh_token)
+    del request
+    tokens = await login_user_command(db=db, user=user)
+    csrf_value = set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
 
     return {"csrf_token": csrf_value, "token_type": "bearer"}
 
@@ -118,38 +64,15 @@ async def refresh(
     body: RefreshRequest | None = Body(default=None),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Exchange a valid refresh token for a new access + refresh token pair (rotation).
-
-    Token source priority: refresh_token cookie → request body.
-    Old refresh token is deleted on use — if reused, it will 401.
-    """
-    # Cookie takes priority; body is the fallback for legacy clients
-    refresh_token_value = request.cookies.get("refresh_token") or (
-        body.refresh_token if body else None
+    refresh_token_value = get_refresh_token_from_request_query(
+        request=request,
+        body=body,
     )
-    if not refresh_token_value:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token",
-        )
-
-    # Single-statement consume gate: only one request can consume a token.
-    user_id = await consume_refresh_token(db=db, token=refresh_token_value)
-    if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token",
-        )
-
-    # Rotation: consumed old token + staged new token in one transaction.
-    new_refresh_token = await create_refresh_token(db=db, user_id=user_id)
-    await db.commit()  # single commit — both operations succeed or both roll back
-
-    access_token = create_access_token(data={"sub": str(user_id)})
-
-    # Rotate cookies; return fresh csrf_token in body for cross-domain clients.
-    csrf_value = set_auth_cookies(response, access_token, new_refresh_token)
+    tokens = await refresh_auth_tokens_command(
+        db=db,
+        refresh_token_value=refresh_token_value,
+    )
+    csrf_value = set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
 
     return {"csrf_token": csrf_value, "token_type": "bearer"}
 
@@ -163,22 +86,12 @@ async def logout(
     body: RefreshRequest | None = Body(default=None),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Invalidate a refresh token and clear auth cookies.
-
-    Token source priority: refresh_token cookie → request body.
-    Idempotent — no error if the token doesn't exist.
-    """
-    refresh_token_value = request.cookies.get("refresh_token") or (
-        body.refresh_token if body else None
+    refresh_token_value = get_refresh_token_from_request_query(
+        request=request,
+        body=body,
     )
-
-    await delete_refresh_token(db=db, token=refresh_token_value)
-    await db.commit()
-
-    # Always clear cookies regardless of token source
+    await logout_user_command(db=db, refresh_token_value=refresh_token_value)
     clear_auth_cookies(response)
-
     return {"message": "Logged out"}
 
 
@@ -197,14 +110,5 @@ async def get_csrf_token(
     request: Request,
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Return the current csrf_token cookie value for authenticated sessions.
-    """
     del current_user
-    csrf_token = request.cookies.get("csrf_token")
-    if not csrf_token:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="CSRF cookie not found. Login or refresh first.",
-        )
-    return {"csrf_token": csrf_token}
+    return {"csrf_token": get_csrf_token_query(request=request)}
