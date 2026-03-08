@@ -99,7 +99,7 @@ async def login(
         )
 
     access_token = create_access_token(data={"sub": str(db_user.id)})
-    refresh_token = await create_refresh_token(db=db, user_id=db_user.id)  # type: ignore[arg-type]
+    refresh_token = await create_refresh_token(db=db, user_id=db_user.id)
     await db.commit()
 
     # Set httpOnly cookies; csrf_value is returned in the body for cross-domain
