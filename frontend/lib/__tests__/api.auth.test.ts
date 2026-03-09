@@ -92,7 +92,8 @@ describe("apiRequest auth refresh contract", () => {
     const refreshResult = deferred<Response>();
     let documentRequestCount = 0;
 
-    const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      void init;
       const url = String(input);
 
       if (url === "http://localhost:8000/api/documents/") {
