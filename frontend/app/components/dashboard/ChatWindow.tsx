@@ -42,7 +42,10 @@ export function ChatWindow({
   onSessionExpired,
 }: ChatWindowProps) {
   const [input, setInput] = useState("");
-  const [debugMode, setDebugMode] = useState(false);
+  const [debugMode, setDebugMode] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(DEBUG_MODE_STORAGE_KEY) === "true";
+  });
   const [expandedSourceIndices, setExpandedSourceIndices] = useState<Set<number>>(new Set());
   const [expandedSourceCards, setExpandedSourceCards] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -82,11 +85,6 @@ export function ChatWindow({
       localStorage.setItem(DEBUG_MODE_STORAGE_KEY, nextDebugMode ? "true" : "false");
     }
   };
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setDebugMode(localStorage.getItem(DEBUG_MODE_STORAGE_KEY) === "true");
-  }, []);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {

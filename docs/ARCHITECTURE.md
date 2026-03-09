@@ -488,7 +488,14 @@ vector-doc-qa/
     │           └── DeleteDocumentModal.tsx
     │
     ├── lib/
-    │   ├── api.ts               # Centralized API client
+    │   ├── api.ts               # Compatibility API facade
+    │   ├── api/
+    │   │   ├── config.ts        # API URL construction
+    │   │   └── http.ts          # Shared HTTP/auth refresh + CSRF transport
+    │   ├── services/
+    │   │   ├── authService.ts     # Auth domain operations + orchestration
+    │   │   ├── documentService.ts # Document domain operations + orchestration
+    │   │   └── chatService.ts     # Chat/query domain operations + stream parsing
     │   └── api.types.ts         # TypeScript interfaces
     │
     ├── package.json
