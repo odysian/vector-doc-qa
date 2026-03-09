@@ -4,342 +4,56 @@
  */
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { PanelLeft, X, FileUp } from "lucide-react";
-import { api, isLoggedIn, type Document, ApiError, SessionExpiredError } from "@/lib/api";
 import { UploadZone } from "../components/dashboard/UploadZone";
 import { DocumentList } from "../components/dashboard/DocumentList";
 import { ChatWindow } from "../components/dashboard/ChatWindow";
 import { DeleteDocumentModal } from "../components/dashboard/DeleteDocumentModal";
+import { useDashboardState } from "@/lib/hooks/useDashboardState";
 
 const SIDEBAR_WIDTH = "w-72";
-const SPLIT_LAYOUT_MIN_WIDTH = 1120;
-const SPLIT_LAYOUT_RESTORE_WIDTH = 1240;
-const getInitialUseTabLayout = (): boolean => {
-  if (typeof window === "undefined") return true;
-  return window.innerWidth < SPLIT_LAYOUT_MIN_WIDTH;
-};
 const PdfViewer = dynamic(
   () => import("../components/dashboard/PdfViewer").then((mod) => mod.PdfViewer),
   { ssr: false }
 );
 
-interface CitationTarget {
-  page: number;
-  snippet?: string;
-}
-
 export default function DashboardPage() {
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
-  const [deletingInProgress, setDeletingInProgress] = useState(false);
-  const [highlightPage, setHighlightPage] = useState<number | null>(null);
-  const [highlightSnippet, setHighlightSnippet] = useState<string | null>(null);
-  const [mobileTab, setMobileTab] = useState<"pdf" | "chat">("chat");
-  const [useTabLayout, setUseTabLayout] = useState(getInitialUseTabLayout);
-  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
-  const [workspaceElement, setWorkspaceElement] = useState<HTMLDivElement | null>(null);
-  const [isDemoUser, setIsDemoUser] = useState(false);
-  const documentsRef = useRef<Document[]>([]);
-  const workspaceRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
-  const hasActiveDocuments = documents.some(
-    (doc) => doc.status === "pending" || doc.status === "processing"
-  );
   const handleSessionExpired = useCallback(() => {
     router.push("/login");
   }, [router]);
-
-  const isSessionExpired = useCallback((err: unknown): boolean => {
-    return err instanceof SessionExpiredError || (err instanceof ApiError && err.status === 401);
-  }, []);
-
-  const handleApiError = useCallback(
-    (err: unknown, fallbackMessage: string): boolean => {
-      if (isSessionExpired(err)) {
-        handleSessionExpired();
-        return true;
-      }
-
-      if (err instanceof ApiError) {
-        setError(err.detail);
-      } else {
-        setError(fallbackMessage);
-      }
-      return false;
-    },
-    [handleSessionExpired, isSessionExpired]
-  );
-
-  const loadDocuments = useCallback(async () => {
-    try {
-      const response = await api.getDocuments();
-      setDocuments(response.documents);
-    } catch (err) {
-      handleApiError(err, "Failed to load documents");
-    }
-  }, [handleApiError]);
-
-  useEffect(() => {
-    if (!isLoggedIn()) return handleSessionExpired();
-    let cancelled = false;
-
-    const loadInitialData = async () => {
-      try {
-        const [userResponse, documentsResponse] = await Promise.all([
-          api.getCurrentUser(),
-          api.getDocuments(),
-        ]);
-        if (cancelled) return;
-        setIsDemoUser(userResponse.is_demo);
-        setDocuments(documentsResponse.documents);
-      } catch (err) {
-        if (!cancelled) {
-          handleApiError(err, "Failed to load documents");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    void loadInitialData();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [handleSessionExpired, handleApiError]);
-
-  useEffect(() => {
-    documentsRef.current = documents;
-  }, [documents]);
-
-  useEffect(() => {
-    if (!selectedDocument) return;
-    const updatedDocument = documents.find((doc) => doc.id === selectedDocument.id);
-
-    if (!updatedDocument) {
-      setSelectedDocument(null);
-      return;
-    }
-
-    if (updatedDocument !== selectedDocument) {
-      setSelectedDocument(updatedDocument);
-    }
-  }, [documents, selectedDocument]);
-
-  useEffect(() => {
-    if (loading || !hasActiveDocuments) return;
-
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    let delayMs = 3000;
-
-    const scheduleNextPoll = () => {
-      if (cancelled) return;
-      timeoutId = setTimeout(pollStatuses, delayMs);
-    };
-
-    const pollStatuses = async () => {
-      const activeDocuments = documentsRef.current.filter(
-        (doc) => doc.status === "pending" || doc.status === "processing"
-      );
-
-      if (activeDocuments.length === 0 || cancelled) return;
-
-      const targetIds = activeDocuments.map((doc) => doc.id);
-      const results = await Promise.allSettled(
-        targetIds.map((id) => api.getDocumentStatus(id))
-      );
-
-      if (cancelled) return;
-
-      let shouldRedirectToLogin = false;
-      let hadPollFailures = false;
-      const missingIds = new Set<number>();
-      const statusById = new Map<number, Awaited<ReturnType<typeof api.getDocumentStatus>>>();
-
-      results.forEach((result, index) => {
-        const documentId = targetIds[index];
-        if (result.status === "fulfilled") {
-          statusById.set(documentId, result.value);
-          return;
-        }
-
-        const reason = result.reason;
-        if (isSessionExpired(reason)) {
-          shouldRedirectToLogin = true;
-          return;
-        }
-
-        if (reason instanceof ApiError && reason.status === 404) {
-          missingIds.add(documentId);
-          return;
-        }
-
-        hadPollFailures = true;
-      });
-
-      if (shouldRedirectToLogin) {
-        handleSessionExpired();
-        return;
-      }
-
-      if (statusById.size > 0 || missingIds.size > 0) {
-        setDocuments((prev) =>
-          prev
-            .filter((doc) => !missingIds.has(doc.id))
-            .map((doc) => {
-              const status = statusById.get(doc.id);
-              if (!status) return doc;
-              return {
-                ...doc,
-                status: status.status,
-                processed_at: status.processed_at,
-                error_message: status.error_message,
-              };
-            })
-        );
-      }
-
-      if (hadPollFailures && statusById.size === 0) {
-        delayMs = Math.min(delayMs * 2, 10000);
-      } else {
-        delayMs = Math.min(Math.floor(delayMs * 1.5), 10000);
-      }
-
-      scheduleNextPoll();
-    };
-
-    scheduleNextPoll();
-
-    return () => {
-      cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-  }, [hasActiveDocuments, loading, handleSessionExpired, isSessionExpired]);
-
-  useEffect(() => {
-    if (!workspaceElement) return;
-
-    let frameId: number | null = null;
-
-    const updateLayoutMode = (width: number) => {
-      setUseTabLayout((current) => {
-        if (current) {
-          return width < SPLIT_LAYOUT_RESTORE_WIDTH;
-        }
-        return width < SPLIT_LAYOUT_MIN_WIDTH;
-      });
-    };
-
-    updateLayoutMode(Math.floor(workspaceElement.clientWidth));
-
-    const observer = new ResizeObserver((entries) => {
-      const [entry] = entries;
-      if (!entry) return;
-
-      if (frameId !== null) window.cancelAnimationFrame(frameId);
-      frameId = window.requestAnimationFrame(() => {
-        updateLayoutMode(Math.floor(entry.contentRect.width));
-      });
-    });
-
-    observer.observe(workspaceElement);
-
-    return () => {
-      if (frameId !== null) window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [workspaceElement]);
-
-  const handleUpload = async (file: File) => {
-    setError("");
-    try {
-      await api.uploadDocument(file);
-      await loadDocuments();
-    } catch (err) {
-      handleApiError(err, "Upload failed");
-    }
-  };
-
-  const handleLogout = async () => {
-    await api.logout();
-    handleSessionExpired();
-  };
-
-  const handleDocumentClick = (document: Document) => {
-    if (document.status !== "completed") return;
-    setSelectedDocument(document);
-    setHighlightPage(null);
-    setHighlightSnippet(null);
-    setMobileTab("chat");
-    setSidebarOpen(false);
-  };
-
-  const handleBackToDocuments = () => {
-    setSelectedDocument(null);
-    setHighlightPage(null);
-    setHighlightSnippet(null);
-    setSidebarOpen(true);
-  };
-
-  const handleCitationClick = ({ page, snippet }: CitationTarget) => {
-    const nextSnippet = snippet?.trim() || null;
-    setMobileTab("pdf");
-    setHighlightSnippet(nextSnippet);
-    setHighlightPage((current) => {
-      if (current === page) {
-        setHighlightSnippet(null);
-        window.setTimeout(() => {
-          setHighlightSnippet(nextSnippet);
-          setHighlightPage(page);
-        }, 0);
-        return null;
-      }
-      return page;
-    });
-  };
-
-  const handleProcessDocument = async (doc: Document) => {
-    setError("");
-    try {
-      await api.processDocument(doc.id);
-      await loadDocuments();
-    } catch (err) {
-      handleApiError(err, "Failed to queue processing");
-    }
-  };
-
-  const handleDeleteDocument = (doc: Document) => {
-    setDocumentToDelete(doc);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!documentToDelete) return;
-    const doc = documentToDelete;
-    setDeletingInProgress(true);
-    setError("");
-    try {
-      await api.deleteDocument(doc.id);
-      setDocumentToDelete(null);
-      if (selectedDocument?.id === doc.id) setSelectedDocument(null);
-      await loadDocuments();
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 403) {
-        setDocumentToDelete(null);
-      }
-      handleApiError(err, "Failed to delete document");
-    } finally {
-      setDeletingInProgress(false);
-    }
-  };
+  const {
+    documents,
+    loading,
+    error,
+    selectedDocument,
+    sidebarOpen,
+    documentToDelete,
+    deletingInProgress,
+    highlightPage,
+    highlightSnippet,
+    mobileTab,
+    useTabLayout,
+    desktopSidebarCollapsed,
+    isDemoUser,
+    handleUpload,
+    handleLogout,
+    handleDocumentClick,
+    handleBackToDocuments,
+    handleCitationClick,
+    handleProcessDocument,
+    handleDeleteDocument,
+    handleConfirmDelete,
+    handleCancelDelete,
+    setSidebarOpen,
+    setWorkspaceElement,
+    setMobileTab,
+    setDesktopSidebarCollapsed,
+  } = useDashboardState({ onSessionExpired: handleSessionExpired });
 
   const showPdfPane = !useTabLayout || mobileTab === "pdf";
   const showChatPane = !useTabLayout || mobileTab === "chat";
@@ -453,7 +167,7 @@ export default function DashboardPage() {
             document={documentToDelete}
             deleting={deletingInProgress}
             onConfirm={handleConfirmDelete}
-            onCancel={() => setDocumentToDelete(null)}
+            onCancel={handleCancelDelete}
           />
         )}
 
