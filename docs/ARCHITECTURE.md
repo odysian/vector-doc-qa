@@ -173,6 +173,28 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 | content | TEXT | NOT NULL |
 | sources | JSONB | nullable (assistant payload: `sources[]` and optional `pipeline_meta`) |
 | created_at | TIMESTAMP | DEFAULT now(), NOT NULL |
+| workspace_id | INTEGER | FK → workspaces.id, ON DELETE CASCADE, nullable |
+| constraint | CHECK | `(document_id IS NOT NULL AND workspace_id IS NULL) OR (document_id IS NULL AND workspace_id IS NOT NULL)` |
+
+### workspaces
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| id | INTEGER | PK, auto-increment |
+| name | VARCHAR(100) | NOT NULL |
+| user_id | INTEGER | FK → users.id, ON DELETE CASCADE, indexed |
+| created_at | TIMESTAMP | DEFAULT now(), NOT NULL |
+| updated_at | TIMESTAMP | DEFAULT now(), NOT NULL |
+
+### workspace_documents
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| id | INTEGER | PK, auto-increment |
+| workspace_id | INTEGER | FK → workspaces.id, ON DELETE CASCADE, indexed |
+| document_id | INTEGER | FK → documents.id, ON DELETE CASCADE, indexed |
+| added_at | TIMESTAMP | DEFAULT now(), NOT NULL |
+| constraint | UNIQUE | (workspace_id, document_id) |
 
 ### refresh_tokens
 
@@ -193,6 +215,9 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 - documents (1) → messages (N): chat history per document (CASCADE delete)
 - users (1) → messages (N): user's chat messages (CASCADE delete)
 - users (1) → refresh_tokens (N): active sessions (CASCADE delete)
+- users (1) → workspaces (N): user-owned workspaces
+- workspaces (1) → workspace_documents (N): workspace document membership
+- documents (N) → workspace_documents (M): documents can belong to workspaces (via junction table)
 
 ### Indexes
 
@@ -206,6 +231,9 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 | chunks | embedding (`WHERE embedding IS NOT NULL`) | HNSW (`vector_cosine_ops`) | ANN acceleration for cosine similarity search |
 | refresh_tokens | token | UNIQUE | Token lookup on every refresh request |
 | refresh_tokens | user_id | BTREE | Cleanup queries / revoke all sessions |
+| workspaces | user_id | BTREE | User workspace lookup |
+| workspace_documents | workspace_id | BTREE | Workspace document membership |
+| workspace_documents | document_id | BTREE | Document membership checks |
 
 ### ANN Verification Notes
 

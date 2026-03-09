@@ -10,6 +10,7 @@ from sqlalchemy.sql import func
 
 if TYPE_CHECKING:
     from app.models.base import Document
+    from app.models.workspace import Workspace
     from app.models.message import Message
 
 
@@ -35,3 +36,4 @@ class User(Base):
     messages: Mapped[list["Message"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", lazy="select"
     )  # type: ignore
+    workspaces: Mapped[list["Workspace"]] = relationship(back_populates="user")  # type: ignore

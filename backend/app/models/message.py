@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from app.models.base import Document
+    from app.models.workspace import Workspace
     from app.models.user import User
 
 
@@ -21,7 +22,10 @@ class Message(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
 
     document_id: Mapped[int] = mapped_column(
-        ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=True
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
     )
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
@@ -36,12 +40,18 @@ class Message(Base):
     )
 
     # Relationships
-    document: Mapped["Document"] = relationship(back_populates="messages")  # type: ignore
+    document: Mapped["Document | None"] = relationship(back_populates="messages")  # type: ignore
     user: Mapped["User"] = relationship(back_populates="messages")  # type: ignore
+    workspace: Mapped["Workspace | None"] = relationship(back_populates="messages")  # type: ignore
 
     # Constraint to ensure role is either 'user' or 'assistant'
     __table_args__ = (
         CheckConstraint("role IN ('user', 'assistant')", name="check_role"),
+        CheckConstraint(
+            "(document_id IS NOT NULL AND workspace_id IS NULL) OR "
+            "(document_id IS NULL AND workspace_id IS NOT NULL)",
+            name="check_message_context",
+        ),
         Index(
             "ix_quaero_messages_document_id_user_id_created_at_id",
             document_id,
