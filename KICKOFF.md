@@ -1,7 +1,7 @@
 Run kickoff for feature task issue # in mode=single.
 
 Then execute the full Task flow end-to-end:
-1. Generate/create one Task issue with clear acceptance criteria and verification commands.
+1. Generate/create one Task issue with clear acceptance criteria and verification commands if one doesn't already exist.
 2. Create/switch to a new branch.
 3. Implement minimally and surgically.
 4. Run relevant verification once.
