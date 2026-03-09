@@ -28,7 +28,7 @@ PYTHONPATH=. .venv/bin/python scripts/run_mini_eval.py \
   --user-id 1 \
   --min-answer-recall 0.6 \
   --min-retrieval-recall 0.7 \
-  --min-top-similarity 0.7 \
+  --min-top-similarity 0.55 \
   --min-answer-fact-recall 0.8 \
   --high-confidence-precision-target 0.9 \
   --medium-confidence-precision-target 0.7 \

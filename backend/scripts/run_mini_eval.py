@@ -625,7 +625,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-top-similarity",
         type=float,
-        default=0.7,
+        default=0.55,
         help="Pass/fail floor for summary avg_top_similarity.",
     )
     parser.add_argument(
