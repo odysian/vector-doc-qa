@@ -3,7 +3,13 @@ from typing import Any
 
 import pytest
 
-from scripts.run_mini_eval import _build_summary, _fact_match_metrics, load_eval_cases
+from scripts.run_mini_eval import (
+    _build_summary,
+    _build_threshold_gate,
+    _fact_match_metrics,
+    _to_markdown,
+    load_eval_cases,
+)
 
 
 def test_load_eval_cases_sorts_by_case_id_and_strips_fields(tmp_path) -> None:
@@ -179,3 +185,91 @@ def test_build_summary_calibrates_thresholds_from_quality_labels() -> None:
     assert calibration["recommended"]["medium_min_top_similarity"] == 0.5
     assert calibration["high_band"]["target_met"] is True
     assert calibration["medium_band"]["target_met"] is True
+
+
+def test_build_threshold_gate_pass_and_fail() -> None:
+    case_results: list[dict[str, Any]] = [
+        {
+            "status": "ok",
+            "metrics": {
+                "embed_ms": 10,
+                "retrieval_ms": 20,
+                "llm_ms": 300,
+                "total_ms": 330,
+                "top_similarity": 0.75,
+                "avg_similarity": 0.7,
+                "chunks_retrieved": 5,
+            },
+            "quality": {
+                "answer": {"fact_recall": 0.8},
+                "retrieval": {"fact_recall": 0.9},
+            },
+        }
+    ]
+    summary = _build_summary(case_results=case_results)
+
+    passing_gate = _build_threshold_gate(
+        summary=summary,
+        min_answer_recall=0.6,
+        min_retrieval_recall=0.7,
+        min_top_similarity=0.7,
+    )
+    assert passing_gate["verdict"] == "PASS"
+    assert passing_gate["passed"] is True
+    assert passing_gate["breached_metrics"] == []
+
+    failing_gate = _build_threshold_gate(
+        summary=summary,
+        min_answer_recall=0.85,
+        min_retrieval_recall=0.7,
+        min_top_similarity=0.8,
+    )
+    assert failing_gate["verdict"] == "FAIL"
+    assert failing_gate["passed"] is False
+    assert failing_gate["breached_metrics"] == [
+        "avg_answer_fact_recall",
+        "avg_top_similarity",
+    ]
+
+
+def test_markdown_includes_threshold_gate_verdict_and_config() -> None:
+    case_results: list[dict[str, Any]] = [
+        {
+            "case_id": "case-a",
+            "target_document": "doc-a.pdf",
+            "status": "ok",
+            "metrics": {
+                "embed_ms": 10,
+                "retrieval_ms": 20,
+                "llm_ms": 300,
+                "total_ms": 330,
+                "top_similarity": 0.8,
+                "avg_similarity": 0.7,
+                "chunks_retrieved": 5,
+            },
+            "quality": {
+                "answer": {"fact_hits": 1, "fact_total": 1, "fact_recall": 1.0},
+                "retrieval": {"fact_hits": 1, "fact_total": 1, "fact_recall": 1.0},
+            },
+        }
+    ]
+    summary = _build_summary(case_results=case_results)
+    threshold_gate = _build_threshold_gate(
+        summary=summary,
+        min_answer_recall=0.6,
+        min_retrieval_recall=0.7,
+        min_top_similarity=0.7,
+    )
+    report = {
+        "generated_at": "2026-03-09T00:00:00+00:00",
+        "fixture_path": "scripts/fixtures/mini_eval_cases.json",
+        "cases": case_results,
+        "summary": summary,
+        "threshold_gate": threshold_gate,
+    }
+
+    markdown = _to_markdown(report)
+
+    assert "## Threshold Gate" in markdown
+    assert "| PASS | 0.6 | 0.7 | 0.7 |" in markdown
+    assert "| avg_answer_fact_recall | 1.0 | 0.6 | pass |" in markdown

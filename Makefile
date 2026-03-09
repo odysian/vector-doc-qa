@@ -1,4 +1,4 @@
-.PHONY: help verify backend-verify frontend-verify backend-mini-eval
+.PHONY: help verify backend-verify frontend-verify eval backend-mini-eval
 
 MINI_EVAL_ARGS ?= --user-id 1
 
@@ -23,10 +23,12 @@ frontend-verify: ## Type-check, test, lint, and build the frontend
 		npm run lint && \
 		npm run build
 
-backend-mini-eval: ## Run mini eval harness and write report artifacts (override with MINI_EVAL_ARGS='...')
+eval: ## Run mini eval harness and write report artifacts (override with MINI_EVAL_ARGS='...')
 	@test -x backend/.venv/bin/python || (echo "Missing backend/.venv. Run: cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt" && exit 1)
 	@cd backend && \
-		PYTHONPATH=. .venv/bin/python scripts/run_mini_eval.py \
+		PYTHONPATH=. .venv/bin/python -m scripts.run_mini_eval \
 			--fixture scripts/fixtures/mini_eval_cases.json \
 			--output-dir reports/mini_eval \
 			$(MINI_EVAL_ARGS)
+
+backend-mini-eval: eval ## Backward-compatible alias for eval
