@@ -6,11 +6,11 @@
 import { useState, type SyntheticEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, saveTokens, loginAsDemo } from "@/lib/api";
+import { authService } from "@/lib/services/authService";
 
 /**
- * Renders centered login form. Submits to api.login, saves csrf_token to
- * localStorage, then redirects to /dashboard. Link to register for new users.
+ * Renders centered login form. Submits via auth service and redirects to
+ * /dashboard. Link to register for new users.
  */
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -24,11 +24,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await api.login({
+      await authService.login({
         username: nextUsername,
         password: nextPassword,
       });
-      saveTokens(response);
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -49,7 +48,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await loginAsDemo();
+      await authService.loginDemo();
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");

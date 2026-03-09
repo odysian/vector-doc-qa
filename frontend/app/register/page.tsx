@@ -7,11 +7,11 @@
 import { useState, type SyntheticEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, saveTokens } from "@/lib/api";
+import { authService } from "@/lib/services/authService";
 
 /**
- * Renders centered registration form. On submit: api.register, then api.login
- * to get csrf token and redirect. Link to login for existing users.
+ * Renders centered registration form. On submit: register + auto-login via
+ * auth service, then redirect. Link to login for existing users.
  */
 export default function RegisterPage() {
   const [username, setUsername] = useState("");
@@ -27,11 +27,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      await api.register({ username, email, password });
-
-      // Auto-login after registration
-      const loginResponse = await api.login({ username, password });
-      saveTokens(loginResponse);
+      await authService.registerAndLogin({ username, email, password });
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import LoginPage from "@/app/login/page";
-import { api, saveTokens, loginAsDemo } from "@/lib/api";
+import { authService } from "@/lib/services/authService";
 
 const pushMock = vi.fn();
 
@@ -11,22 +11,22 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/api", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+vi.mock("@/lib/services/authService", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/services/authService")>(
+    "@/lib/services/authService"
+  );
   return {
     ...actual,
-    saveTokens: vi.fn(),
-    loginAsDemo: vi.fn(),
-    api: {
-      ...actual.api,
+    authService: {
+      ...actual.authService,
       login: vi.fn(),
+      loginDemo: vi.fn(),
     },
   };
 });
 
-const loginMock = vi.mocked(api.login);
-const saveTokensMock = vi.mocked(saveTokens);
-const loginAsDemoMock = vi.mocked(loginAsDemo);
+const loginMock = vi.mocked(authService.login);
+const loginDemoMock = vi.mocked(authService.loginDemo);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -42,12 +42,11 @@ describe("LoginPage form behavior", () => {
   beforeEach(() => {
     pushMock.mockReset();
     loginMock.mockReset();
-    saveTokensMock.mockReset();
-    loginAsDemoMock.mockReset();
+    loginDemoMock.mockReset();
   });
 
   it("disables submit while login is in flight and re-enables after success", async () => {
-    const pending = deferred<{ csrf_token: string; token_type: string }>();
+    const pending = deferred<void>();
     loginMock.mockReturnValueOnce(pending.promise);
 
     render(<LoginPage />);
@@ -62,13 +61,9 @@ describe("LoginPage form behavior", () => {
 
     expect(screen.getByRole("button", { name: "Accessing..." })).toBeDisabled();
 
-    pending.resolve({ csrf_token: "csrf-token", token_type: "bearer" });
+    pending.resolve();
 
     await waitFor(() => {
-      expect(saveTokensMock).toHaveBeenCalledWith({
-        csrf_token: "csrf-token",
-        token_type: "bearer",
-      });
       expect(pushMock).toHaveBeenCalledWith("/dashboard");
       expect(screen.getByRole("button", { name: "Sign In" })).toBeEnabled();
     });
@@ -92,14 +87,14 @@ describe("LoginPage form behavior", () => {
   });
 
   it("logs in with demo credentials from the Try Demo button", async () => {
-    loginAsDemoMock.mockResolvedValueOnce();
+    loginDemoMock.mockResolvedValueOnce();
 
     render(<LoginPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Try Demo" }));
 
     await waitFor(() => {
-      expect(loginAsDemoMock).toHaveBeenCalledTimes(1);
+      expect(loginDemoMock).toHaveBeenCalledTimes(1);
       expect(pushMock).toHaveBeenCalledWith("/dashboard");
     });
 

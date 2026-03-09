@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { isLoggedIn, loginAsDemo } from "@/lib/api";
+import { authService } from "@/lib/services/authService";
 
 export default function Home() {
   const router = useRouter();
@@ -15,7 +15,7 @@ export default function Home() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (isLoggedIn()) {
+    if (authService.hasActiveSession()) {
       router.replace("/dashboard");
     }
   }, [router]);
@@ -24,7 +24,7 @@ export default function Home() {
     setError("");
     setLoadingDemo(true);
     try {
-      await loginAsDemo();
+      await authService.loginDemo();
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Demo login failed");
