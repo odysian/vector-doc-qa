@@ -5,6 +5,7 @@ import {
   type Document,
   SessionExpiredError,
 } from "@/lib/api";
+import { authService } from "@/lib/services/authService";
 import { documentService } from "@/lib/services/documentService";
 
 const SPLIT_LAYOUT_MIN_WIDTH = 1120;
@@ -296,7 +297,7 @@ export function useDashboardState({
   };
 
   const handleLogout = async () => {
-    await documentService.logout();
+    await authService.logout();
     handleSessionExpired();
   };
 

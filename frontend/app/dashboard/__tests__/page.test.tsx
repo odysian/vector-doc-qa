@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import DashboardPage from "@/app/dashboard/page";
-import { api, ApiError, SessionExpiredError, isLoggedIn, type Document } from "@/lib/api";
+import { ApiError, SessionExpiredError, isLoggedIn, type Document } from "@/lib/api";
+import { chatService } from "@/lib/services/chatService";
+import { documentService } from "@/lib/services/documentService";
 
 const pushMock = vi.fn();
 const routerMock = { push: pushMock };
@@ -19,28 +21,50 @@ vi.mock("@/lib/api", async () => {
   return {
     ...actual,
     isLoggedIn: vi.fn(),
-    api: {
-      ...actual.api,
-      getCurrentUser: vi.fn(),
+  };
+});
+
+vi.mock("@/lib/services/documentService", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/services/documentService")>(
+    "@/lib/services/documentService"
+  );
+  return {
+    ...actual,
+    documentService: {
+      ...actual.documentService,
+      getDashboardContext: vi.fn(),
       getDocuments: vi.fn(),
       uploadDocument: vi.fn(),
       processDocument: vi.fn(),
       getDocumentStatus: vi.fn(),
       deleteDocument: vi.fn(),
+    },
+  };
+});
+
+vi.mock("@/lib/services/chatService", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/services/chatService")>(
+    "@/lib/services/chatService"
+  );
+  return {
+    ...actual,
+    chatService: {
+      ...actual.chatService,
       getMessages: vi.fn(),
-      logout: vi.fn(),
+      queryDocument: vi.fn(),
+      queryDocumentStream: vi.fn(),
     },
   };
 });
 
 const isLoggedInMock = vi.mocked(isLoggedIn);
-const getCurrentUserMock = vi.mocked(api.getCurrentUser);
-const getDocumentsMock = vi.mocked(api.getDocuments);
-const uploadDocumentMock = vi.mocked(api.uploadDocument);
-const processDocumentMock = vi.mocked(api.processDocument);
-const getDocumentStatusMock = vi.mocked(api.getDocumentStatus);
-const deleteDocumentMock = vi.mocked(api.deleteDocument);
-const getMessagesMock = vi.mocked(api.getMessages);
+const getDashboardContextMock = vi.mocked(documentService.getDashboardContext);
+const getDocumentsMock = vi.mocked(documentService.getDocuments);
+const uploadDocumentMock = vi.mocked(documentService.uploadDocument);
+const processDocumentMock = vi.mocked(documentService.processDocument);
+const getDocumentStatusMock = vi.mocked(documentService.getDocumentStatus);
+const deleteDocumentMock = vi.mocked(documentService.deleteDocument);
+const getMessagesMock = vi.mocked(chatService.getMessages);
 
 function makeDocument(
   overrides: Partial<Document> = {}
@@ -58,7 +82,7 @@ function makeDocument(
   };
 }
 
-function makeUser(overrides: Partial<Awaited<ReturnType<typeof api.getCurrentUser>>> = {}) {
+function makeUser(overrides: Partial<{ id: number; username: string; email: string; is_demo: boolean; created_at: string }> = {}) {
   return {
     id: 1,
     username: "alice",
@@ -73,7 +97,7 @@ describe("DashboardPage regression behavior", () => {
   beforeEach(() => {
     pushMock.mockReset();
     isLoggedInMock.mockReset();
-    getCurrentUserMock.mockReset();
+    getDashboardContextMock.mockReset();
     getDocumentsMock.mockReset();
     uploadDocumentMock.mockReset();
     processDocumentMock.mockReset();
@@ -82,9 +106,11 @@ describe("DashboardPage regression behavior", () => {
     getMessagesMock.mockReset();
 
     isLoggedInMock.mockReturnValue(true);
-    getCurrentUserMock.mockResolvedValue(makeUser());
+    getDashboardContextMock.mockResolvedValue({
+      user: makeUser(),
+      documents: [],
+    });
     getDocumentsMock.mockResolvedValue({ documents: [], total: 0 });
-    getMessagesMock.mockResolvedValue({ messages: [], total: 0 });
     uploadDocumentMock.mockResolvedValue(makeDocument());
     processDocumentMock.mockResolvedValue({
       message: "queued",
@@ -97,11 +123,15 @@ describe("DashboardPage regression behavior", () => {
       error_message: null,
     });
     deleteDocumentMock.mockResolvedValue({ message: "deleted" });
+    getMessagesMock.mockResolvedValue({ messages: [], total: 0 });
   });
 
   it("renders loaded documents after successful fetch", async () => {
     const doc = makeDocument({ filename: "guide.pdf" });
-    getDocumentsMock.mockResolvedValueOnce({ documents: [doc], total: 1 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [doc],
+    });
 
     render(<DashboardPage />);
 
@@ -110,7 +140,10 @@ describe("DashboardPage regression behavior", () => {
   });
 
   it("renders empty state when no documents are returned", async () => {
-    getDocumentsMock.mockResolvedValueOnce({ documents: [], total: 0 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [],
+    });
 
     render(<DashboardPage />);
 
@@ -120,7 +153,7 @@ describe("DashboardPage regression behavior", () => {
   });
 
   it("renders API error text when document load fails", async () => {
-    getDocumentsMock.mockRejectedValueOnce(
+    getDashboardContextMock.mockRejectedValueOnce(
       new ApiError(500, "Failed to load documents from API")
     );
 
@@ -132,7 +165,7 @@ describe("DashboardPage regression behavior", () => {
   });
 
   it("redirects to login when session refresh fails", async () => {
-    getDocumentsMock.mockRejectedValueOnce(new SessionExpiredError());
+    getDashboardContextMock.mockRejectedValueOnce(new SessionExpiredError());
 
     render(<DashboardPage />);
 
@@ -143,8 +176,11 @@ describe("DashboardPage regression behavior", () => {
 
   it("uploads a document and reloads the list on success", async () => {
     const doc = makeDocument();
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [doc],
+    });
     getDocumentsMock
-      .mockResolvedValueOnce({ documents: [doc], total: 1 })
       .mockResolvedValueOnce({ documents: [doc], total: 1 });
 
     render(<DashboardPage />);
@@ -156,7 +192,7 @@ describe("DashboardPage regression behavior", () => {
 
     await waitFor(() => {
       expect(uploadDocumentMock).toHaveBeenCalledWith(file);
-      expect(getDocumentsMock).toHaveBeenCalledTimes(2);
+      expect(getDocumentsMock).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -172,9 +208,11 @@ describe("DashboardPage regression behavior", () => {
       processed_at: null,
     });
 
-    getDocumentsMock
-      .mockResolvedValueOnce({ documents: [pendingDoc], total: 1 })
-      .mockResolvedValueOnce({ documents: [processingDoc], total: 1 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [pendingDoc],
+    });
+    getDocumentsMock.mockResolvedValueOnce({ documents: [processingDoc], total: 1 });
 
     render(<DashboardPage />);
 
@@ -183,15 +221,17 @@ describe("DashboardPage regression behavior", () => {
 
     await waitFor(() => {
       expect(processDocumentMock).toHaveBeenCalledWith(201);
-      expect(getDocumentsMock).toHaveBeenCalledTimes(2);
+      expect(getDocumentsMock).toHaveBeenCalledTimes(1);
     });
   });
 
   it("deletes a document and reloads the list", async () => {
     const doc = makeDocument({ id: 301 });
-    getDocumentsMock
-      .mockResolvedValueOnce({ documents: [doc], total: 1 })
-      .mockResolvedValueOnce({ documents: [], total: 0 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [doc],
+    });
+    getDocumentsMock.mockResolvedValueOnce({ documents: [], total: 0 });
 
     render(<DashboardPage />);
 
@@ -203,15 +243,17 @@ describe("DashboardPage regression behavior", () => {
 
     await waitFor(() => {
       expect(deleteDocumentMock).toHaveBeenCalledWith(301);
-      expect(getDocumentsMock).toHaveBeenCalledTimes(2);
+      expect(getDocumentsMock).toHaveBeenCalledTimes(1);
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 
   it("hides demo-restricted controls and shows demo banner for demo users", async () => {
     const doc = makeDocument({ id: 302 });
-    getCurrentUserMock.mockResolvedValueOnce(makeUser({ is_demo: true }));
-    getDocumentsMock.mockResolvedValueOnce({ documents: [doc], total: 1 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser({ is_demo: true }),
+      documents: [doc],
+    });
 
     render(<DashboardPage />);
 
@@ -226,8 +268,10 @@ describe("DashboardPage regression behavior", () => {
 
   it("keeps upload and delete controls for non-demo users", async () => {
     const doc = makeDocument({ id: 303 });
-    getCurrentUserMock.mockResolvedValueOnce(makeUser({ is_demo: false }));
-    getDocumentsMock.mockResolvedValueOnce({ documents: [doc], total: 1 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser({ is_demo: false }),
+      documents: [doc],
+    });
 
     render(<DashboardPage />);
 
@@ -256,18 +300,24 @@ describe("DashboardPage layout contracts", () => {
   beforeEach(() => {
     pushMock.mockReset();
     isLoggedInMock.mockReset();
-    getCurrentUserMock.mockReset();
+    getDashboardContextMock.mockReset();
     getDocumentsMock.mockReset();
     getMessagesMock.mockReset();
 
     isLoggedInMock.mockReturnValue(true);
-    getCurrentUserMock.mockResolvedValue(makeUser());
+    getDashboardContextMock.mockResolvedValue({
+      user: makeUser(),
+      documents: [],
+    });
     getMessagesMock.mockResolvedValue({ messages: [], total: 0 });
   });
 
   async function selectDocument() {
     const doc = makeDocument();
-    getDocumentsMock.mockResolvedValueOnce({ documents: [doc], total: 1 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [doc],
+    });
     render(<DashboardPage />);
     await screen.findByText("alpha.pdf");
     fireEvent.click(screen.getByText("alpha.pdf"));

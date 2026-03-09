@@ -1,10 +1,11 @@
-import { act, render, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Document } from "@/lib/api";
 import type { User } from "@/lib/api.types";
 import * as api from "@/lib/api";
 import { SessionExpiredError } from "@/lib/api";
 import { useDashboardState } from "@/lib/hooks/useDashboardState";
+import { authService } from "@/lib/services/authService";
 import { documentService } from "@/lib/services/documentService";
 
 const onSessionExpiredMock = vi.fn();
@@ -36,18 +37,8 @@ function makeUser(overrides: Partial<User> = {}): User {
 }
 
 function setupHookHarness() {
-  const stateRef: { current: ReturnType<typeof useDashboardState> | null } = {
-    current: null,
-  };
-
-  const HookHarness = () => {
-    const state = useDashboardState({ onSessionExpired: onSessionExpiredMock });
-    stateRef.current = state;
-    return null;
-  };
-
-  render(<HookHarness />);
-  return { stateRef };
+  const hook = renderHook(() => useDashboardState({ onSessionExpired: onSessionExpiredMock }));
+  return { hook };
 }
 
 describe("useDashboardState", () => {
@@ -55,6 +46,7 @@ describe("useDashboardState", () => {
   const getDocumentsMock = vi.spyOn(documentService, "getDocuments");
   const uploadDocumentMock = vi.spyOn(documentService, "uploadDocument");
   const getDocumentStatusMock = vi.spyOn(documentService, "getDocumentStatus");
+  const authLogoutMock = vi.spyOn(authService, "logout");
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -72,6 +64,7 @@ describe("useDashboardState", () => {
       processed_at: null,
       error_message: null,
     });
+    authLogoutMock.mockResolvedValue();
   });
 
   afterEach(() => {
@@ -85,14 +78,14 @@ describe("useDashboardState", () => {
       documents: [doc],
     });
 
-    const { stateRef } = setupHookHarness();
+    const { hook } = setupHookHarness();
 
     await waitFor(() => {
-      expect(stateRef.current?.loading).toBe(false);
+      expect(hook.result.current.loading).toBe(false);
     });
 
-    expect(stateRef.current?.documents).toEqual([doc]);
-    expect(stateRef.current?.isDemoUser).toBe(false);
+    expect(hook.result.current.documents).toEqual([doc]);
+    expect(hook.result.current.isDemoUser).toBe(false);
   });
 
   it(
@@ -108,10 +101,10 @@ describe("useDashboardState", () => {
     });
     getDocumentStatusMock.mockRejectedValueOnce(new SessionExpiredError());
 
-    const { stateRef } = setupHookHarness();
+    const { hook } = setupHookHarness();
 
     await waitFor(() => {
-      expect(stateRef.current?.loading).toBe(false);
+      expect(hook.result.current.loading).toBe(false);
     });
 
     await act(async () => {
@@ -121,7 +114,7 @@ describe("useDashboardState", () => {
       await waitFor(() => {
         expect(onSessionExpiredMock).toHaveBeenCalledTimes(1);
       });
-      expect(stateRef.current?.documents).toEqual([pending]);
+      expect(hook.result.current.documents).toEqual([pending]);
     },
     9000
   );
@@ -135,13 +128,13 @@ describe("useDashboardState", () => {
     });
     getDocumentsMock.mockResolvedValue({ documents: [doc, refreshed], total: 2 });
 
-    const { stateRef } = setupHookHarness();
+    const { hook } = setupHookHarness();
     await waitFor(() => {
-      expect(stateRef.current?.loading).toBe(false);
+      expect(hook.result.current.loading).toBe(false);
     });
 
     await act(async () => {
-      await stateRef.current?.handleUpload(
+      await hook.result.current.handleUpload(
         new File(["%PDF"], "upload.pdf", { type: "application/pdf" })
       );
     });
@@ -149,7 +142,21 @@ describe("useDashboardState", () => {
     await waitFor(() => {
       expect(uploadDocumentMock).toHaveBeenCalledTimes(1);
       expect(getDocumentsMock).toHaveBeenCalledTimes(1);
-      expect(stateRef.current?.documents).toEqual([doc, refreshed]);
+      expect(hook.result.current.documents).toEqual([doc, refreshed]);
     });
+  });
+
+  it("logs out through authService and then redirects to login", async () => {
+    const { hook } = setupHookHarness();
+    await waitFor(() => {
+      expect(hook.result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await hook.result.current.handleLogout();
+    });
+
+    expect(authLogoutMock).toHaveBeenCalledTimes(1);
+    expect(onSessionExpiredMock).toHaveBeenCalledTimes(1);
   });
 });

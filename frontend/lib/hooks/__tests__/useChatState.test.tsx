@@ -1,4 +1,4 @@
-import { act, render, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Document, PipelineMeta, QueryResponse } from "@/lib/api";
 import { useChatState } from "@/lib/hooks/useChatState";
@@ -42,17 +42,8 @@ const documentFixture: Document = {
 };
 
 function setupHookHarness(onSessionExpired = vi.fn()) {
-  const stateRef: {
-    current: ReturnType<typeof useChatState> | null;
-  } = { current: null };
-
-  const HookHarness = () => {
-    stateRef.current = useChatState({ document: documentFixture, onSessionExpired });
-    return null;
-  };
-
-  render(<HookHarness />);
-  return { stateRef, onSessionExpired };
+  const hook = renderHook(() => useChatState({ document: documentFixture, onSessionExpired }));
+  return { hook, onSessionExpired };
 }
 
 describe("useChatState", () => {
@@ -80,13 +71,13 @@ describe("useChatState", () => {
       total: 1,
     });
 
-    const { stateRef } = setupHookHarness();
+    const { hook } = setupHookHarness();
 
     await waitFor(() => {
-      expect(stateRef.current?.loadingHistory).toBe(false);
+      expect(hook.result.current.loadingHistory).toBe(false);
     });
 
-    expect(stateRef.current?.messages).toEqual([
+    expect(hook.result.current.messages).toEqual([
       {
         role: "assistant",
         content: "History answer",
@@ -109,13 +100,13 @@ describe("useChatState", () => {
     const onSessionExpired = vi.fn();
     queryDocumentStreamMock.mockRejectedValueOnce(new SessionExpiredError("Session expired"));
 
-    const { stateRef } = setupHookHarness(onSessionExpired);
+    const { hook } = setupHookHarness(onSessionExpired);
     await waitFor(() => {
-      expect(stateRef.current?.loadingHistory).toBe(false);
+      expect(hook.result.current.loadingHistory).toBe(false);
     });
 
     await act(async () => {
-      await stateRef.current?.submitQuery("What does it say?");
+      await hook.result.current.submitQuery("What does it say?");
     });
 
     await waitFor(() => {
@@ -149,18 +140,18 @@ describe("useChatState", () => {
       callbacks.onDone({ message_id: 301 });
     });
 
-    const { stateRef } = setupHookHarness();
+    const { hook } = setupHookHarness();
 
     await waitFor(() => {
-      expect(stateRef.current?.loadingHistory).toBe(false);
+      expect(hook.result.current.loadingHistory).toBe(false);
     });
 
     await act(async () => {
-      const firstSubmit = stateRef.current?.submitQuery("Original question");
-      stateRef.current?.stopActiveStream();
+      const firstSubmit = hook.result.current.submitQuery("Original question");
+      hook.result.current.stopActiveStream();
       capturedCallbacks?.onToken("should be ignored after stop");
       await firstSubmit;
-      await stateRef.current?.submitQuery("Original question");
+      await hook.result.current.submitQuery("Original question");
     });
 
     await waitFor(() => {
@@ -169,10 +160,10 @@ describe("useChatState", () => {
 
     expect(queryDocumentStreamMock.mock.calls[0]?.[1]).toBe("Original question");
     expect(queryDocumentStreamMock.mock.calls[1]?.[1]).toBe("Original question");
-    expect(stateRef.current?.messages.some((message) => message.content.includes("Recovered"))).toBe(
+    expect(hook.result.current.messages.some((message) => message.content.includes("Recovered"))).toBe(
       true
     );
-    expect(stateRef.current?.messages.at(-1)?.retry_query).toBeUndefined();
+    expect(hook.result.current.messages.at(-1)?.retry_query).toBeUndefined();
     expect(capturedSignal?.aborted).toBe(true);
   });
 });
