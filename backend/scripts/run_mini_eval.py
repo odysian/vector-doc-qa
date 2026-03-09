@@ -428,6 +428,49 @@ def _build_summary(
     }
 
 
+def _build_threshold_gate(
+    *,
+    summary: dict[str, Any],
+    min_answer_recall: float,
+    min_retrieval_recall: float,
+    min_top_similarity: float,
+) -> dict[str, Any]:
+    checks = {
+        "avg_answer_fact_recall": {
+            "actual": summary["avg_answer_fact_recall"],
+            "minimum": round(min_answer_recall, 4),
+        },
+        "avg_retrieval_fact_recall": {
+            "actual": summary["avg_retrieval_fact_recall"],
+            "minimum": round(min_retrieval_recall, 4),
+        },
+        "avg_top_similarity": {
+            "actual": summary["avg_top_similarity"],
+            "minimum": round(min_top_similarity, 4),
+        },
+    }
+
+    breached_metrics: list[str] = []
+    for metric_name, metric_check in checks.items():
+        metric_check["actual"] = round(float(metric_check["actual"]), 4)
+        metric_check["passed"] = metric_check["actual"] >= metric_check["minimum"]
+        if not metric_check["passed"]:
+            breached_metrics.append(metric_name)
+
+    passed = not breached_metrics
+    return {
+        "verdict": "PASS" if passed else "FAIL",
+        "passed": passed,
+        "thresholds": {
+            "min_answer_recall": round(min_answer_recall, 4),
+            "min_retrieval_recall": round(min_retrieval_recall, 4),
+            "min_top_similarity": round(min_top_similarity, 4),
+        },
+        "checks": checks,
+        "breached_metrics": breached_metrics,
+    }
+
+
 def _to_markdown(report: dict[str, Any]) -> str:
     lines: list[str] = []
     lines.append("# Mini Eval Report")
@@ -447,6 +490,25 @@ def _to_markdown(report: dict[str, Any]) -> str:
         f"{summary['avg_answer_fact_recall']} | {summary['avg_retrieval_fact_recall']} | "
         f"{summary['avg_total_ms']} |"
     )
+    lines.append("")
+    lines.append("## Threshold Gate")
+    lines.append("")
+    threshold_gate = report["threshold_gate"]
+    thresholds = threshold_gate["thresholds"]
+    lines.append("| verdict | min_answer_recall | min_retrieval_recall | min_top_similarity |")
+    lines.append("|---|---|---|---|")
+    lines.append(
+        f"| {threshold_gate['verdict']} | {thresholds['min_answer_recall']} | "
+        f"{thresholds['min_retrieval_recall']} | {thresholds['min_top_similarity']} |"
+    )
+    lines.append("")
+    lines.append("| metric | actual | minimum | status |")
+    lines.append("|---|---|---|---|")
+    for metric_name, metric_check in threshold_gate["checks"].items():
+        status = "pass" if metric_check["passed"] else "fail"
+        lines.append(
+            f"| {metric_name} | {metric_check['actual']} | {metric_check['minimum']} | {status} |"
+        )
     lines.append("")
     lines.append("## Confidence Calibration")
     lines.append("")
@@ -549,6 +611,24 @@ def _parse_args() -> argparse.Namespace:
         help="Optional document owner scope when resolving target_document filenames.",
     )
     parser.add_argument(
+        "--min-answer-recall",
+        type=float,
+        default=0.6,
+        help="Pass/fail floor for summary avg_answer_fact_recall.",
+    )
+    parser.add_argument(
+        "--min-retrieval-recall",
+        type=float,
+        default=0.7,
+        help="Pass/fail floor for summary avg_retrieval_fact_recall.",
+    )
+    parser.add_argument(
+        "--min-top-similarity",
+        type=float,
+        default=0.55,
+        help="Pass/fail floor for summary avg_top_similarity.",
+    )
+    parser.add_argument(
         "--min-answer-fact-recall",
         type=float,
         default=0.8,
@@ -569,6 +649,9 @@ def _parse_args() -> argparse.Namespace:
     args = parser.parse_args()
 
     for arg_name in (
+        "min_answer_recall",
+        "min_retrieval_recall",
+        "min_top_similarity",
         "min_answer_fact_recall",
         "high_confidence_precision_target",
         "medium_confidence_precision_target",
@@ -604,16 +687,24 @@ async def _run_eval(args: argparse.Namespace) -> dict[str, Any]:
             }
             for eval_case in cases
         ]
+        summary = _build_summary(
+            case_results,
+            min_answer_fact_recall=args.min_answer_fact_recall,
+            high_precision_target=args.high_confidence_precision_target,
+            medium_precision_target=args.medium_confidence_precision_target,
+        )
+        threshold_gate = _build_threshold_gate(
+            summary=summary,
+            min_answer_recall=args.min_answer_recall,
+            min_retrieval_recall=args.min_retrieval_recall,
+            min_top_similarity=args.min_top_similarity,
+        )
         return {
             "generated_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "fixture_path": str(args.fixture),
             "cases": case_results,
-            "summary": _build_summary(
-                case_results,
-                min_answer_fact_recall=args.min_answer_fact_recall,
-                high_precision_target=args.high_confidence_precision_target,
-                medium_precision_target=args.medium_confidence_precision_target,
-            ),
+            "summary": summary,
+            "threshold_gate": threshold_gate,
         }
 
     for eval_case in cases:
@@ -647,16 +738,24 @@ async def _run_eval(args: argparse.Namespace) -> dict[str, Any]:
         case_results.append(case_result)
 
     generated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
+    summary = _build_summary(
+        case_results,
+        min_answer_fact_recall=args.min_answer_fact_recall,
+        high_precision_target=args.high_confidence_precision_target,
+        medium_precision_target=args.medium_confidence_precision_target,
+    )
+    threshold_gate = _build_threshold_gate(
+        summary=summary,
+        min_answer_recall=args.min_answer_recall,
+        min_retrieval_recall=args.min_retrieval_recall,
+        min_top_similarity=args.min_top_similarity,
+    )
     return {
         "generated_at": generated_at,
         "fixture_path": str(args.fixture),
         "cases": case_results,
-        "summary": _build_summary(
-            case_results,
-            min_answer_fact_recall=args.min_answer_fact_recall,
-            high_precision_target=args.high_confidence_precision_target,
-            medium_precision_target=args.medium_confidence_precision_target,
-        ),
+        "summary": summary,
+        "threshold_gate": threshold_gate,
     }
 
 
@@ -683,8 +782,16 @@ def main() -> None:
         f"cases_ok={summary['cases_ok']}",
         f"cases_error={summary['cases_error']}",
         f"avg_answer_fact_recall={summary['avg_answer_fact_recall']}",
+        f"avg_retrieval_fact_recall={summary['avg_retrieval_fact_recall']}",
+        f"avg_top_similarity={summary['avg_top_similarity']}",
         f"avg_total_ms={summary['avg_total_ms']}",
     )
+
+    threshold_gate = report["threshold_gate"]
+    print("Threshold gate:", f"verdict={threshold_gate['verdict']}")
+    if not threshold_gate["passed"]:
+        print("Breached metrics:", ", ".join(threshold_gate["breached_metrics"]))
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

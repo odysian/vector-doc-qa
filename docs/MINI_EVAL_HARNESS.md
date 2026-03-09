@@ -7,7 +7,7 @@ This repository includes a small eval runner for tracking retrieval quality, ans
 From repo root:
 
 ```bash
-make backend-mini-eval
+make eval
 ```
 
 Artifacts are written to:
@@ -26,6 +26,9 @@ PYTHONPATH=. .venv/bin/python scripts/run_mini_eval.py \
   --output-dir reports/mini_eval \
   --top-k 5 \
   --user-id 1 \
+  --min-answer-recall 0.6 \
+  --min-retrieval-recall 0.7 \
+  --min-top-similarity 0.55 \
   --min-answer-fact-recall 0.8 \
   --high-confidence-precision-target 0.9 \
   --medium-confidence-precision-target 0.7 \
@@ -62,6 +65,11 @@ Example:
 - Latency: `embed_ms`, `retrieval_ms`, `llm_ms`, `total_ms`
 - Retrieval proxies: `top_similarity`, `avg_similarity`, `chunks_retrieved`
 - Quality proxy: expected fact recall in answer text and retrieved chunk text
+- Threshold gate:
+  - `avg_answer_fact_recall >= --min-answer-recall`
+  - `avg_retrieval_fact_recall >= --min-retrieval-recall`
+  - `avg_top_similarity >= --min-top-similarity`
+  - The script exits non-zero when any threshold is breached.
 - Confidence calibration recommendations:
   - Computes `high` and `medium` suggested `top_similarity` cutoffs from observed eval outcomes.
   - Treats a case as "correct" when `answer.fact_recall >= --min-answer-fact-recall`.
@@ -86,3 +94,7 @@ Example:
 - Report summary includes a `confidence_calibration` block in JSON and a Markdown table with:
   - recommended minimum `top_similarity` for `high` and `medium` bands
   - observed precision/coverage at those thresholds
+- Report summary includes a `threshold_gate` block in JSON and a Markdown section with:
+  - PASS/FAIL verdict
+  - threshold config used for the run
+  - per-metric pass/fail status

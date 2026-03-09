@@ -76,6 +76,7 @@ COMMANDS.md
 
 # Generated eval reports
 backend/reports/
+reports/
 gptdocs/pdf/
 testfiles/eval_batch1/
 
