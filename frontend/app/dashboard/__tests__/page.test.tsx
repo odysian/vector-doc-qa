@@ -38,7 +38,6 @@ vi.mock("@/lib/services/documentService", async () => {
       processDocument: vi.fn(),
       getDocumentStatus: vi.fn(),
       deleteDocument: vi.fn(),
-      logout: vi.fn(),
     },
   };
 });

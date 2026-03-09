@@ -5,6 +5,7 @@ import type { User } from "@/lib/api.types";
 import * as api from "@/lib/api";
 import { SessionExpiredError } from "@/lib/api";
 import { useDashboardState } from "@/lib/hooks/useDashboardState";
+import { authService } from "@/lib/services/authService";
 import { documentService } from "@/lib/services/documentService";
 
 const onSessionExpiredMock = vi.fn();
@@ -45,6 +46,7 @@ describe("useDashboardState", () => {
   const getDocumentsMock = vi.spyOn(documentService, "getDocuments");
   const uploadDocumentMock = vi.spyOn(documentService, "uploadDocument");
   const getDocumentStatusMock = vi.spyOn(documentService, "getDocumentStatus");
+  const authLogoutMock = vi.spyOn(authService, "logout");
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -62,6 +64,7 @@ describe("useDashboardState", () => {
       processed_at: null,
       error_message: null,
     });
+    authLogoutMock.mockResolvedValue();
   });
 
   afterEach(() => {
@@ -141,5 +144,19 @@ describe("useDashboardState", () => {
       expect(getDocumentsMock).toHaveBeenCalledTimes(1);
       expect(hook.result.current.documents).toEqual([doc, refreshed]);
     });
+  });
+
+  it("logs out through authService and then redirects to login", async () => {
+    const { hook } = setupHookHarness();
+    await waitFor(() => {
+      expect(hook.result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await hook.result.current.handleLogout();
+    });
+
+    expect(authLogoutMock).toHaveBeenCalledTimes(1);
+    expect(onSessionExpiredMock).toHaveBeenCalledTimes(1);
   });
 });

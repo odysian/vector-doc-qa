@@ -69,9 +69,4 @@ export const documentService = {
       method: "DELETE",
     });
   },
-
-  /** Route dashboard logout through the auth domain boundary. */
-  logout: async (): Promise<void> => {
-    await authService.logout();
-  },
 };
