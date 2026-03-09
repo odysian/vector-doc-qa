@@ -5,26 +5,11 @@
 
 "use client";
 
-import { useState, useRef, useEffect, SyntheticEvent } from "react";
+import { SyntheticEvent, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Settings2 } from "lucide-react";
-import {
-  type Document,
-  api,
-  type QueryResponse,
-  type PipelineMeta,
-  ApiError,
-  SessionExpiredError,
-} from "@/lib/api";
 import { formatDate } from "@/lib/utils";
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  sources?: QueryResponse["sources"];
-  pipeline_meta?: PipelineMeta;
-  streaming?: boolean;
-  retry_query?: string;
-}
+import type { Document } from "@/lib/api";
+import { useChatState } from "@/lib/hooks/useChatState";
 
 interface CitationTarget {
   page: number;
@@ -56,24 +41,15 @@ export function ChatWindow({
   onCitationClick,
   onSessionExpired,
 }: ChatWindowProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [loadingHistory, setLoadingHistory] = useState(true);
   const [debugMode, setDebugMode] = useState(false);
   const [expandedSourceIndices, setExpandedSourceIndices] = useState<Set<number>>(new Set());
   const [expandedSourceCards, setExpandedSourceCards] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
-  const isMountedRef = useRef(true);
-  const activeStreamAbortRef = useRef<AbortController | null>(null);
-  const streamInFlightRef = useRef(false);
-  const isStreaming = messages.some((message) => message.streaming);
-
-  const isAbortError = (err: unknown): boolean => {
-    return (
-      (err instanceof DOMException && err.name === "AbortError")
-      || (typeof err === "object" && err !== null && "name" in err && err.name === "AbortError")
-    );
-  };
+  const { messages, loadingHistory, isStreaming, submitQuery, stopActiveStream } = useChatState({
+    document,
+    onSessionExpired,
+  });
 
   /** Toggle whether the whole "Sources" block for a message is open or collapsed. */
   const toggleSources = (messageIndex: number) => {
@@ -107,96 +83,10 @@ export function ChatWindow({
     }
   };
 
-  const updateStreamingAssistant = (updater: (message: Message) => Message) => {
-    setMessages((prev) => {
-      const streamingIndex = prev.findIndex(
-        (message) => message.role === "assistant" && message.streaming
-      );
-      if (streamingIndex === -1) return prev;
-
-      const next = [...prev];
-      next[streamingIndex] = updater(next[streamingIndex]);
-      return next;
-    });
-  };
-
-  const appendStreamError = (errorMessage: string, retryQuery: string) => {
-    setMessages((prev) => {
-      const streamingIndex = prev.findIndex(
-        (message) => message.role === "assistant" && message.streaming
-      );
-      if (streamingIndex === -1) {
-        return [...prev, { role: "assistant", content: errorMessage, retry_query: retryQuery }];
-      }
-
-      const next = [...prev];
-      const current = next[streamingIndex];
-      next[streamingIndex] = {
-        ...current,
-        content: current.content ? `${current.content}\n\n${errorMessage}` : errorMessage,
-        streaming: false,
-        retry_query: retryQuery,
-      };
-      return next;
-    });
-  };
-
-  const markStreamStopped = (retryQuery: string) => {
-    updateStreamingAssistant((message) => ({
-      ...message,
-      content: message.content
-        ? `${message.content}\n\nStopped. You can retry this response.`
-        : "Stopped. You can retry this response.",
-      streaming: false,
-      retry_query: retryQuery,
-    }));
-  };
-
-  const stopActiveStream = () => {
-    activeStreamAbortRef.current?.abort();
-  };
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-      activeStreamAbortRef.current?.abort();
-      streamInFlightRef.current = false;
-    };
-  }, []);
-
   useEffect(() => {
     if (typeof window === "undefined") return;
     setDebugMode(localStorage.getItem(DEBUG_MODE_STORAGE_KEY) === "true");
   }, []);
-
-
-  useEffect(() => {
-    const loadHistory = async () => {
-      try {
-        setLoadingHistory(true);
-        const response = await api.getMessages(document.id);
-
-        const loadedMessages: Message[] = response.messages.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-          sources: msg.sources as QueryResponse["sources"],
-          pipeline_meta: msg.pipeline_meta,
-        }));
-        setMessages(loadedMessages);
-      } catch (err) {
-        if (err instanceof SessionExpiredError) {
-          onSessionExpired?.();
-          return;
-        }
-        console.error("Failed to load message history:", err);
-      } finally {
-        setLoadingHistory(false);
-      }
-    };
-
-    loadHistory();
-  }, [document.id, onSessionExpired]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -205,102 +95,12 @@ export function ChatWindow({
     }
   }, [messages]);
 
-
-
-
-  const submitQuery = async (query: string) => {
-    const trimmed = query.trim();
-    if (!trimmed || isStreaming || streamInFlightRef.current) return;
-
-    streamInFlightRef.current = true;
-    const streamController = new AbortController();
-    activeStreamAbortRef.current?.abort();
-    activeStreamAbortRef.current = streamController;
-
-    setInput("");
-    setMessages((prev) => [
-      ...prev,
-      { role: "user", content: trimmed },
-      { role: "assistant", content: "", streaming: true },
-    ]);
-
-    try {
-      await api.queryDocumentStream(document.id, trimmed, {
-        onSources: (sources) => {
-          if (!isMountedRef.current || streamController.signal.aborted) return;
-          updateStreamingAssistant((message) => ({
-            ...message,
-            sources,
-          }));
-        },
-        onToken: (token) => {
-          if (!isMountedRef.current || streamController.signal.aborted) return;
-          updateStreamingAssistant((message) => ({
-            ...message,
-            content: `${message.content}${token}`,
-          }));
-        },
-        onMeta: (pipelineMeta) => {
-          if (!isMountedRef.current || streamController.signal.aborted) return;
-          updateStreamingAssistant((message) => ({
-            ...message,
-            pipeline_meta: pipelineMeta,
-          }));
-        },
-        onDone: () => {
-          if (!isMountedRef.current || streamController.signal.aborted) return;
-          updateStreamingAssistant((message) => ({
-            ...message,
-            streaming: false,
-          }));
-          activeStreamAbortRef.current = null;
-          streamInFlightRef.current = false;
-        },
-        onError: (detail) => {
-          if (!isMountedRef.current || streamController.signal.aborted) return;
-          appendStreamError(`Error: ${detail}`, trimmed);
-          activeStreamAbortRef.current = null;
-          streamInFlightRef.current = false;
-        },
-      }, { signal: streamController.signal });
-    } catch (err) {
-      if (isAbortError(err)) {
-        if (isMountedRef.current) {
-          markStreamStopped(trimmed);
-        }
-        streamInFlightRef.current = false;
-        return;
-      }
-
-      let errorMessage = "Error: Failed to get answer. Please try again.";
-
-      if (err instanceof ApiError) {
-        if (err.status === 400) {
-          errorMessage = "This document hasn't been processed yet. Please process it first before asking questions.";
-        } else if (err.status === 404) {
-          errorMessage = "Document not found.";
-        } else if (err instanceof SessionExpiredError) {
-          onSessionExpired?.();
-          return;
-        } else if (err.status === 401) {
-          errorMessage = "Your session has expired. Please log in again.";
-        } else {
-          errorMessage = `Error: ${err.detail}`;
-        }
-      }
-
-      appendStreamError(errorMessage, trimmed);
-    } finally {
-      if (activeStreamAbortRef.current === streamController) {
-        activeStreamAbortRef.current = null;
-      }
-      streamInFlightRef.current = false;
-    }
-  };
-
   const handleSubmit = (e: SyntheticEvent) => {
     e.preventDefault();
-    void submitQuery(input);
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    setInput("");
+    void submitQuery(trimmed);
   };
 
   const handleRetry = (query: string) => {
@@ -481,7 +281,7 @@ export function ChatWindow({
                   <span>
                     {(msg.pipeline_meta.total_ms / 1000).toFixed(1)}s ·{" "}
                     {(msg.pipeline_meta.avg_similarity * 100).toFixed(0)}% retrieval ·{" "}
-                    {msg.pipeline_meta.chunks_retrieved}{" "}
+                    {msg.pipeline_meta.chunks_retrieved} {" "}
                     {msg.pipeline_meta.chunks_retrieved === 1 ? "source" : "sources"} ·{" "}
                     {getConfidence(msg.pipeline_meta.top_similarity)} confidence
                   </span>
