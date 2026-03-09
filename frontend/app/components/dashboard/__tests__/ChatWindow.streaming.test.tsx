@@ -1,23 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ChatWindow } from "@/app/components/dashboard/ChatWindow";
-import { api } from "@/lib/api";
+import { chatService } from "@/lib/services/chatService";
 import type { Document, PipelineMeta, QueryResponse } from "@/lib/api";
 
-vi.mock("@/lib/api", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+vi.mock("@/lib/services/chatService", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/services/chatService")>(
+    "@/lib/services/chatService"
+  );
   return {
     ...actual,
-    api: {
-      ...actual.api,
+    chatService: {
+      ...actual.chatService,
       getMessages: vi.fn(),
       queryDocumentStream: vi.fn(),
     },
   };
 });
 
-const getMessagesMock = vi.mocked(api.getMessages);
-const queryDocumentStreamMock = vi.mocked(api.queryDocumentStream);
+const getMessagesMock = vi.mocked(chatService.getMessages);
+const queryDocumentStreamMock = vi.mocked(chatService.queryDocumentStream);
 
 interface StreamCallbacks {
   onSources: (sources: QueryResponse["sources"]) => void;
