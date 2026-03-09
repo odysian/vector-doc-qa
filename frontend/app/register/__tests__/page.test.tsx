@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import RegisterPage from "@/app/register/page";
-import { api, saveTokens } from "@/lib/api";
+import { authService } from "@/lib/services/authService";
 
 const pushMock = vi.fn();
 
@@ -11,22 +11,20 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/api", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+vi.mock("@/lib/services/authService", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/services/authService")>(
+    "@/lib/services/authService"
+  );
   return {
     ...actual,
-    saveTokens: vi.fn(),
-    api: {
-      ...actual.api,
-      register: vi.fn(),
-      login: vi.fn(),
+    authService: {
+      ...actual.authService,
+      registerAndLogin: vi.fn(),
     },
   };
 });
 
-const registerMock = vi.mocked(api.register);
-const loginMock = vi.mocked(api.login);
-const saveTokensMock = vi.mocked(saveTokens);
+const registerAndLoginMock = vi.mocked(authService.registerAndLogin);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -41,24 +39,12 @@ function deferred<T>() {
 describe("RegisterPage form behavior", () => {
   beforeEach(() => {
     pushMock.mockReset();
-    registerMock.mockReset();
-    loginMock.mockReset();
-    saveTokensMock.mockReset();
+    registerAndLoginMock.mockReset();
   });
 
   it("disables submit while registering and re-enables after success", async () => {
-    const pendingRegistration = deferred<{
-      id: number;
-      username: string;
-      email: string;
-      is_demo: boolean;
-      created_at: string;
-    }>();
-    registerMock.mockReturnValueOnce(pendingRegistration.promise);
-    loginMock.mockResolvedValueOnce({
-      csrf_token: "csrf-token",
-      token_type: "bearer",
-    });
+    const pendingRegistration = deferred<void>();
+    registerAndLoginMock.mockReturnValueOnce(pendingRegistration.promise);
 
     render(<RegisterPage />);
 
@@ -77,27 +63,13 @@ describe("RegisterPage form behavior", () => {
       screen.getByRole("button", { name: "Creating account..." })
     ).toBeDisabled();
 
-    pendingRegistration.resolve({
-      id: 1,
-      username: "alice",
-      email: "alice@example.com",
-      is_demo: false,
-      created_at: "2026-03-02T10:00:00Z",
-    });
+    pendingRegistration.resolve();
 
     await waitFor(() => {
-      expect(registerMock).toHaveBeenCalledWith({
+      expect(registerAndLoginMock).toHaveBeenCalledWith({
         username: "alice",
         email: "alice@example.com",
         password: "strong-password",
-      });
-      expect(loginMock).toHaveBeenCalledWith({
-        username: "alice",
-        password: "strong-password",
-      });
-      expect(saveTokensMock).toHaveBeenCalledWith({
-        csrf_token: "csrf-token",
-        token_type: "bearer",
       });
       expect(pushMock).toHaveBeenCalledWith("/dashboard");
       expect(screen.getByRole("button", { name: "Register" })).toBeEnabled();
@@ -105,7 +77,7 @@ describe("RegisterPage form behavior", () => {
   });
 
   it("renders API errors and re-enables submit", async () => {
-    registerMock.mockRejectedValueOnce(new Error("Username already exists"));
+    registerAndLoginMock.mockRejectedValueOnce(new Error("Username already exists"));
 
     render(<RegisterPage />);
 

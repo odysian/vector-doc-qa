@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Home from "@/app/page";
-import { isLoggedIn, loginAsDemo } from "@/lib/api";
+import { authService } from "@/lib/services/authService";
 
 const pushMock = vi.fn();
 const replaceMock = vi.fn();
@@ -13,29 +13,29 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/api", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+vi.mock("@/lib/services/authService", () => {
   return {
-    ...actual,
-    isLoggedIn: vi.fn(),
-    loginAsDemo: vi.fn(),
+    authService: {
+      hasActiveSession: vi.fn(),
+      loginDemo: vi.fn(),
+    },
   };
 });
 
-const isLoggedInMock = vi.mocked(isLoggedIn);
-const loginAsDemoMock = vi.mocked(loginAsDemo);
+const hasActiveSessionMock = vi.mocked(authService.hasActiveSession);
+const loginDemoMock = vi.mocked(authService.loginDemo);
 
 describe("Home page Try Demo behavior", () => {
   beforeEach(() => {
     pushMock.mockReset();
     replaceMock.mockReset();
-    isLoggedInMock.mockReset();
-    loginAsDemoMock.mockReset();
-    isLoggedInMock.mockReturnValue(false);
+    hasActiveSessionMock.mockReset();
+    loginDemoMock.mockReset();
+    hasActiveSessionMock.mockReturnValue(false);
   });
 
   it("redirects authenticated users to dashboard", async () => {
-    isLoggedInMock.mockReturnValueOnce(true);
+    hasActiveSessionMock.mockReturnValueOnce(true);
 
     render(<Home />);
 
@@ -45,14 +45,14 @@ describe("Home page Try Demo behavior", () => {
   });
 
   it("logs in demo user and routes directly to dashboard", async () => {
-    loginAsDemoMock.mockResolvedValueOnce();
+    loginDemoMock.mockResolvedValueOnce();
 
     render(<Home />);
 
     fireEvent.click(screen.getByRole("button", { name: "Try Demo" }));
 
     await waitFor(() => {
-      expect(loginAsDemoMock).toHaveBeenCalledTimes(1);
+      expect(loginDemoMock).toHaveBeenCalledTimes(1);
       expect(pushMock).toHaveBeenCalledWith("/dashboard");
     });
   });
