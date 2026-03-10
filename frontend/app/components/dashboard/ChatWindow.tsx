@@ -21,6 +21,7 @@ interface ChatWindowProps {
   document?: Document;
   workspaceId?: number;
   workspaceName?: string;
+  workspaceDocumentIds?: number[];
   onBack: () => void;
   onCitationClick?: (citation: CitationTarget) => void;
   onSessionExpired?: () => void;
@@ -42,6 +43,7 @@ export function ChatWindow({
   document,
   workspaceId,
   workspaceName,
+  workspaceDocumentIds,
   onBack,
   onCitationClick,
   onSessionExpired,
@@ -356,11 +358,17 @@ export function ChatWindow({
                       const previewLength = 250;
                       const preview = source.content.substring(0, previewLength).trim();
                       const remainder = source.content.substring(previewLength).trim();
-                      const canJumpToPage = (
-                        source.page_start !== null
-                        && source.page_start !== undefined
-                        && onCitationClick !== undefined
+                      const hasPageStart = source.page_start !== null && source.page_start !== undefined;
+                      const isWorkspaceSourcePresent = !isWorkspaceMode || (
+                        source.document_id !== undefined
+                        && workspaceDocumentIds?.includes(source.document_id) === true
                       );
+                      const canJumpToPage = (
+                        hasPageStart
+                        && onCitationClick !== undefined
+                        && isWorkspaceSourcePresent
+                      );
+                      const isDisabledWorkspaceSource = isWorkspaceMode && hasPageStart && !isWorkspaceSourcePresent;
                       const pageLabel = getSourcePageLabel(source.page_start, source.page_end);
 
                       return (
@@ -387,10 +395,13 @@ export function ChatWindow({
                           }}
                           role={canJumpToPage ? "button" : undefined}
                           tabIndex={canJumpToPage ? 0 : undefined}
+                          aria-disabled={isDisabledWorkspaceSource || undefined}
                           className={`bg-zinc-950/50 border border-zinc-800/50 p-3 rounded-lg transition-colors ${
                             canJumpToPage
                               ? "cursor-pointer hover:border-lapis-500/60 hover:bg-zinc-900/70"
-                              : "hover:border-lapis-500/30"
+                              : isDisabledWorkspaceSource
+                                ? "cursor-not-allowed opacity-60"
+                                : "hover:border-lapis-500/30"
                           }`}
                         >
                           <div className="flex items-center gap-2 mb-2">

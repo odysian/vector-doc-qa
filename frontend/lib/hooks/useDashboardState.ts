@@ -358,11 +358,11 @@ export function useDashboardState({
   const handleCitationClick = ({ page, snippet, documentId }: CitationTarget) => {
     const nextSnippet = snippet?.trim() || null;
 
-    if (selectedWorkspace && documentId) {
+    if (selectedWorkspace) {
+      if (!documentId) return;
       const hasDocument = selectedWorkspace.documents.some((doc) => doc.id === documentId);
-      if (hasDocument) {
-        setViewerDocumentId(documentId);
-      }
+      if (!hasDocument) return;
+      setViewerDocumentId(documentId);
     }
 
     setMobileTab("pdf");

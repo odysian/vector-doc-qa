@@ -447,6 +447,7 @@ export default function DashboardPage() {
                     <ChatWindow
                       workspaceId={selectedWorkspace.id}
                       workspaceName={selectedWorkspace.name}
+                      workspaceDocumentIds={selectedWorkspace.documents.map((doc) => doc.id)}
                       onBack={handleBackToWorkspaces}
                       onCitationClick={handleCitationClick}
                       onSessionExpired={handleSessionExpired}
