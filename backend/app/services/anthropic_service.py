@@ -31,9 +31,18 @@ def _build_prompt(
         Formatted prompt string
     """
 
+    has_document_filenames = any(
+        isinstance(chunk, dict) and chunk.get("document_filename")
+        for chunk in chunks
+    )
+
     excerpts = []
     for i, chunk in enumerate(chunks, 1):
-        excerpt = f"Excerpt {i}:\n{chunk['content']}"
+        document_filename = chunk.get("document_filename")
+        if has_document_filenames and document_filename:
+            excerpt = f'Excerpt {i} (from "{document_filename}"):\n{chunk["content"]}'
+        else:
+            excerpt = f"Excerpt {i}:\n{chunk['content']}"
         excerpts.append(excerpt)
 
     excerpts_text = "\n\n".join(excerpts)
@@ -58,7 +67,15 @@ def _build_prompt(
             + "\n\n"
         )
 
-    prompt = f"""Here are excerpts from a document:
+    excerpts_intro = "Here are excerpts from a document:"
+    citation_instruction = ""
+    if has_document_filenames:
+        excerpts_intro = "Here are excerpts from multiple documents:"
+        citation_instruction = (
+            "\nWhen citing information, mention which document it came from."
+        )
+
+    prompt = f"""{excerpts_intro}
 
 {excerpts_text}
 
@@ -68,7 +85,7 @@ You are a helpful assistant. Answer the user's question using only the provided 
 
 If the specific answer is not explicitly stated, synthesize relevant details from the text that address the core of the user's inquiry.
 
-If the excerpts contain absolutely no relevant information, state that you cannot answer based on the provided text."""
+If the excerpts contain absolutely no relevant information, state that you cannot answer based on the provided text.{citation_instruction}"""
 
     return prompt
 

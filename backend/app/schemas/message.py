@@ -27,7 +27,8 @@ class MessageBase(BaseModel):
 class MessageCreate(MessageBase):
     """Schema for creating a message"""
 
-    document_id: int
+    document_id: int | None = None
+    workspace_id: int | None = None
     user_id: int
     sources: Optional[dict | List[dict]] = None
 
@@ -36,7 +37,8 @@ class MessageResponse(MessageBase):
     """Schema for message response"""
 
     id: int
-    document_id: int
+    document_id: int | None = None
+    workspace_id: int | None = None
     user_id: int
     sources: Optional[List[dict]] = None
     pipeline_meta: PipelineMeta | None = None

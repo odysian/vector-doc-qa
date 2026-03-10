@@ -398,6 +398,84 @@ back to socket peer IP to prevent header spoofing.
 - **Success (200):** `{ "messages": [{ "id": 1, "role": "assistant", "content": "...", "sources": [...], "pipeline_meta": { ... }, "created_at": "..." }] }`
 - **Notes:** Returns chat history for a specific document
 
+### Workspaces
+
+#### POST /api/workspaces/
+- **Auth:** Required
+- **Rate Limit:** 20/hour per user/IP
+- **Request Body:** `{ "name": "string" }`
+- **Success (201):** `{ "id": 1, "name": "Quarterly", "user_id": 1, "document_count": 0, ... }`
+- **Errors:**
+  - 403: Demo account cannot create workspaces
+
+#### GET /api/workspaces/
+- **Auth:** Required
+- **Rate Limit:** 20/hour per user/IP
+- **Success (200):** `{ "workspaces": [...], "total": N }`
+- **Notes:** Includes per-workspace `document_count`; returns only authenticated user's workspaces.
+
+#### GET /api/workspaces/{workspace_id}
+- **Auth:** Required
+- **Rate Limit:** 20/hour per user/IP
+- **Success (200):** Workspace detail with `documents` ordered by `added_at ASC`
+- **Errors:**
+  - 404: Workspace not found or belongs to another user
+
+#### PATCH /api/workspaces/{workspace_id}
+- **Auth:** Required
+- **Rate Limit:** 20/hour per user/IP
+- **Request Body:** `{ "name": "string" }`
+- **Success (200):** Updated workspace summary
+- **Errors:**
+  - 403: Demo account cannot modify workspaces
+  - 404: Workspace not found or belongs to another user
+
+#### DELETE /api/workspaces/{workspace_id}
+- **Auth:** Required
+- **Rate Limit:** 20/hour per user/IP
+- **Success (200):** `{ "message": "Workspace ... deleted successfully" }`
+- **Notes:** Workspace delete cascades workspace messages and membership rows.
+- **Errors:**
+  - 403: Demo account cannot modify workspaces
+  - 404: Workspace not found or belongs to another user
+
+#### POST /api/workspaces/{workspace_id}/documents
+- **Auth:** Required
+- **Rate Limit:** 20/hour per user/IP
+- **Request Body:** `{ "document_ids": [1, 2, ...] }`
+- **Success (200):** Updated workspace detail
+- **Notes:** Adds owned, `COMPLETED` documents; duplicate IDs are ignored; max 20 docs/workspace.
+- **Errors:**
+  - 400: Non-completed document provided or workspace would exceed 20 documents
+  - 403: Demo account cannot modify workspaces
+  - 404: Workspace not found/unauthorized or one or more documents not found/unauthorized
+
+#### DELETE /api/workspaces/{workspace_id}/documents/{document_id}
+- **Auth:** Required
+- **Rate Limit:** 20/hour per user/IP
+- **Success (200):** Updated workspace detail
+- **Errors:**
+  - 403: Demo account cannot modify workspaces
+  - 404: Workspace not found/unauthorized or document not in workspace
+
+#### POST /api/workspaces/{workspace_id}/query
+- **Auth:** Required
+- **Rate Limit:** 10/hour per user/IP (shared `query` scope with document `/query` + `/query/stream`)
+- **Request Body:** `{ "query": "string" }`
+- **Success (200):** `{ "query": "...", "answer": "...", "sources": [{ ..., "document_id": 1, "document_filename": "..." }], "pipeline_meta": { ... } }`
+- **Notes:** Cross-document retrieval across workspace membership; persists chat turns with `workspace_id`.
+- **Errors:**
+  - 400: Workspace has no documents or no searchable chunks
+  - 404: Workspace not found or belongs to another user
+
+#### GET /api/workspaces/{workspace_id}/messages
+- **Auth:** Required
+- **Rate Limit:** 30/hour per user/IP
+- **Success (200):** `{ "messages": [{ "workspace_id": 1, "document_id": null, ... }], "total": N }`
+- **Notes:** Returns workspace-scoped chat history with optional `pipeline_meta` payload.
+- **Errors:**
+  - 404: Workspace not found or belongs to another user
+
 ---
 
 ## Key Decisions

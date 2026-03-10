@@ -12,6 +12,7 @@ ALLOWED_API_SERVICE_MODULES = (
     "app.services.auth_query_service",
     "app.services.document_commands_service",
     "app.services.document_query_service",
+    "app.services.workspace_service",
 )
 
 
