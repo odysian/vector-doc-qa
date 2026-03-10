@@ -79,6 +79,8 @@ export interface SearchResult {
   chunk_index: number;
   page_start?: number | null;
   page_end?: number | null;
+  document_id?: number;
+  document_filename?: string;
 }
 
 export interface QueryResponse {
@@ -104,7 +106,8 @@ export interface PipelineMeta {
 // Messages
 export interface MessageResponse {
   id: number;
-  document_id: number;
+  document_id?: number | null;
+  workspace_id?: number | null;
   user_id: number;
   role: "user" | "assistant";
   content: string;
@@ -116,4 +119,35 @@ export interface MessageResponse {
 export interface MessageListResponse {
   messages: MessageResponse[];
   total: number;
+}
+
+// Workspaces
+export interface Workspace {
+  id: number;
+  name: string;
+  user_id: number;
+  document_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceListResponse {
+  workspaces: Workspace[];
+  total: number;
+}
+
+export interface WorkspaceDetail extends Workspace {
+  documents: Document[];
+}
+
+export interface WorkspaceSearchResult extends SearchResult {
+  document_id: number;
+  document_filename: string;
+}
+
+export interface WorkspaceQueryResponse {
+  query: string;
+  answer: string;
+  sources: WorkspaceSearchResult[];
+  pipeline_meta?: PipelineMeta;
 }

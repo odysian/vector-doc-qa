@@ -3,10 +3,13 @@ import {
   ApiError,
   isLoggedIn,
   type Document,
+  type Workspace,
+  type WorkspaceDetail,
   SessionExpiredError,
 } from "@/lib/api";
 import { authService } from "@/lib/services/authService";
 import { documentService } from "@/lib/services/documentService";
+import { workspaceService } from "@/lib/services/workspaceService";
 
 const SPLIT_LAYOUT_MIN_WIDTH = 1120;
 const SPLIT_LAYOUT_RESTORE_WIDTH = 1240;
@@ -19,10 +22,12 @@ const getInitialUseTabLayout = (): boolean => {
 };
 
 export type MobileTab = "pdf" | "chat";
+export type DashboardMode = "documents" | "workspaces";
 
 interface CitationTarget {
   page: number;
   snippet?: string;
+  documentId?: number;
 }
 
 interface UseDashboardStateOptions {
@@ -34,6 +39,11 @@ export interface UseDashboardStateResult {
   loading: boolean;
   error: string;
   selectedDocument: Document | null;
+  dashboardMode: DashboardMode;
+  workspaces: Workspace[];
+  selectedWorkspace: WorkspaceDetail | null;
+  viewerDocumentId: number | null;
+  workspacesLoading: boolean;
   sidebarOpen: boolean;
   documentToDelete: Document | null;
   deletingInProgress: boolean;
@@ -54,6 +64,14 @@ export interface UseDashboardStateResult {
   handleDeleteDocument: (doc: Document) => void;
   handleConfirmDelete: () => Promise<void>;
   handleCancelDelete: () => void;
+  setDashboardMode: (mode: DashboardMode) => void;
+  handleWorkspaceClick: (workspace: Workspace) => Promise<void>;
+  handleCreateWorkspace: (name: string) => Promise<void>;
+  handleDeleteWorkspace: (workspaceId: number) => Promise<void>;
+  handleAddWorkspaceDocuments: (documentIds: number[]) => Promise<void>;
+  handleRemoveWorkspaceDocument: (documentId: number) => Promise<void>;
+  handleViewerDocumentSwitch: (documentId: number) => void;
+  handleBackToWorkspaces: () => void;
   setSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setWorkspaceElement: React.Dispatch<React.SetStateAction<HTMLDivElement | null>>;
   setMobileTab: React.Dispatch<React.SetStateAction<MobileTab>>;
@@ -67,6 +85,11 @@ export function useDashboardState({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
+  const [dashboardModeState, setDashboardModeState] = useState<DashboardMode>("documents");
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [selectedWorkspace, setSelectedWorkspace] = useState<WorkspaceDetail | null>(null);
+  const [viewerDocumentId, setViewerDocumentId] = useState<number | null>(null);
+  const [workspacesLoading, setWorkspacesLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
   const [deletingInProgress, setDeletingInProgress] = useState(false);
@@ -110,6 +133,18 @@ export function useDashboardState({
       setDocuments(response.documents);
     } catch (err) {
       handleApiError(err, "Failed to load documents");
+    }
+  }, [handleApiError]);
+
+  const loadWorkspaces = useCallback(async () => {
+    try {
+      setWorkspacesLoading(true);
+      const response = await workspaceService.getWorkspaces();
+      setWorkspaces(response.workspaces);
+    } catch (err) {
+      handleApiError(err, "Failed to load workspaces");
+    } finally {
+      setWorkspacesLoading(false);
     }
   }, [handleApiError]);
 
@@ -303,6 +338,9 @@ export function useDashboardState({
 
   const handleDocumentClick = (document: Document) => {
     if (document.status !== "completed") return;
+    setDashboardModeState("documents");
+    setSelectedWorkspace(null);
+    setViewerDocumentId(null);
     setSelectedDocument(document);
     setHighlightPage(null);
     setHighlightSnippet(null);
@@ -317,8 +355,16 @@ export function useDashboardState({
     setSidebarOpen(true);
   };
 
-  const handleCitationClick = ({ page, snippet }: CitationTarget) => {
+  const handleCitationClick = ({ page, snippet, documentId }: CitationTarget) => {
     const nextSnippet = snippet?.trim() || null;
+
+    if (selectedWorkspace && documentId) {
+      const hasDocument = selectedWorkspace.documents.some((doc) => doc.id === documentId);
+      if (hasDocument) {
+        setViewerDocumentId(documentId);
+      }
+    }
+
     setMobileTab("pdf");
     setHighlightSnippet(nextSnippet);
     setHighlightPage((current) => {
@@ -372,11 +418,160 @@ export function useDashboardState({
     }
   };
 
+  const setDashboardMode = useCallback((mode: DashboardMode) => {
+    setError("");
+    setDashboardModeState(mode);
+
+    if (mode === "documents") {
+      setSelectedWorkspace(null);
+      setViewerDocumentId(null);
+      return;
+    }
+
+    setSelectedDocument(null);
+    setHighlightPage(null);
+    setHighlightSnippet(null);
+    setMobileTab("chat");
+    void loadWorkspaces();
+  }, [loadWorkspaces]);
+
+  const handleWorkspaceClick = useCallback(async (workspace: Workspace) => {
+    setError("");
+    try {
+      setWorkspacesLoading(true);
+      const workspaceDetail = await workspaceService.getWorkspace(workspace.id);
+      setDashboardModeState("workspaces");
+      setSelectedDocument(null);
+      setSelectedWorkspace(workspaceDetail);
+      setViewerDocumentId(workspaceDetail.documents[0]?.id ?? null);
+      setHighlightPage(null);
+      setHighlightSnippet(null);
+      setMobileTab("chat");
+      setSidebarOpen(false);
+    } catch (err) {
+      handleApiError(err, "Failed to load workspace");
+    } finally {
+      setWorkspacesLoading(false);
+    }
+  }, [handleApiError]);
+
+  const handleCreateWorkspace = useCallback(async (name: string) => {
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+
+    setError("");
+    try {
+      const workspace = await workspaceService.createWorkspace(trimmedName);
+      setWorkspaces((prev) => [workspace, ...prev]);
+    } catch (err) {
+      handleApiError(err, "Failed to create workspace");
+    }
+  }, [handleApiError]);
+
+  const handleDeleteWorkspace = useCallback(async (workspaceId: number) => {
+    setError("");
+    try {
+      await workspaceService.deleteWorkspace(workspaceId);
+      setWorkspaces((prev) => prev.filter((workspace) => workspace.id !== workspaceId));
+      setSelectedWorkspace((current) => (current?.id === workspaceId ? null : current));
+      setViewerDocumentId((current) => (selectedWorkspace?.id === workspaceId ? null : current));
+    } catch (err) {
+      handleApiError(err, "Failed to delete workspace");
+    }
+  }, [handleApiError, selectedWorkspace]);
+
+  const handleAddWorkspaceDocuments = useCallback(async (documentIds: number[]) => {
+    if (!selectedWorkspace || documentIds.length === 0) return;
+
+    setError("");
+    try {
+      const workspace = await workspaceService.addWorkspaceDocuments(
+        selectedWorkspace.id,
+        documentIds
+      );
+      setSelectedWorkspace(workspace);
+      setViewerDocumentId((current) => {
+        if (current && workspace.documents.some((doc) => doc.id === current)) {
+          return current;
+        }
+        return workspace.documents[0]?.id ?? null;
+      });
+      setWorkspaces((prev) =>
+        prev.map((item) =>
+          item.id === workspace.id
+            ? {
+              ...item,
+              name: workspace.name,
+              updated_at: workspace.updated_at,
+              document_count: workspace.document_count,
+            }
+            : item
+        )
+      );
+    } catch (err) {
+      handleApiError(err, "Failed to add documents to workspace");
+    }
+  }, [handleApiError, selectedWorkspace]);
+
+  const handleRemoveWorkspaceDocument = useCallback(async (documentId: number) => {
+    if (!selectedWorkspace) return;
+
+    setError("");
+    try {
+      const workspace = await workspaceService.removeWorkspaceDocument(
+        selectedWorkspace.id,
+        documentId
+      );
+      setSelectedWorkspace(workspace);
+      setViewerDocumentId((current) => {
+        if (!workspace.documents.length) return null;
+        if (current && workspace.documents.some((doc) => doc.id === current)) {
+          return current;
+        }
+        return workspace.documents[0].id;
+      });
+      setWorkspaces((prev) =>
+        prev.map((item) =>
+          item.id === workspace.id
+            ? {
+              ...item,
+              name: workspace.name,
+              updated_at: workspace.updated_at,
+              document_count: workspace.document_count,
+            }
+            : item
+        )
+      );
+    } catch (err) {
+      handleApiError(err, "Failed to remove document from workspace");
+    }
+  }, [handleApiError, selectedWorkspace]);
+
+  const handleViewerDocumentSwitch = useCallback((documentId: number) => {
+    setViewerDocumentId(documentId);
+    setHighlightPage(null);
+    setHighlightSnippet(null);
+  }, []);
+
+  const handleBackToWorkspaces = useCallback(() => {
+    setSelectedWorkspace(null);
+    setViewerDocumentId(null);
+    setHighlightPage(null);
+    setHighlightSnippet(null);
+    setSidebarOpen(true);
+    void loadWorkspaces();
+  }, [loadWorkspaces]);
+
   return {
     documents,
     loading,
     error,
     selectedDocument,
+    dashboardMode: dashboardModeState,
+    workspaces,
+    selectedWorkspace,
+    viewerDocumentId,
+    workspacesLoading,
     sidebarOpen,
     documentToDelete,
     deletingInProgress,
@@ -397,6 +592,14 @@ export function useDashboardState({
     handleDeleteDocument,
     handleConfirmDelete,
     handleCancelDelete,
+    setDashboardMode,
+    handleWorkspaceClick,
+    handleCreateWorkspace,
+    handleDeleteWorkspace,
+    handleAddWorkspaceDocuments,
+    handleRemoveWorkspaceDocument,
+    handleViewerDocumentSwitch,
+    handleBackToWorkspaces,
     setSidebarOpen,
     setWorkspaceElement,
     setMobileTab,

@@ -20,7 +20,8 @@ interface QueryStreamCallbacks {
 }
 
 interface UseChatStateOptions {
-  document: Document;
+  document?: Document;
+  workspaceId?: number;
   onSessionExpired?: () => void;
 }
 
@@ -28,6 +29,7 @@ export interface UseChatStateResult {
   messages: ChatMessage[];
   loadingHistory: boolean;
   isStreaming: boolean;
+  canStopStream: boolean;
   submitQuery: (query: string) => Promise<void>;
   stopActiveStream: () => void;
 }
@@ -41,14 +43,18 @@ const isAbortError = (err: unknown): boolean => {
 
 export function useChatState({
   document,
+  workspaceId,
   onSessionExpired,
 }: UseChatStateOptions): UseChatStateResult {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [requestInFlight, setRequestInFlight] = useState(false);
   const activeStreamAbortRef = useRef<AbortController | null>(null);
   const streamInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
-  const isStreaming = messages.some((message) => message.role === "assistant" && message.streaming);
+  const canStopStream = !!document && messages.some((message) => message.role === "assistant" && message.streaming);
+  const isStreaming = requestInFlight || messages.some((message) => message.role === "assistant" && message.streaming);
+  const contextKey = document ? `document:${document.id}` : workspaceId ? `workspace:${workspaceId}` : "none";
 
   const handleSessionExpired = useCallback(() => {
     onSessionExpired?.();
@@ -100,17 +106,111 @@ export function useChatState({
   }, [updateStreamingAssistant]);
 
   const stopActiveStream = useCallback(() => {
+    if (!document) return;
     activeStreamAbortRef.current?.abort();
-  }, []);
+  }, [document]);
 
   const submitQuery = useCallback(async (query: string) => {
     const trimmed = query.trim();
-    if (!trimmed || streamInFlightRef.current) return;
+    if (!trimmed || streamInFlightRef.current || (!document && !workspaceId)) return;
 
     streamInFlightRef.current = true;
-    const streamController = new AbortController();
-    activeStreamAbortRef.current?.abort();
-    activeStreamAbortRef.current = streamController;
+    setRequestInFlight(true);
+
+    if (document) {
+      const streamController = new AbortController();
+      activeStreamAbortRef.current?.abort();
+      activeStreamAbortRef.current = streamController;
+
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: trimmed },
+        { role: "assistant", content: "", streaming: true },
+      ]);
+
+      const callbacks: QueryStreamCallbacks = {
+        onSources: (sources) => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
+          updateStreamingAssistant((message) => ({
+            ...message,
+            sources,
+          }));
+        },
+        onToken: (token) => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
+          updateStreamingAssistant((message) => ({
+            ...message,
+            content: `${message.content}${token}`,
+          }));
+        },
+        onMeta: (pipelineMeta) => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
+          updateStreamingAssistant((message) => ({
+            ...message,
+            pipeline_meta: pipelineMeta,
+          }));
+        },
+        onDone: () => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
+          updateStreamingAssistant((message) => ({
+            ...message,
+            streaming: false,
+          }));
+          activeStreamAbortRef.current = null;
+          streamInFlightRef.current = false;
+          setRequestInFlight(false);
+        },
+        onError: (detail) => {
+          if (!isMountedRef.current || streamController.signal.aborted) return;
+          appendStreamError(`Error: ${detail}`, trimmed);
+          activeStreamAbortRef.current = null;
+          streamInFlightRef.current = false;
+          setRequestInFlight(false);
+        },
+      };
+
+      try {
+        await chatService.queryDocumentStream(document.id, trimmed, callbacks, {
+          signal: streamController.signal,
+        });
+      } catch (err) {
+        if (isAbortError(err)) {
+          if (isMountedRef.current) {
+            markStreamStopped(trimmed);
+          }
+          streamInFlightRef.current = false;
+          setRequestInFlight(false);
+          return;
+        }
+
+        let errorMessage = "Error: Failed to get answer. Please try again.";
+
+        if (err instanceof ApiError) {
+          if (err.status === 400) {
+            errorMessage =
+              "This document hasn't been processed yet. Please process it first before asking questions.";
+          } else if (err.status === 404) {
+            errorMessage = "Document not found.";
+          } else if (err instanceof SessionExpiredError) {
+            handleSessionExpired();
+            return;
+          } else if (err.status === 401) {
+            errorMessage = "Your session has expired. Please log in again.";
+          } else {
+            errorMessage = `Error: ${err.detail}`;
+          }
+        }
+
+        appendStreamError(errorMessage, trimmed);
+      } finally {
+        if (activeStreamAbortRef.current === streamController) {
+          activeStreamAbortRef.current = null;
+        }
+        streamInFlightRef.current = false;
+        setRequestInFlight(false);
+      }
+      return;
+    }
 
     setMessages((prev) => [
       ...prev,
@@ -118,84 +218,39 @@ export function useChatState({
       { role: "assistant", content: "", streaming: true },
     ]);
 
-    const callbacks: QueryStreamCallbacks = {
-      onSources: (sources) => {
-        if (!isMountedRef.current || streamController.signal.aborted) return;
-        updateStreamingAssistant((message) => ({
-          ...message,
-          sources,
-        }));
-      },
-      onToken: (token) => {
-        if (!isMountedRef.current || streamController.signal.aborted) return;
-        updateStreamingAssistant((message) => ({
-          ...message,
-          content: `${message.content}${token}`,
-        }));
-      },
-      onMeta: (pipelineMeta) => {
-        if (!isMountedRef.current || streamController.signal.aborted) return;
-        updateStreamingAssistant((message) => ({
-          ...message,
-          pipeline_meta: pipelineMeta,
-        }));
-      },
-      onDone: () => {
-        if (!isMountedRef.current || streamController.signal.aborted) return;
-        updateStreamingAssistant((message) => ({
-          ...message,
-          streaming: false,
-        }));
-        activeStreamAbortRef.current = null;
-        streamInFlightRef.current = false;
-      },
-      onError: (detail) => {
-        if (!isMountedRef.current || streamController.signal.aborted) return;
-        appendStreamError(`Error: ${detail}`, trimmed);
-        activeStreamAbortRef.current = null;
-        streamInFlightRef.current = false;
-      },
-    };
-
     try {
-      await chatService.queryDocumentStream(document.id, trimmed, callbacks, {
-        signal: streamController.signal,
-      });
+      const response = await chatService.queryWorkspace(workspaceId!, trimmed);
+      if (!isMountedRef.current) return;
+
+      updateStreamingAssistant((message) => ({
+        ...message,
+        content: response.answer,
+        sources: response.sources,
+        pipeline_meta: response.pipeline_meta,
+        streaming: false,
+      }));
     } catch (err) {
-      if (isAbortError(err)) {
-        if (isMountedRef.current) {
-          markStreamStopped(trimmed);
-        }
-        streamInFlightRef.current = false;
+      if (err instanceof SessionExpiredError) {
+        handleSessionExpired();
         return;
       }
 
       let errorMessage = "Error: Failed to get answer. Please try again.";
-
       if (err instanceof ApiError) {
         if (err.status === 400) {
-          errorMessage =
-            "This document hasn't been processed yet. Please process it first before asking questions.";
+          errorMessage = `Error: ${err.detail}`;
         } else if (err.status === 404) {
-          errorMessage = "Document not found.";
-        } else if (err instanceof SessionExpiredError) {
-          handleSessionExpired();
-          return;
-        } else if (err.status === 401) {
-          errorMessage = "Your session has expired. Please log in again.";
+          errorMessage = "Workspace not found.";
         } else {
           errorMessage = `Error: ${err.detail}`;
         }
       }
-
       appendStreamError(errorMessage, trimmed);
     } finally {
-      if (activeStreamAbortRef.current === streamController) {
-        activeStreamAbortRef.current = null;
-      }
       streamInFlightRef.current = false;
+      setRequestInFlight(false);
     }
-  }, [appendStreamError, document.id, handleSessionExpired, markStreamStopped, updateStreamingAssistant]);
+  }, [appendStreamError, document, handleSessionExpired, markStreamStopped, updateStreamingAssistant, workspaceId]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -208,9 +263,22 @@ export function useChatState({
 
   useEffect(() => {
     const loadHistory = async () => {
+      if (!document && !workspaceId) {
+        setMessages([]);
+        setLoadingHistory(false);
+        return;
+      }
+
+      activeStreamAbortRef.current?.abort();
+      streamInFlightRef.current = false;
+      setRequestInFlight(false);
+      setMessages([]);
+
       try {
         setLoadingHistory(true);
-        const response = await chatService.getMessages(document.id);
+        const response = document
+          ? await chatService.getMessages(document.id)
+          : await chatService.getWorkspaceMessages(workspaceId!);
 
         const loadedMessages: ChatMessage[] = response.messages.map((msg) => ({
           role: msg.role,
@@ -231,12 +299,13 @@ export function useChatState({
     };
 
     void loadHistory();
-  }, [document.id, handleSessionExpired]);
+  }, [contextKey, document, handleSessionExpired, workspaceId]);
 
   return {
     messages,
     loadingHistory,
     isStreaming,
+    canStopStream,
     submitQuery,
     stopActiveStream,
   };

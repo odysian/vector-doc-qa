@@ -14,10 +14,13 @@ import { useChatState } from "@/lib/hooks/useChatState";
 interface CitationTarget {
   page: number;
   snippet?: string;
+  documentId?: number;
 }
 
 interface ChatWindowProps {
-  document: Document;
+  document?: Document;
+  workspaceId?: number;
+  workspaceName?: string;
   onBack: () => void;
   onCitationClick?: (citation: CitationTarget) => void;
   onSessionExpired?: () => void;
@@ -37,10 +40,13 @@ const MEDIUM_CONFIDENCE_THRESHOLD = 0.43;
  */
 export function ChatWindow({
   document,
+  workspaceId,
+  workspaceName,
   onBack,
   onCitationClick,
   onSessionExpired,
 }: ChatWindowProps) {
+  const isWorkspaceMode = workspaceId !== undefined;
   const [input, setInput] = useState("");
   const [debugMode, setDebugMode] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -49,8 +55,9 @@ export function ChatWindow({
   const [expandedSourceIndices, setExpandedSourceIndices] = useState<Set<number>>(new Set());
   const [expandedSourceCards, setExpandedSourceCards] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { messages, loadingHistory, isStreaming, submitQuery, stopActiveStream } = useChatState({
+  const { messages, loadingHistory, isStreaming, canStopStream, submitQuery, stopActiveStream } = useChatState({
     document,
+    workspaceId,
     onSessionExpired,
   });
 
@@ -127,19 +134,21 @@ export function ChatWindow({
           <button
             type="button"
             onClick={onBack}
-            title="Back to Documents"
+            title={isWorkspaceMode ? "Back to Workspaces" : "Back to Documents"}
             className="text-zinc-400 hover:text-white transition-colors cursor-pointer p-1 -m-1 rounded focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-900 shrink-0"
-            aria-label="Back to Documents"
+            aria-label={isWorkspaceMode ? "Back to Workspaces" : "Back to Documents"}
           >
             <ArrowLeft size={24} strokeWidth={2} />
           </button>
           <div className="h-4 w-px bg-zinc-700 shrink-0" aria-hidden />
           <div className="min-w-0 flex-1">
             <h2 className="font-medium text-lapis-400 italic truncate text-sm sm:text-base">
-              {document.filename}
+              {isWorkspaceMode ? (workspaceName || "Workspace") : document?.filename}
             </h2>
             <p className="text-meta truncate mt-0.5">
-              Uploaded {formatDate(document.uploaded_at)}
+              {isWorkspaceMode
+                ? "Cross-document chat"
+                : `Uploaded ${document ? formatDate(document.uploaded_at) : ""}`}
             </p>
           </div>
         </div>
@@ -198,10 +207,14 @@ export function ChatWindow({
               </svg>
             </div>
             <h3 className="text-body-sm font-medium text-zinc-200 text-center">
-              Ask a question about this document
+              {isWorkspaceMode
+                ? "Ask a question across workspace documents"
+                : "Ask a question about this document"}
             </h3>
             <p className="text-meta text-center">
-              Your questions and answers will appear here.
+              {isWorkspaceMode
+                ? "Your cross-document questions and answers will appear here."
+                : "Your questions and answers will appear here."}
             </p>
             <div className="flex flex-wrap gap-2 justify-center mt-2">
               {SUGGESTED_PROMPTS.map((prompt) => (
@@ -358,6 +371,7 @@ export function ChatWindow({
                             onCitationClick({
                               page: source.page_start,
                               snippet: source.content,
+                              documentId: source.document_id,
                             });
                           }}
                           onKeyDown={(event) => {
@@ -367,6 +381,7 @@ export function ChatWindow({
                               onCitationClick({
                                 page: source.page_start,
                                 snippet: source.content,
+                                documentId: source.document_id,
                               });
                             }
                           }}
@@ -382,6 +397,11 @@ export function ChatWindow({
                             <span className="badge-sm bg-lapis-600 text-white px-2 py-0.5 rounded">
                               {idx + 1}
                             </span>
+                            {source.document_filename && (
+                              <span className="text-meta-bright">
+                                {source.document_filename}
+                              </span>
+                            )}
                             {debugMode && (
                               <span className="text-meta-bright">
                                 Similarity: {(source.similarity * 100).toFixed(1)}%
@@ -435,10 +455,14 @@ export function ChatWindow({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask a question about this document..."
+            placeholder={
+              isWorkspaceMode
+                ? "Ask a question across this workspace..."
+                : "Ask a question about this document..."
+            }
             className="flex-1 bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-lapis-500/20 focus:border-lapis-500 transition-all placeholder-zinc-600"
           />
-          {isStreaming ? (
+          {isStreaming && canStopStream ? (
             <button
               type="button"
               onClick={stopActiveStream}
@@ -449,7 +473,7 @@ export function ChatWindow({
           ) : (
             <button
               type="submit"
-              disabled={!input.trim()}
+              disabled={!input.trim() || isStreaming}
               className="bg-lapis-600 hover:bg-lapis-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white px-6 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-lapis-900/20 flex items-center cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
             >
               Send

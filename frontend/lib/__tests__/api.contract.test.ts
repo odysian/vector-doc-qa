@@ -12,18 +12,27 @@ describe("public api module contract", () => {
 
   it("exposes stable api method surface", () => {
     expect(Object.keys(apiModule.api).sort()).toEqual([
+      "addWorkspaceDocuments",
+      "createWorkspace",
       "deleteDocument",
+      "deleteWorkspace",
       "getCurrentUser",
       "getDocumentFile",
       "getDocumentStatus",
       "getDocuments",
       "getMessages",
+      "getWorkspace",
+      "getWorkspaceMessages",
+      "getWorkspaces",
       "login",
       "logout",
       "processDocument",
       "queryDocument",
       "queryDocumentStream",
+      "queryWorkspace",
       "register",
+      "removeWorkspaceDocument",
+      "updateWorkspace",
       "uploadDocument",
     ]);
   });

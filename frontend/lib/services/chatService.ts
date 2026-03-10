@@ -1,6 +1,11 @@
 import { requestJsonWithAuth, requestResponseWithAuth } from "@/lib/api/http";
 import { ApiError } from "@/lib/api.types";
-import type { MessageListResponse, PipelineMeta, QueryResponse } from "@/lib/api.types";
+import type {
+  MessageListResponse,
+  PipelineMeta,
+  QueryResponse,
+  WorkspaceQueryResponse,
+} from "@/lib/api.types";
 
 interface QueryStreamCallbacks {
   onSources: (sources: QueryResponse["sources"]) => void;
@@ -21,8 +26,21 @@ export const chatService = {
     );
   },
 
+  getWorkspaceMessages: async (workspaceId: number): Promise<MessageListResponse> => {
+    return requestJsonWithAuth<MessageListResponse>(
+      `/api/workspaces/${workspaceId}/messages`
+    );
+  },
+
   queryDocument: async (documentId: number, query: string): Promise<QueryResponse> => {
     return requestJsonWithAuth<QueryResponse>(`/api/documents/${documentId}/query`, {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    });
+  },
+
+  queryWorkspace: async (workspaceId: number, query: string): Promise<WorkspaceQueryResponse> => {
+    return requestJsonWithAuth<WorkspaceQueryResponse>(`/api/workspaces/${workspaceId}/query`, {
       method: "POST",
       body: JSON.stringify({ query }),
     });
