@@ -91,6 +91,7 @@ const getWorkspacesMock = vi.mocked(workspaceService.getWorkspaces);
 const getWorkspaceMock = vi.mocked(workspaceService.getWorkspace);
 const addWorkspaceDocumentsMock = vi.mocked(workspaceService.addWorkspaceDocuments);
 const removeWorkspaceDocumentMock = vi.mocked(workspaceService.removeWorkspaceDocument);
+const deleteWorkspaceMock = vi.mocked(workspaceService.deleteWorkspace);
 
 function makeDocument(
   overrides: Partial<Document> = {}
@@ -154,6 +155,7 @@ describe("DashboardPage regression behavior", () => {
     getWorkspaceMock.mockReset();
     addWorkspaceDocumentsMock.mockReset();
     removeWorkspaceDocumentMock.mockReset();
+    deleteWorkspaceMock.mockReset();
 
     globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
       observe: vi.fn(),
@@ -194,6 +196,7 @@ describe("DashboardPage regression behavior", () => {
       ...makeWorkspace(),
       documents: [],
     });
+    deleteWorkspaceMock.mockResolvedValue();
   });
 
   it("renders loaded documents after successful fetch", async () => {
@@ -416,6 +419,133 @@ describe("DashboardPage regression behavior", () => {
       expect(removeWorkspaceDocumentMock).toHaveBeenCalledWith(22, 777);
       expect(screen.getByText("Remove failed")).toBeInTheDocument();
     });
+  });
+
+  it("deletes a selected workspace after confirmation", async () => {
+    const workspaceDoc = makeDocument({ id: 851, filename: "workspace-doc.pdf" });
+    const workspace = makeWorkspace({ id: 31, name: "Planning", document_count: 1 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [workspaceDoc],
+    });
+    getWorkspacesMock.mockResolvedValueOnce({
+      workspaces: [workspace],
+      total: 1,
+    });
+    getWorkspaceMock.mockResolvedValueOnce({
+      ...workspace,
+      documents: [workspaceDoc],
+    });
+
+    render(<DashboardPage />);
+
+    await screen.findByText("workspace-doc.pdf");
+    fireEvent.click(screen.getByRole("button", { name: "Workspaces" }));
+    const workspaceButton = (await screen.findByText("Planning")).closest("button");
+    fireEvent.click(workspaceButton as HTMLButtonElement);
+    fireEvent.click(await screen.findByRole("button", { name: "Delete workspace" }));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(deleteWorkspaceMock).toHaveBeenCalledWith(31);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByText("No workspaces yet. Create one to group documents.")).toBeInTheDocument();
+    });
+  });
+
+  it("does not delete workspace when confirmation is canceled", async () => {
+    const workspace = makeWorkspace({ id: 32, name: "Roadmap", document_count: 0 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [],
+    });
+    getWorkspacesMock.mockResolvedValueOnce({
+      workspaces: [workspace],
+      total: 1,
+    });
+    getWorkspaceMock.mockResolvedValueOnce({
+      ...workspace,
+      documents: [],
+    });
+
+    render(<DashboardPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Workspaces" }));
+    const workspaceButton = (await screen.findByText("Roadmap")).closest("button");
+    fireEvent.click(workspaceButton as HTMLButtonElement);
+    fireEvent.click(await screen.findByRole("button", { name: "Delete workspace" }));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByText("Cancel"));
+
+    await waitFor(() => {
+      expect(deleteWorkspaceMock).not.toHaveBeenCalled();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps workspace delete modal open and shows error when delete fails", async () => {
+    const workspace = makeWorkspace({ id: 33, name: "Ops", document_count: 0 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [],
+    });
+    getWorkspacesMock.mockResolvedValueOnce({
+      workspaces: [workspace],
+      total: 1,
+    });
+    getWorkspaceMock.mockResolvedValueOnce({
+      ...workspace,
+      documents: [],
+    });
+    deleteWorkspaceMock.mockRejectedValueOnce(new ApiError(500, "Workspace delete failed"));
+
+    render(<DashboardPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Workspaces" }));
+    const workspaceButton = (await screen.findByText("Ops")).closest("button");
+    fireEvent.click(workspaceButton as HTMLButtonElement);
+    fireEvent.click(await screen.findByRole("button", { name: "Delete workspace" }));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(deleteWorkspaceMock).toHaveBeenCalledWith(33);
+      expect(screen.getByText("Workspace delete failed")).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+  });
+
+  it("disables workspace delete control for demo users", async () => {
+    const workspace = makeWorkspace({ id: 34, name: "Demo Workspace", document_count: 0 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser({ is_demo: true }),
+      documents: [],
+    });
+    getWorkspacesMock.mockResolvedValueOnce({
+      workspaces: [workspace],
+      total: 1,
+    });
+    getWorkspaceMock.mockResolvedValueOnce({
+      ...workspace,
+      documents: [],
+    });
+
+    render(<DashboardPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Workspaces" }));
+    const workspaceButton = (await screen.findByText("Demo Workspace")).closest("button");
+    fireEvent.click(workspaceButton as HTMLButtonElement);
+
+    const deleteButton = await screen.findByRole("button", { name: "Delete workspace" });
+    expect(deleteButton).toBeDisabled();
+    fireEvent.click(deleteButton);
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(deleteWorkspaceMock).not.toHaveBeenCalled();
   });
 });
 

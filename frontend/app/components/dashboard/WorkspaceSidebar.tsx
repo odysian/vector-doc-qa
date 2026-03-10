@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Plus, X } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, X } from "lucide-react";
 import type { Document, WorkspaceDetail } from "@/lib/api";
 
 interface WorkspaceSidebarProps {
@@ -8,6 +8,7 @@ interface WorkspaceSidebarProps {
   activeDocumentId: number | null;
   onDocumentClick: (doc: Document) => void;
   onAddDocuments: () => void;
+  onDeleteWorkspace: () => void;
   onRemoveDocument: (docId: number) => void;
   onBack: () => void;
   disabled?: boolean;
@@ -18,6 +19,7 @@ export function WorkspaceSidebar({
   activeDocumentId,
   onDocumentClick,
   onAddDocuments,
+  onDeleteWorkspace,
   onRemoveDocument,
   onBack,
   disabled = false,
@@ -25,14 +27,25 @@ export function WorkspaceSidebar({
   return (
     <div className="flex flex-col h-full">
       <div className="p-3 border-b border-zinc-800 space-y-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900 rounded"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Back
-        </button>
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900 rounded"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={onDeleteWorkspace}
+            disabled={disabled}
+            className="inline-flex items-center gap-1 rounded-md border border-red-900/60 px-2 py-1 text-xs text-red-300 hover:bg-red-500/10 hover:text-red-200 disabled:cursor-not-allowed disabled:border-zinc-700 disabled:text-zinc-500 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete workspace
+          </button>
+        </div>
         <h3 className="text-section truncate">{workspace.name}</h3>
       </div>
 

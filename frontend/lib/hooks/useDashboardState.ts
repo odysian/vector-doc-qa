@@ -67,7 +67,7 @@ export interface UseDashboardStateResult {
   setDashboardMode: (mode: DashboardMode) => void;
   handleWorkspaceClick: (workspace: Workspace) => Promise<void>;
   handleCreateWorkspace: (name: string) => Promise<void>;
-  handleDeleteWorkspace: (workspaceId: number) => Promise<void>;
+  handleDeleteWorkspace: (workspaceId: number, clearSelection?: boolean) => Promise<boolean>;
   handleAddWorkspaceDocuments: (documentIds: number[]) => Promise<boolean>;
   handleRemoveWorkspaceDocument: (documentId: number) => Promise<boolean>;
   handleViewerDocumentSwitch: (documentId: number) => void;
@@ -468,17 +468,25 @@ export function useDashboardState({
     }
   }, [handleApiError]);
 
-  const handleDeleteWorkspace = useCallback(async (workspaceId: number) => {
+  const handleDeleteWorkspace = useCallback(async (workspaceId: number, clearSelection = false) => {
     setError("");
     try {
       await workspaceService.deleteWorkspace(workspaceId);
       setWorkspaces((prev) => prev.filter((workspace) => workspace.id !== workspaceId));
-      setSelectedWorkspace((current) => (current?.id === workspaceId ? null : current));
-      setViewerDocumentId((current) => (selectedWorkspace?.id === workspaceId ? null : current));
+      if (clearSelection) {
+        setSelectedWorkspace(null);
+        setViewerDocumentId(null);
+        setHighlightPage(null);
+        setHighlightSnippet(null);
+      } else {
+        setSelectedWorkspace((current) => (current?.id === workspaceId ? null : current));
+      }
+      return true;
     } catch (err) {
       handleApiError(err, "Failed to delete workspace");
+      return false;
     }
-  }, [handleApiError, selectedWorkspace]);
+  }, [handleApiError]);
 
   const handleAddWorkspaceDocuments = useCallback(async (documentIds: number[]) => {
     if (!selectedWorkspace || documentIds.length === 0) return false;
