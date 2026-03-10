@@ -303,6 +303,40 @@ class TestWorkspaceMembership:
 
         assert response.status_code == 404
 
+    async def test_remove_document_returns_workspace_detail(
+        self,
+        client,
+        auth_headers,
+        test_user: User,
+        db_session: AsyncSession,
+    ):
+        workspace = Workspace(name="Membership", user_id=test_user.id)
+        document = await _create_completed_document(
+            db_session=db_session,
+            user_id=test_user.id,
+            filename="member.pdf",
+        )
+        db_session.add(workspace)
+        await db_session.flush()
+        db_session.add(
+            WorkspaceDocument(
+                workspace_id=workspace.id,
+                document_id=document.id,
+            )
+        )
+        await db_session.flush()
+
+        response = await client.delete(
+            f"/api/workspaces/{workspace.id}/documents/{document.id}",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == workspace.id
+        assert data["document_count"] == 0
+        assert data["documents"] == []
+
 
 class TestWorkspaceQuery:
     async def test_query_workspace_returns_cross_document_sources_and_saves_messages(

@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 from app.api.dependencies import get_current_user
 from app.database import get_db
 from app.models.user import User
+from app.constants import QUERY_CONVERSATION_HISTORY_TURNS, QUERY_SIMILARITY_THRESHOLD
 from app.schemas.document import (
     DocumentListResponse,
     DocumentResponse,
@@ -35,9 +36,9 @@ from fastapi.sse import ServerSentEvent, format_sse_event
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
-CONVERSATION_HISTORY_WINDOW_TURNS = 5
-# Practical confidence threshold calibrated from mini-eval snapshots (2026-03-07).
-SIMILARITY_THRESHOLD = 0.60
+# Keep aliases for existing imports/tests that read router constants.
+CONVERSATION_HISTORY_WINDOW_TURNS = QUERY_CONVERSATION_HISTORY_TURNS
+SIMILARITY_THRESHOLD = QUERY_SIMILARITY_THRESHOLD
 
 
 def _encode_sse_event(event: ServerSentEvent) -> bytes:
