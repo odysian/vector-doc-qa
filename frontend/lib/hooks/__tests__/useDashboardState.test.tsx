@@ -1,12 +1,13 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Document } from "@/lib/api";
+import type { Document, Workspace, WorkspaceDetail } from "@/lib/api";
 import type { User } from "@/lib/api.types";
 import * as api from "@/lib/api";
 import { SessionExpiredError } from "@/lib/api";
 import { useDashboardState } from "@/lib/hooks/useDashboardState";
 import { authService } from "@/lib/services/authService";
 import { documentService } from "@/lib/services/documentService";
+import { workspaceService } from "@/lib/services/workspaceService";
 
 const onSessionExpiredMock = vi.fn();
 const isLoggedInMock = vi.spyOn(api, "isLoggedIn");
@@ -36,6 +37,27 @@ function makeUser(overrides: Partial<User> = {}): User {
   };
 }
 
+function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
+  return {
+    id: 21,
+    name: "Roadmap",
+    user_id: 1,
+    document_count: 1,
+    created_at: "2026-03-01T10:00:00Z",
+    updated_at: "2026-03-01T10:00:00Z",
+    ...overrides,
+  };
+}
+
+function makeWorkspaceDetail(overrides: Partial<WorkspaceDetail> = {}): WorkspaceDetail {
+  const baseWorkspace = makeWorkspace();
+  return {
+    ...baseWorkspace,
+    documents: [makeDocument({ id: 501, filename: "workspace-source.pdf" })],
+    ...overrides,
+  };
+}
+
 function setupHookHarness() {
   const hook = renderHook(() => useDashboardState({ onSessionExpired: onSessionExpiredMock }));
   return { hook };
@@ -47,6 +69,7 @@ describe("useDashboardState", () => {
   const uploadDocumentMock = vi.spyOn(documentService, "uploadDocument");
   const getDocumentStatusMock = vi.spyOn(documentService, "getDocumentStatus");
   const authLogoutMock = vi.spyOn(authService, "logout");
+  const getWorkspaceMock = vi.spyOn(workspaceService, "getWorkspace");
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -65,6 +88,7 @@ describe("useDashboardState", () => {
       error_message: null,
     });
     authLogoutMock.mockResolvedValue();
+    getWorkspaceMock.mockResolvedValue(makeWorkspaceDetail());
   });
 
   afterEach(() => {
@@ -158,5 +182,43 @@ describe("useDashboardState", () => {
 
     expect(authLogoutMock).toHaveBeenCalledTimes(1);
     expect(onSessionExpiredMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not apply workspace citation highlights when source document is absent", async () => {
+    const workspace = makeWorkspace({ id: 44, name: "Ops", document_count: 1 });
+    getWorkspaceMock.mockResolvedValueOnce(
+      makeWorkspaceDetail({
+        id: workspace.id,
+        name: workspace.name,
+        document_count: workspace.document_count,
+        documents: [makeDocument({ id: 601, filename: "present.pdf" })],
+      })
+    );
+
+    const { hook } = setupHookHarness();
+    await waitFor(() => {
+      expect(hook.result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await hook.result.current.handleWorkspaceClick(workspace);
+    });
+
+    await waitFor(() => {
+      expect(hook.result.current.selectedWorkspace?.id).toBe(44);
+    });
+
+    act(() => {
+      hook.result.current.handleCitationClick({
+        page: 7,
+        snippet: "  Missing source citation  ",
+        documentId: 999,
+      });
+    });
+
+    expect(hook.result.current.viewerDocumentId).toBe(601);
+    expect(hook.result.current.mobileTab).toBe("chat");
+    expect(hook.result.current.highlightPage).toBeNull();
+    expect(hook.result.current.highlightSnippet).toBeNull();
   });
 });

@@ -333,6 +333,105 @@ describe("ChatWindow streaming lifecycle", () => {
     });
   });
 
+  it("keeps workspace citation cards clickable when source document is present", async () => {
+    getWorkspaceMessagesMock.mockResolvedValueOnce({
+      messages: [
+        {
+          id: 12,
+          workspace_id: 22,
+          user_id: documentFixture.user_id,
+          role: "assistant",
+          content: "This answer cites a workspace source.",
+          sources: [
+            {
+              chunk_id: 55,
+              content: "Workspace source content.",
+              similarity: 0.94,
+              chunk_index: 1,
+              page_start: 2,
+              document_id: 99,
+              document_filename: "timeline.pdf",
+            },
+          ],
+          created_at: "2026-03-02T12:03:00Z",
+        },
+      ],
+      total: 1,
+    });
+
+    const onCitationClick = vi.fn();
+    render(
+      <ChatWindow
+        workspaceId={22}
+        workspaceName="Roadmap"
+        workspaceDocumentIds={[99]}
+        onBack={vi.fn()}
+        onCitationClick={onCitationClick}
+      />
+    );
+
+    await screen.findByText("This answer cites a workspace source.");
+    fireEvent.click(screen.getByRole("button", { name: "Sources (1)" }));
+
+    const pageLabel = await screen.findByText("Page 2");
+    fireEvent.click(pageLabel);
+
+    expect(pageLabel.closest("div[role='button']")).not.toBeNull();
+    expect(onCitationClick).toHaveBeenCalledWith({
+      page: 2,
+      snippet: "Workspace source content.",
+      documentId: 99,
+    });
+  });
+
+  it("disables workspace citation cards when source document is absent", async () => {
+    getWorkspaceMessagesMock.mockResolvedValueOnce({
+      messages: [
+        {
+          id: 13,
+          workspace_id: 22,
+          user_id: documentFixture.user_id,
+          role: "assistant",
+          content: "This answer cites a removed workspace source.",
+          sources: [
+            {
+              chunk_id: 56,
+              content: "Source no longer in workspace.",
+              similarity: 0.91,
+              chunk_index: 1,
+              page_start: 4,
+              document_id: 77,
+              document_filename: "removed.pdf",
+            },
+          ],
+          created_at: "2026-03-02T12:04:00Z",
+        },
+      ],
+      total: 1,
+    });
+
+    const onCitationClick = vi.fn();
+    render(
+      <ChatWindow
+        workspaceId={22}
+        workspaceName="Roadmap"
+        workspaceDocumentIds={[99]}
+        onBack={vi.fn()}
+        onCitationClick={onCitationClick}
+      />
+    );
+
+    await screen.findByText("This answer cites a removed workspace source.");
+    fireEvent.click(screen.getByRole("button", { name: "Sources (1)" }));
+
+    const pageLabel = await screen.findByText("Page 4");
+    fireEvent.click(pageLabel);
+
+    expect(pageLabel.closest("div[role='button']")).toBeNull();
+    expect(pageLabel.closest("div[aria-disabled='true']")).not.toBeNull();
+    expect(onCitationClick).not.toHaveBeenCalled();
+  });
+
   it("toggles debug mode and shows pipeline metadata/similarity from history", async () => {
     localStorage.removeItem("quaero_debug_mode");
     getMessagesMock.mockResolvedValueOnce({
