@@ -10,6 +10,7 @@ from app.database import Base
 from app.models.base import Chunk, Document  # noqa
 from app.models.message import Message  # noqa
 from app.models.user import User  # noqa
+from app.models.workspace import Workspace, WorkspaceDocument  # noqa
 from sqlalchemy import Column, engine_from_config, pool, text
 from sqlalchemy.schema import SchemaItem
 from sqlalchemy.types import TypeEngine
