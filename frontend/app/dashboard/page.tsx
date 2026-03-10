@@ -13,6 +13,7 @@ import { UploadZone } from "../components/dashboard/UploadZone";
 import { DocumentList } from "../components/dashboard/DocumentList";
 import { ChatWindow } from "../components/dashboard/ChatWindow";
 import { DeleteDocumentModal } from "../components/dashboard/DeleteDocumentModal";
+import { DeleteWorkspaceModal } from "../components/dashboard/DeleteWorkspaceModal";
 import { WorkspaceList } from "../components/dashboard/WorkspaceList";
 import { WorkspaceSidebar } from "../components/dashboard/WorkspaceSidebar";
 import { DocumentSwitcher } from "../components/dashboard/DocumentSwitcher";
@@ -29,6 +30,12 @@ const PdfViewer = dynamic(
 export default function DashboardPage() {
   const router = useRouter();
   const [documentPickerOpen, setDocumentPickerOpen] = useState(false);
+  const [workspaceToDelete, setWorkspaceToDelete] = useState<{
+    id: number;
+    name: string;
+    clearSelection: boolean;
+  } | null>(null);
+  const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   const handleSessionExpired = useCallback(() => {
     router.push("/login");
   }, [router]);
@@ -63,6 +70,7 @@ export default function DashboardPage() {
     setDashboardMode,
     handleWorkspaceClick,
     handleCreateWorkspace,
+    handleDeleteWorkspace,
     handleAddWorkspaceDocuments,
     handleRemoveWorkspaceDocument,
     handleViewerDocumentSwitch,
@@ -72,6 +80,26 @@ export default function DashboardPage() {
     setMobileTab,
     setDesktopSidebarCollapsed,
   } = useDashboardState({ onSessionExpired: handleSessionExpired });
+
+  const handleConfirmWorkspaceDelete = useCallback(async () => {
+    if (!workspaceToDelete) return;
+
+    setDeletingWorkspace(true);
+    const deleted = await handleDeleteWorkspace(
+      workspaceToDelete.id,
+      workspaceToDelete.clearSelection
+    );
+
+    if (deleted) {
+      setWorkspaceToDelete(null);
+    }
+    setDeletingWorkspace(false);
+  }, [handleDeleteWorkspace, workspaceToDelete]);
+
+  const handleCancelWorkspaceDelete = useCallback(() => {
+    if (deletingWorkspace) return;
+    setWorkspaceToDelete(null);
+  }, [deletingWorkspace]);
 
   const viewerDocument = useMemo(() => {
     if (dashboardMode === "documents") {
@@ -175,6 +203,13 @@ export default function DashboardPage() {
               activeDocumentId={viewerDocumentId}
               onDocumentClick={(doc) => handleViewerDocumentSwitch(doc.id)}
               onAddDocuments={() => setDocumentPickerOpen(true)}
+              onDeleteWorkspace={() =>
+                setWorkspaceToDelete({
+                  id: selectedWorkspace.id,
+                  name: selectedWorkspace.name,
+                  clearSelection: true,
+                })
+              }
               onRemoveDocument={(docId) => {
                 void handleRemoveWorkspaceDocument(docId);
               }}
@@ -278,6 +313,17 @@ export default function DashboardPage() {
             deleting={deletingInProgress}
             onConfirm={handleConfirmDelete}
             onCancel={handleCancelDelete}
+          />
+        )}
+
+        {workspaceToDelete && (
+          <DeleteWorkspaceModal
+            workspaceName={workspaceToDelete.name}
+            deleting={deletingWorkspace}
+            onConfirm={() => {
+              void handleConfirmWorkspaceDelete();
+            }}
+            onCancel={handleCancelWorkspaceDelete}
           />
         )}
 
