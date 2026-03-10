@@ -32,7 +32,7 @@ function StatusIcon({
   processing: boolean;
 }) {
   const base = "w-4 h-4 shrink-0";
-  if (processing)
+  if (processing || status === "pending" || status === "processing")
     return (
       <Loader2
         className={`${base} text-yellow-400 animate-spin`}
@@ -51,17 +51,8 @@ function StatusIcon({
       return (
         <XCircle className={`${base} text-red-400`} aria-label="Failed" />
       );
-    case "pending":
-      return (
-        <Clock className={`${base} text-zinc-400`} aria-label="Pending" />
-      );
     default:
-      return (
-        <Loader2
-          className={`${base} text-yellow-400 animate-spin`}
-          aria-label="Processing"
-        />
-      );
+      return <Clock className={`${base} text-zinc-400`} aria-label="Pending" />;
   }
 }
 
@@ -75,8 +66,7 @@ export function DocumentList({
   const [processingId, setProcessingId] = useState<number | null>(null);
 
   const isClickable = (doc: Document) => doc.status === "completed";
-  const canQueue = (doc: Document) =>
-    doc.status === "pending" || doc.status === "failed";
+  const canQueue = (doc: Document) => doc.status === "failed";
 
   const handleProcess = async (e: React.MouseEvent, doc: Document) => {
     e.stopPropagation();
@@ -170,7 +160,7 @@ export function DocumentList({
             <div className="flex items-center gap-2 mt-1.5 text-meta-bright">
               <StatusIcon
                 status={doc.status}
-                processing={doc.status === "processing" || isProcessing}
+                processing={isProcessing}
               />
               <span>{formatFileSize(doc.file_size)}</span>
               {doc.status === "failed" && doc.error_message && (
