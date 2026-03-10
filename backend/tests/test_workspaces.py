@@ -408,6 +408,39 @@ class TestWorkspaceQuery:
         assert response.status_code == 400
         assert response.json()["detail"] == "Workspace has no documents"
 
+    async def test_query_workspace_returns_400_when_no_searchable_chunks(
+        self,
+        client,
+        auth_headers,
+        test_user: User,
+        db_session: AsyncSession,
+    ):
+        workspace = Workspace(name="No chunks", user_id=test_user.id)
+        db_session.add(workspace)
+        await db_session.flush()
+
+        document = await _create_completed_document(
+            db_session=db_session,
+            user_id=test_user.id,
+            filename="no-embeddings.pdf",
+        )
+        db_session.add(
+            WorkspaceDocument(
+                workspace_id=workspace.id,
+                document_id=document.id,
+            )
+        )
+        await db_session.flush()
+
+        response = await client.post(
+            f"/api/workspaces/{workspace.id}/query",
+            headers=auth_headers,
+            json={"query": "Any indexed content?"},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Workspace has no searchable chunks"
+
 
 class TestWorkspaceMessages:
     async def test_get_workspace_messages_returns_workspace_scoped_history(

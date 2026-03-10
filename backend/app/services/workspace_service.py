@@ -1,9 +1,10 @@
+from datetime import datetime, timezone
 import time
 from typing import Any
-from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from pydantic import ValidationError
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import DocumentStatus
@@ -47,6 +48,7 @@ from app.utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 MAX_WORKSPACE_DOCUMENTS = 20
+WORKSPACE_MEMBERSHIP_LOCK_NAMESPACE = 104
 
 
 def _elapsed_ms(start_time: float) -> int:
@@ -186,6 +188,28 @@ async def _build_recent_conversation_history(
     return [{"role": role, "content": content} for role, content in reversed(rows)]
 
 
+async def _lock_workspace_membership_mutation(
+    *,
+    db: AsyncSession,
+    workspace_id: int,
+) -> None:
+    """
+    Serialize workspace membership updates per workspace.
+
+    This transaction-scoped advisory lock prevents parallel add requests from
+    both passing the 20-document capacity check.
+    """
+    await db.execute(
+        text(
+            "SELECT pg_advisory_xact_lock(:lock_namespace, :workspace_id)"
+        ),
+        {
+            "lock_namespace": WORKSPACE_MEMBERSHIP_LOCK_NAMESPACE,
+            "workspace_id": workspace_id,
+        },
+    )
+
+
 async def create_workspace_command(
     *,
     db: AsyncSession,
@@ -310,6 +334,11 @@ async def add_workspace_documents_command(
             status_code=400,
             detail="Only completed documents can be added to workspaces",
         )
+
+    await _lock_workspace_membership_mutation(
+        db=db,
+        workspace_id=workspace_id,
+    )
 
     existing_document_ids = await list_workspace_document_ids(
         db=db,
