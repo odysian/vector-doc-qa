@@ -44,6 +44,19 @@ describe("chatService", () => {
     expect(result).toEqual({ messages: [], total: 0 });
   });
 
+  it("loads workspace messages", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { messages: [], total: 0 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await chatService.getWorkspaceMessages(7);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/workspaces/7/messages",
+      expect.objectContaining({ credentials: "include" })
+    );
+    expect(result).toEqual({ messages: [], total: 0 });
+  });
+
   it("submits a non-streaming query", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(
       jsonResponse(200, {
@@ -65,6 +78,29 @@ describe("chatService", () => {
       })
     );
     expect(result.answer).toBe("Answer text");
+  });
+
+  it("submits a workspace query", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, {
+        query: "What changed?",
+        answer: "Workspace answer",
+        sources: [],
+        pipeline_meta: undefined,
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await chatService.queryWorkspace(9, "What changed?");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/workspaces/9/query",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ query: "What changed?" }),
+      })
+    );
+    expect(result.answer).toBe("Workspace answer");
   });
 
   it("streams query events using provided callbacks", async () => {

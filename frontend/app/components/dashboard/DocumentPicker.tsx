@@ -1,0 +1,138 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { X } from "lucide-react";
+import type { Document } from "@/lib/api";
+
+interface DocumentPickerProps {
+  availableDocuments: Document[];
+  onAdd: (documentIds: number[]) => Promise<void>;
+  onClose: () => void;
+  maxDocuments: number;
+}
+
+export function DocumentPicker({
+  availableDocuments,
+  onAdd,
+  onClose,
+  maxDocuments,
+}: DocumentPickerProps) {
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const remainingCapacity = Math.max(maxDocuments, 0);
+  const reachedCapacity = remainingCapacity === 0;
+
+  const sortedDocuments = useMemo(
+    () => [...availableDocuments].sort((a, b) => a.filename.localeCompare(b.filename)),
+    [availableDocuments]
+  );
+
+  const toggleSelection = (documentId: number) => {
+    setSelectedIds((current) => {
+      if (current.includes(documentId)) {
+        return current.filter((id) => id !== documentId);
+      }
+      if (current.length >= remainingCapacity) return current;
+      return [...current, documentId];
+    });
+  };
+
+  const handleAdd = async () => {
+    if (selectedIds.length === 0 || submitting) return;
+    setSubmitting(true);
+    try {
+      await onAdd(selectedIds);
+      onClose();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="add-documents-title"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60 cursor-default"
+        aria-label="Close add documents dialog"
+      />
+      <div className="relative max-w-lg w-full rounded-xl border border-zinc-700 bg-zinc-900 shadow-xl">
+        <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
+          <div>
+            <h2 id="add-documents-title" className="text-base font-semibold text-zinc-100">
+              Add documents
+            </h2>
+            <p className="text-xs text-zinc-400 mt-1">
+              {remainingCapacity} {remainingCapacity === 1 ? "slot" : "slots"} remaining
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="max-h-80 overflow-y-auto px-5 py-4 space-y-2">
+          {reachedCapacity ? (
+            <p className="text-sm text-zinc-400">Workspace is at the 20 document limit.</p>
+          ) : sortedDocuments.length === 0 ? (
+            <p className="text-sm text-zinc-400">No completed documents available to add.</p>
+          ) : (
+            sortedDocuments.map((doc) => {
+              const selected = selectedIds.includes(doc.id);
+              const disabled = !selected && selectedIds.length >= remainingCapacity;
+              return (
+                <label
+                  key={doc.id}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                    selected
+                      ? "border-lapis-500/60 bg-lapis-500/10 text-zinc-100"
+                      : "border-zinc-800 bg-zinc-800/30 text-zinc-300"
+                  } ${disabled ? "opacity-50" : "cursor-pointer"}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    disabled={disabled}
+                    onChange={() => toggleSelection(doc.id)}
+                    className="h-4 w-4 rounded border-zinc-600 bg-zinc-950 text-lapis-600 focus:ring-lapis-500"
+                  />
+                  <span className="truncate">{doc.filename}</span>
+                </label>
+              );
+            })
+          )}
+        </div>
+
+        <div className="border-t border-zinc-800 px-5 py-4 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void handleAdd();
+            }}
+            disabled={selectedIds.length === 0 || submitting}
+            className="rounded-lg bg-lapis-600 px-3 py-2 text-sm font-medium text-white hover:bg-lapis-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+          >
+            {submitting ? "Adding..." : "Add selected"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -14,11 +14,16 @@ import type {
   QueryResponse,
   MessageListResponse,
   PipelineMeta,
+  Workspace,
+  WorkspaceDetail,
+  WorkspaceListResponse,
+  WorkspaceQueryResponse,
 } from "./api.types";
 import { getCsrfToken, saveAuthTokens } from "./api/http";
 import { authService } from "./services/authService";
 import { chatService } from "./services/chatService";
 import { documentService } from "./services/documentService";
+import { workspaceService } from "./services/workspaceService";
 
 // Re-export so components can do: import { api, Document, ApiError } from "@/lib/api"
 export { ApiError } from "./api.types";
@@ -31,6 +36,10 @@ export type {
   PipelineMeta,
   MessageResponse,
   MessageListResponse,
+  Workspace,
+  WorkspaceDetail,
+  WorkspaceListResponse,
+  WorkspaceQueryResponse,
 } from "./api.types";
 
 interface QueryStreamCallbacks {
@@ -134,5 +143,44 @@ export const api = {
 
   getMessages: async (documentId: number): Promise<MessageListResponse> => {
     return chatService.getMessages(documentId);
+  },
+
+  getWorkspaceMessages: async (workspaceId: number): Promise<MessageListResponse> => {
+    return chatService.getWorkspaceMessages(workspaceId);
+  },
+
+  queryWorkspace: async (workspaceId: number, query: string): Promise<WorkspaceQueryResponse> => {
+    return chatService.queryWorkspace(workspaceId, query);
+  },
+
+  createWorkspace: async (name: string): Promise<Workspace> => {
+    return workspaceService.createWorkspace(name);
+  },
+
+  getWorkspaces: async (): Promise<WorkspaceListResponse> => {
+    return workspaceService.getWorkspaces();
+  },
+
+  getWorkspace: async (workspaceId: number): Promise<WorkspaceDetail> => {
+    return workspaceService.getWorkspace(workspaceId);
+  },
+
+  updateWorkspace: async (workspaceId: number, name: string): Promise<Workspace> => {
+    return workspaceService.updateWorkspace(workspaceId, name);
+  },
+
+  deleteWorkspace: async (workspaceId: number): Promise<void> => {
+    await workspaceService.deleteWorkspace(workspaceId);
+  },
+
+  addWorkspaceDocuments: async (
+    workspaceId: number,
+    documentIds: number[]
+  ): Promise<WorkspaceDetail> => {
+    return workspaceService.addWorkspaceDocuments(workspaceId, documentIds);
+  },
+
+  removeWorkspaceDocument: async (workspaceId: number, documentId: number): Promise<WorkspaceDetail> => {
+    return workspaceService.removeWorkspaceDocument(workspaceId, documentId);
   },
 };

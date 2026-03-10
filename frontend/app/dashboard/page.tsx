@@ -1,10 +1,10 @@
 /**
- * Dashboard: sidebar layout. Documents in left sidebar; chat in main area.
- * Responsive: sidebar is fixed on desktop, drawer on mobile. Zinc + lapis theme.
+ * Dashboard: sidebar layout. Documents/workspaces in left sidebar; chat in main area.
+ * Responsive: sidebar is fixed on desktop, drawer on mobile.
  */
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -13,9 +13,14 @@ import { UploadZone } from "../components/dashboard/UploadZone";
 import { DocumentList } from "../components/dashboard/DocumentList";
 import { ChatWindow } from "../components/dashboard/ChatWindow";
 import { DeleteDocumentModal } from "../components/dashboard/DeleteDocumentModal";
+import { WorkspaceList } from "../components/dashboard/WorkspaceList";
+import { WorkspaceSidebar } from "../components/dashboard/WorkspaceSidebar";
+import { DocumentSwitcher } from "../components/dashboard/DocumentSwitcher";
+import { DocumentPicker } from "../components/dashboard/DocumentPicker";
 import { useDashboardState } from "@/lib/hooks/useDashboardState";
 
 const SIDEBAR_WIDTH = "w-72";
+const MAX_DOCUMENTS_PER_WORKSPACE = 20;
 const PdfViewer = dynamic(
   () => import("../components/dashboard/PdfViewer").then((mod) => mod.PdfViewer),
   { ssr: false }
@@ -23,6 +28,7 @@ const PdfViewer = dynamic(
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [documentPickerOpen, setDocumentPickerOpen] = useState(false);
   const handleSessionExpired = useCallback(() => {
     router.push("/login");
   }, [router]);
@@ -31,6 +37,11 @@ export default function DashboardPage() {
     loading,
     error,
     selectedDocument,
+    dashboardMode,
+    workspaces,
+    selectedWorkspace,
+    viewerDocumentId,
+    workspacesLoading,
     sidebarOpen,
     documentToDelete,
     deletingInProgress,
@@ -49,11 +60,43 @@ export default function DashboardPage() {
     handleDeleteDocument,
     handleConfirmDelete,
     handleCancelDelete,
+    setDashboardMode,
+    handleWorkspaceClick,
+    handleCreateWorkspace,
+    handleAddWorkspaceDocuments,
+    handleRemoveWorkspaceDocument,
+    handleViewerDocumentSwitch,
+    handleBackToWorkspaces,
     setSidebarOpen,
     setWorkspaceElement,
     setMobileTab,
     setDesktopSidebarCollapsed,
   } = useDashboardState({ onSessionExpired: handleSessionExpired });
+
+  const viewerDocument = useMemo(() => {
+    if (dashboardMode === "documents") {
+      return selectedDocument;
+    }
+
+    if (!selectedWorkspace || !viewerDocumentId) {
+      return null;
+    }
+
+    return selectedWorkspace.documents.find((doc) => doc.id === viewerDocumentId) || null;
+  }, [dashboardMode, selectedDocument, selectedWorkspace, viewerDocumentId]);
+
+  const availableWorkspaceDocuments = useMemo(() => {
+    if (!selectedWorkspace) return [];
+    const currentWorkspaceDocIds = new Set(selectedWorkspace.documents.map((doc) => doc.id));
+    return documents.filter(
+      (doc) => doc.status === "completed" && !currentWorkspaceDocIds.has(doc.id)
+    );
+  }, [documents, selectedWorkspace]);
+
+  const workspaceCapacityRemaining = Math.max(
+    MAX_DOCUMENTS_PER_WORKSPACE - (selectedWorkspace?.documents.length ?? 0),
+    0
+  );
 
   const showPdfPane = !useTabLayout || mobileTab === "pdf";
   const showChatPane = !useTabLayout || mobileTab === "chat";
@@ -61,7 +104,30 @@ export default function DashboardPage() {
   const sidebarContent = (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between p-3 border-b border-zinc-800 xl:border-b-0">
-        <h2 className="text-section">Documents</h2>
+        <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-900 p-1">
+          <button
+            type="button"
+            onClick={() => setDashboardMode("documents")}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900 ${
+              dashboardMode === "documents"
+                ? "bg-lapis-600 text-white"
+                : "text-zinc-300 hover:bg-zinc-800"
+            }`}
+          >
+            Documents
+          </button>
+          <button
+            type="button"
+            onClick={() => setDashboardMode("workspaces")}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900 ${
+              dashboardMode === "workspaces"
+                ? "bg-lapis-600 text-white"
+                : "text-zinc-300 hover:bg-zinc-800"
+            }`}
+          >
+            Workspaces
+          </button>
+        </div>
         <button
           type="button"
           onClick={() => setSidebarOpen(false)}
@@ -71,27 +137,64 @@ export default function DashboardPage() {
           <X className="w-5 h-5" />
         </button>
       </div>
+
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        <UploadZone
-          onUpload={handleUpload}
-          disabled={isDemoUser}
-          disabledReason="Create an account to upload your own documents."
-        />
-        {error && (
-          <div className="bg-red-900/20 border border-red-900/50 text-error p-3 rounded-lg text-body-sm">
-            {error}
-          </div>
-        )}
-        {loading ? (
-          <p className="text-empty">Loading...</p>
-        ) : (
-          <DocumentList
-            documents={documents}
-            onDocumentClick={handleDocumentClick}
-            onProcessDocument={handleProcessDocument}
-            onDeleteDocument={handleDeleteDocument}
-            hideDeleteActions={isDemoUser}
+        {dashboardMode === "documents" ? (
+          <>
+            <UploadZone
+              onUpload={handleUpload}
+              disabled={isDemoUser}
+              disabledReason="Create an account to upload your own documents."
+            />
+            {error && (
+              <div className="bg-red-900/20 border border-red-900/50 text-error p-3 rounded-lg text-body-sm">
+                {error}
+              </div>
+            )}
+            {loading ? (
+              <p className="text-empty">Loading...</p>
+            ) : (
+              <DocumentList
+                documents={documents}
+                onDocumentClick={handleDocumentClick}
+                onProcessDocument={handleProcessDocument}
+                onDeleteDocument={handleDeleteDocument}
+                hideDeleteActions={isDemoUser}
+              />
+            )}
+          </>
+        ) : selectedWorkspace ? (
+          <WorkspaceSidebar
+            workspace={selectedWorkspace}
+            activeDocumentId={viewerDocumentId}
+            onDocumentClick={(doc) => handleViewerDocumentSwitch(doc.id)}
+            onAddDocuments={() => setDocumentPickerOpen(true)}
+            onRemoveDocument={(docId) => {
+              void handleRemoveWorkspaceDocument(docId);
+            }}
+            onBack={handleBackToWorkspaces}
+            disabled={isDemoUser}
           />
+        ) : (
+          <>
+            {error && (
+              <div className="bg-red-900/20 border border-red-900/50 text-error p-3 rounded-lg text-body-sm">
+                {error}
+              </div>
+            )}
+            {workspacesLoading ? (
+              <p className="text-empty">Loading workspaces...</p>
+            ) : (
+              <WorkspaceList
+                workspaces={workspaces}
+                onWorkspaceClick={(workspace) => {
+                  void handleWorkspaceClick(workspace);
+                }}
+                onCreate={handleCreateWorkspace}
+                disabled={isDemoUser}
+              />
+            )}
+          </>
         )}
       </div>
     </div>
@@ -171,7 +274,16 @@ export default function DashboardPage() {
           />
         )}
 
-        {/* Main: chat or empty state */}
+        {documentPickerOpen && selectedWorkspace && (
+          <DocumentPicker
+            availableDocuments={availableWorkspaceDocuments}
+            maxDocuments={workspaceCapacityRemaining}
+            onAdd={handleAddWorkspaceDocuments}
+            onClose={() => setDocumentPickerOpen(false)}
+          />
+        )}
+
+        {/* Main area */}
         <main className="flex-1 min-w-0 min-h-0 flex flex-col p-4 xl:p-6">
           {isDemoUser && (
             <div className="mb-4 rounded-lg border border-amber-700/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
@@ -192,7 +304,27 @@ export default function DashboardPage() {
               </h2>
               <p className="text-empty">Loading your documents...</p>
             </div>
-          ) : selectedDocument ? (
+          ) : dashboardMode === "workspaces" && selectedWorkspace && selectedWorkspace.documents.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto">
+              <div className="p-4 rounded-full bg-zinc-800/50 mb-4">
+                <FileUp className="w-12 h-12 text-lapis-400" aria-hidden />
+              </div>
+              <h2 className="text-xl font-semibold text-zinc-200 mb-2">
+                Add documents to this workspace
+              </h2>
+              <p className="text-empty mb-8">
+                Add documents to start asking cross-document questions with citations.
+              </p>
+              <button
+                type="button"
+                onClick={() => setDocumentPickerOpen(true)}
+                disabled={isDemoUser}
+                className="px-4 py-2 rounded-lg bg-lapis-600 hover:bg-lapis-500 text-white text-sm font-medium disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+              >
+                Add documents
+              </button>
+            </div>
+          ) : (dashboardMode === "documents" && selectedDocument) || (dashboardMode === "workspaces" && selectedWorkspace && viewerDocument) ? (
             <div ref={setWorkspaceElement} className="flex-1 min-h-0 flex flex-col">
               {useTabLayout && (
                 <div className="mb-3 inline-flex w-full max-w-md self-center rounded-lg border border-zinc-800 bg-zinc-900 p-1">
@@ -227,12 +359,23 @@ export default function DashboardPage() {
                     useTabLayout ? "flex-1 max-w-5xl" : "flex-[1.15_0_56%]"
                   }`}
                 >
-                  <PdfViewer
-                    documentId={selectedDocument.id}
-                    highlightPage={highlightPage}
-                    highlightSnippet={highlightSnippet}
-                    onSessionExpired={handleSessionExpired}
-                  />
+                  <div className="w-full h-full min-h-0 flex flex-col">
+                    {dashboardMode === "workspaces" && selectedWorkspace && viewerDocumentId && (
+                      <DocumentSwitcher
+                        documents={selectedWorkspace.documents}
+                        activeDocumentId={viewerDocumentId}
+                        onSwitch={handleViewerDocumentSwitch}
+                      />
+                    )}
+                    {viewerDocument && (
+                      <PdfViewer
+                        documentId={viewerDocument.id}
+                        highlightPage={highlightPage}
+                        highlightSnippet={highlightSnippet}
+                        onSessionExpired={handleSessionExpired}
+                      />
+                    )}
+                  </div>
                 </section>
 
                 <section
@@ -240,14 +383,36 @@ export default function DashboardPage() {
                     useTabLayout ? "flex-1 max-w-5xl" : "flex-[0.95_0_44%]"
                   }`}
                 >
-                  <ChatWindow
-                    document={selectedDocument}
-                    onBack={handleBackToDocuments}
-                    onCitationClick={handleCitationClick}
-                    onSessionExpired={handleSessionExpired}
-                  />
+                  {dashboardMode === "documents" && selectedDocument ? (
+                    <ChatWindow
+                      document={selectedDocument}
+                      onBack={handleBackToDocuments}
+                      onCitationClick={handleCitationClick}
+                      onSessionExpired={handleSessionExpired}
+                    />
+                  ) : selectedWorkspace ? (
+                    <ChatWindow
+                      workspaceId={selectedWorkspace.id}
+                      workspaceName={selectedWorkspace.name}
+                      onBack={handleBackToWorkspaces}
+                      onCitationClick={handleCitationClick}
+                      onSessionExpired={handleSessionExpired}
+                    />
+                  ) : null}
                 </section>
               </div>
+            </div>
+          ) : dashboardMode === "workspaces" ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center px-4">
+              <div className="p-4 rounded-full bg-zinc-800/50 mb-4">
+                <PanelLeft className="w-10 h-10 text-lapis-400/80" />
+              </div>
+              <h2 className="text-xl font-semibold text-zinc-200 mb-2">
+                Select a workspace
+              </h2>
+              <p className="text-empty max-w-sm">
+                Choose a workspace from the sidebar to start cross-document chat.
+              </p>
             </div>
           ) : documents.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto">

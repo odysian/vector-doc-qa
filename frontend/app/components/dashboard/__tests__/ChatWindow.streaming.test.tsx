@@ -13,12 +13,16 @@ vi.mock("@/lib/services/chatService", async () => {
     chatService: {
       ...actual.chatService,
       getMessages: vi.fn(),
+      getWorkspaceMessages: vi.fn(),
+      queryWorkspace: vi.fn(),
       queryDocumentStream: vi.fn(),
     },
   };
 });
 
 const getMessagesMock = vi.mocked(chatService.getMessages);
+const getWorkspaceMessagesMock = vi.mocked(chatService.getWorkspaceMessages);
+const queryWorkspaceMock = vi.mocked(chatService.queryWorkspace);
 const queryDocumentStreamMock = vi.mocked(chatService.queryDocumentStream);
 
 interface StreamCallbacks {
@@ -43,6 +47,8 @@ const documentFixture: Document = {
 describe("ChatWindow streaming lifecycle", () => {
   beforeEach(() => {
     getMessagesMock.mockResolvedValue({ messages: [], total: 0 });
+    getWorkspaceMessagesMock.mockResolvedValue({ messages: [], total: 0 });
+    queryWorkspaceMock.mockReset();
     queryDocumentStreamMock.mockReset();
   });
 
@@ -295,6 +301,8 @@ describe("ChatWindow streaming lifecycle", () => {
               chunk_index: 2,
               page_start: 3,
               page_end: 4,
+              document_id: 15,
+              document_filename: "source.pdf",
             },
           ],
           created_at: "2026-03-02T12:02:00Z",
@@ -321,6 +329,7 @@ describe("ChatWindow streaming lifecycle", () => {
     expect(onCitationClick).toHaveBeenCalledWith({
       page: 3,
       snippet: "Cited section content for pages three and four.",
+      documentId: 15,
     });
   });
 
@@ -373,5 +382,38 @@ describe("ChatWindow streaming lifecycle", () => {
     expect(localStorage.getItem("quaero_debug_mode")).toBe("true");
     expect(screen.getByText(/confidence/)).toBeInTheDocument();
     expect(screen.getByText("Similarity: 91.0%")).toBeInTheDocument();
+  });
+
+  it("submits workspace queries through non-streaming workspace endpoint", async () => {
+    queryWorkspaceMock.mockResolvedValueOnce({
+      query: "How do these files connect?",
+      answer: "They share the same timeline.",
+      sources: [
+        {
+          chunk_id: 42,
+          content: "Timeline snippet.",
+          similarity: 0.91,
+          chunk_index: 1,
+          page_start: 2,
+          document_id: 99,
+          document_filename: "timeline.pdf",
+        },
+      ],
+    });
+
+    render(<ChatWindow workspaceId={22} workspaceName="Roadmap" onBack={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.queryByText("Loading conversation...")).not.toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText("Ask a question across this workspace...");
+    fireEvent.change(input, { target: { value: "How do these files connect?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(queryDocumentStreamMock).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(queryWorkspaceMock).toHaveBeenCalledWith(22, "How do these files connect?");
+      expect(screen.getByText("They share the same timeline.")).toBeInTheDocument();
+    });
   });
 });
