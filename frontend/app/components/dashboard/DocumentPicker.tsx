@@ -6,7 +6,7 @@ import type { Document } from "@/lib/api";
 
 interface DocumentPickerProps {
   availableDocuments: Document[];
-  onAdd: (documentIds: number[]) => Promise<void>;
+  onAdd: (documentIds: number[]) => Promise<boolean>;
   onClose: () => void;
   maxDocuments: number;
 }
@@ -41,8 +41,10 @@ export function DocumentPicker({
     if (selectedIds.length === 0 || submitting) return;
     setSubmitting(true);
     try {
-      await onAdd(selectedIds);
-      onClose();
+      const addSucceeded = await onAdd(selectedIds);
+      if (addSucceeded) {
+        onClose();
+      }
     } finally {
       setSubmitting(false);
     }

@@ -352,4 +352,153 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 
 ---
 
+## Feature: Workspace CRUD
+
+### Happy Path
+
+- POST /api/workspaces/ with valid name returns 201 and workspace object with `document_count: 0`
+- GET /api/workspaces/ returns only the authenticated user's workspaces with document counts
+- GET /api/workspaces/{id} returns workspace with full documents list
+- PATCH /api/workspaces/{id} with valid name returns 200 and updated workspace
+- DELETE /api/workspaces/{id} returns 200 and removes workspace
+
+### Error Cases
+
+- POST /api/workspaces/ returns 401 if not authenticated
+- POST /api/workspaces/ returns 403 for demo user
+- POST /api/workspaces/ returns 422 if name is empty
+- POST /api/workspaces/ returns 422 if name exceeds 100 characters
+- GET /api/workspaces/{id} returns 404 if workspace does not exist
+- GET /api/workspaces/{id} returns 404 if workspace belongs to another user
+- PATCH /api/workspaces/{id} returns 403 for demo user
+- PATCH /api/workspaces/{id} returns 404 for non-existent or wrong-owner workspace
+- DELETE /api/workspaces/{id} returns 403 for demo user
+- DELETE /api/workspaces/{id} returns 404 for non-existent or wrong-owner workspace
+
+### Edge Cases
+
+- Workspace name with leading/trailing whitespace (should be stored as-is or trimmed — follow existing pattern)
+- Creating multiple workspaces with the same name succeeds (names are not unique)
+- Deleting a workspace cascades deletion of associated messages
+
+### Security Cases
+
+- Rate limit: workspace CRUD at 20/hour per user
+- Cannot access another user's workspace via any endpoint
+
+---
+
+## Feature: Workspace Document Membership
+
+### Happy Path
+
+- POST /api/workspaces/{id}/documents with valid document_ids adds documents and returns updated workspace detail
+- DELETE /api/workspaces/{id}/documents/{doc_id} removes document from workspace
+- Adding a document already in the workspace is silently skipped (idempotent)
+- Only COMPLETED documents can be added to a workspace
+
+### Error Cases
+
+- POST /api/workspaces/{id}/documents returns 400 if adding would exceed MAX_DOCUMENTS_PER_WORKSPACE (20)
+- POST /api/workspaces/{id}/documents returns 403 for demo user
+- POST /api/workspaces/{id}/documents returns 404 if workspace not found or wrong owner
+- POST /api/workspaces/{id}/documents returns 404 if any document_id not found or not owned by user
+- POST /api/workspaces/{id}/documents rejects documents that are not COMPLETED (PENDING/PROCESSING/FAILED)
+- DELETE /api/workspaces/{id}/documents/{doc_id} returns 404 if document not in workspace
+
+### Edge Cases
+
+- Adding documents when workspace already has some (partial fill to limit)
+- Removing a document from workspace preserves existing workspace chat history
+- Document deleted entirely via DELETE /api/documents/{id} cascades removal from workspace_documents
+
+---
+
+## Feature: Cross-Document Query (Workspace RAG)
+
+### Happy Path
+
+- POST /api/workspaces/{id}/query returns answer with sources from multiple documents
+- Sources include `document_id` and `document_filename` for each chunk
+- Pipeline_meta includes timing and similarity fields matching single-doc query format
+- User message and assistant response are saved to messages table with `workspace_id` (not `document_id`)
+- LLM prompt includes document filename attribution in excerpt headers
+- Workspace chat includes bounded recent conversation history for follow-up questions
+
+### Error Cases
+
+- POST /api/workspaces/{id}/query returns 400 if workspace has 0 documents
+- POST /api/workspaces/{id}/query returns 404 if workspace not found or wrong owner
+- POST /api/workspaces/{id}/query returns 401 if not authenticated
+
+### Edge Cases
+
+- Workspace with a single document returns results equivalent to single-doc query
+- Query when some workspace documents have no chunks still returns results from chunked documents
+- Sources are ranked by similarity regardless of which document they come from
+
+### Security Cases
+
+- Rate limit: 10/hour shared bucket with single-document /query and /query/stream per user
+- Cannot query another user's workspace
+
+---
+
+## Feature: Workspace Chat History
+
+### Happy Path
+
+- GET /api/workspaces/{id}/messages returns all messages for a workspace ordered by created_at
+- Assistant messages include sources (with document_id and document_filename) and optional pipeline_meta
+- Messages have `workspace_id` set and `document_id` as null
+
+### Error Cases
+
+- Returns 404 if workspace not found or wrong owner
+- Returns empty list for workspace with no messages
+
+---
+
+## Feature: Workspace Frontend
+
+### Happy Path
+
+- Sidebar toggle switches between Documents and Workspaces modes
+- WorkspaceList renders workspace cards with name and document count
+- Clicking a workspace enters workspace view with PDF viewer + chat
+- Document switcher dropdown above PDF viewer lists workspace documents
+- Clicking a document in sidebar or switcher changes the PDF viewer document
+- Chat queries go to workspace query endpoint when in workspace mode
+- Workspace chat history loads and displays on workspace entry
+- Clicking a citation in workspace chat switches PDF viewer to source document and highlights page
+- Citation cards show document filename alongside page number
+
+### Error Cases
+
+- Empty workspace shows "add documents" prompt and disables chat input
+- Document removed from workspace while viewing switches viewer to next available doc
+
+### Edge Cases
+
+- Switching between Documents and Workspaces modes clears the other mode's selection
+- Mobile tab layout (PDF / Chat toggle) works in workspace mode
+- Demo user sees workspaces as read-only (create/modify/delete disabled)
+
+---
+
+## Feature: Message Schema Changes (Regression)
+
+### Happy Path
+
+- Existing single-document messages continue to work with nullable document_id (all existing rows have document_id set)
+- Single-document chat is unaffected by workspace_id column addition
+- MessageResponse includes both document_id and workspace_id fields
+
+### Edge Cases
+
+- CHECK constraint prevents creating a message with both document_id and workspace_id set
+- CHECK constraint prevents creating a message with neither document_id nor workspace_id set
+
+---
+
 _[?] marks items needing clarification or investigation before test implementation._
