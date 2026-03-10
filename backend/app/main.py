@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from app.api import auth, documents
+from app.api import auth, documents, workspaces
 from app.api.dependencies import csrf_header_for_docs, verify_csrf
 from app.config import settings
 from app.database import AsyncSessionLocal, async_engine, get_db, init_db
@@ -76,6 +76,12 @@ app.include_router(
     documents.router,
     prefix="/api/documents",
     tags=["documents"],
+    dependencies=[Depends(csrf_header_for_docs), Depends(verify_csrf)],
+)
+app.include_router(
+    workspaces.router,
+    prefix="/api/workspaces",
+    tags=["workspaces"],
     dependencies=[Depends(csrf_header_for_docs), Depends(verify_csrf)],
 )
 app.include_router(

@@ -39,6 +39,20 @@ class TestAnthropicServiceLogging:
         assert "Assistant: Section 1 is about costs" in prompt
         assert "Current question: What changed?" in prompt
 
+    def test_build_prompt_includes_document_filenames_for_workspace_chunks(self):
+        prompt = _build_prompt(
+            query="What changed?",
+            chunks=[
+                {"content": "Revenue increased.", "document_filename": "q1.pdf"},
+                {"content": "Expenses decreased.", "document_filename": "q2.pdf"},
+            ],
+        )
+
+        assert "Here are excerpts from multiple documents:" in prompt
+        assert 'Excerpt 1 (from "q1.pdf"):' in prompt
+        assert 'Excerpt 2 (from "q2.pdf"):' in prompt
+        assert "mention which document it came from" in prompt
+
     async def test_generate_answer_info_logs_redact_raw_query(self):
         raw_query = "board compensation details"
         chunks = [{"content": "Compensation details are in this excerpt."}]
