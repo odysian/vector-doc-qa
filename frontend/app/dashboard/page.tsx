@@ -164,17 +164,24 @@ export default function DashboardPage() {
             )}
           </>
         ) : selectedWorkspace ? (
-          <WorkspaceSidebar
-            workspace={selectedWorkspace}
-            activeDocumentId={viewerDocumentId}
-            onDocumentClick={(doc) => handleViewerDocumentSwitch(doc.id)}
-            onAddDocuments={() => setDocumentPickerOpen(true)}
-            onRemoveDocument={(docId) => {
-              void handleRemoveWorkspaceDocument(docId);
-            }}
-            onBack={handleBackToWorkspaces}
-            disabled={isDemoUser}
-          />
+          <>
+            {error && (
+              <div className="bg-red-900/20 border border-red-900/50 text-error p-3 rounded-lg text-body-sm">
+                {error}
+              </div>
+            )}
+            <WorkspaceSidebar
+              workspace={selectedWorkspace}
+              activeDocumentId={viewerDocumentId}
+              onDocumentClick={(doc) => handleViewerDocumentSwitch(doc.id)}
+              onAddDocuments={() => setDocumentPickerOpen(true)}
+              onRemoveDocument={(docId) => {
+                void handleRemoveWorkspaceDocument(docId);
+              }}
+              onBack={handleBackToWorkspaces}
+              disabled={isDemoUser}
+            />
+          </>
         ) : (
           <>
             {error && (

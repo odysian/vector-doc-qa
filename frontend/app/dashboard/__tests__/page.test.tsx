@@ -4,6 +4,7 @@ import DashboardPage from "@/app/dashboard/page";
 import { ApiError, SessionExpiredError, isLoggedIn, type Document } from "@/lib/api";
 import { chatService } from "@/lib/services/chatService";
 import { documentService } from "@/lib/services/documentService";
+import { workspaceService } from "@/lib/services/workspaceService";
 
 const pushMock = vi.fn();
 const routerMock = { push: pushMock };
@@ -51,8 +52,28 @@ vi.mock("@/lib/services/chatService", async () => {
     chatService: {
       ...actual.chatService,
       getMessages: vi.fn(),
+      getWorkspaceMessages: vi.fn(),
+      queryWorkspace: vi.fn(),
       queryDocument: vi.fn(),
       queryDocumentStream: vi.fn(),
+    },
+  };
+});
+
+vi.mock("@/lib/services/workspaceService", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/services/workspaceService")>(
+    "@/lib/services/workspaceService"
+  );
+  return {
+    ...actual,
+    workspaceService: {
+      ...actual.workspaceService,
+      getWorkspaces: vi.fn(),
+      getWorkspace: vi.fn(),
+      addWorkspaceDocuments: vi.fn(),
+      removeWorkspaceDocument: vi.fn(),
+      createWorkspace: vi.fn(),
+      deleteWorkspace: vi.fn(),
     },
   };
 });
@@ -65,6 +86,11 @@ const processDocumentMock = vi.mocked(documentService.processDocument);
 const getDocumentStatusMock = vi.mocked(documentService.getDocumentStatus);
 const deleteDocumentMock = vi.mocked(documentService.deleteDocument);
 const getMessagesMock = vi.mocked(chatService.getMessages);
+const getWorkspaceMessagesMock = vi.mocked(chatService.getWorkspaceMessages);
+const getWorkspacesMock = vi.mocked(workspaceService.getWorkspaces);
+const getWorkspaceMock = vi.mocked(workspaceService.getWorkspace);
+const addWorkspaceDocumentsMock = vi.mocked(workspaceService.addWorkspaceDocuments);
+const removeWorkspaceDocumentMock = vi.mocked(workspaceService.removeWorkspaceDocument);
 
 function makeDocument(
   overrides: Partial<Document> = {}
@@ -93,6 +119,25 @@ function makeUser(overrides: Partial<{ id: number; username: string; email: stri
   };
 }
 
+function makeWorkspace(overrides: Partial<{
+  id: number;
+  name: string;
+  user_id: number;
+  document_count: number;
+  created_at: string;
+  updated_at: string;
+}> = {}) {
+  return {
+    id: 11,
+    name: "Team Workspace",
+    user_id: 1,
+    document_count: 0,
+    created_at: "2026-03-01T10:00:00Z",
+    updated_at: "2026-03-01T10:00:00Z",
+    ...overrides,
+  };
+}
+
 describe("DashboardPage regression behavior", () => {
   beforeEach(() => {
     pushMock.mockReset();
@@ -104,6 +149,17 @@ describe("DashboardPage regression behavior", () => {
     getDocumentStatusMock.mockReset();
     deleteDocumentMock.mockReset();
     getMessagesMock.mockReset();
+    getWorkspaceMessagesMock.mockReset();
+    getWorkspacesMock.mockReset();
+    getWorkspaceMock.mockReset();
+    addWorkspaceDocumentsMock.mockReset();
+    removeWorkspaceDocumentMock.mockReset();
+
+    globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
+      observe: vi.fn(),
+      unobserve: vi.fn(),
+      disconnect: vi.fn(),
+    })) as unknown as typeof ResizeObserver;
 
     isLoggedInMock.mockReturnValue(true);
     getDashboardContextMock.mockResolvedValue({
@@ -124,6 +180,20 @@ describe("DashboardPage regression behavior", () => {
     });
     deleteDocumentMock.mockResolvedValue({ message: "deleted" });
     getMessagesMock.mockResolvedValue({ messages: [], total: 0 });
+    getWorkspaceMessagesMock.mockResolvedValue({ messages: [], total: 0 });
+    getWorkspacesMock.mockResolvedValue({ workspaces: [], total: 0 });
+    getWorkspaceMock.mockResolvedValue({
+      ...makeWorkspace(),
+      documents: [],
+    });
+    addWorkspaceDocumentsMock.mockResolvedValue({
+      ...makeWorkspace(),
+      documents: [],
+    });
+    removeWorkspaceDocumentMock.mockResolvedValue({
+      ...makeWorkspace(),
+      documents: [],
+    });
   });
 
   it("renders loaded documents after successful fetch", async () => {
@@ -280,6 +350,73 @@ describe("DashboardPage regression behavior", () => {
     expect(screen.getByLabelText("Upload PDF")).not.toBeDisabled();
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
   });
+
+  it("keeps add-documents dialog open and shows workspace error when add fails", async () => {
+    const availableDoc = makeDocument({ id: 901, filename: "workspace-source.pdf" });
+    const workspace = makeWorkspace({ id: 21, name: "Roadmap", document_count: 0 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [availableDoc],
+    });
+    getWorkspacesMock.mockResolvedValueOnce({
+      workspaces: [workspace],
+      total: 1,
+    });
+    getWorkspaceMock.mockResolvedValueOnce({
+      ...workspace,
+      documents: [],
+    });
+    addWorkspaceDocumentsMock.mockRejectedValueOnce(new ApiError(500, "Add failed"));
+
+    render(<DashboardPage />);
+
+    await screen.findByText("workspace-source.pdf");
+    fireEvent.click(screen.getByRole("button", { name: "Workspaces" }));
+    const roadmapWorkspaceText = await screen.findByText("Roadmap");
+    fireEvent.click(roadmapWorkspaceText.closest("button") as HTMLButtonElement);
+    fireEvent.click(await screen.findByRole("button", { name: "Add documents" }));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByLabelText("workspace-source.pdf"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add selected" }));
+
+    await waitFor(() => {
+      expect(addWorkspaceDocumentsMock).toHaveBeenCalledWith(21, [901]);
+      expect(screen.getByText("Add failed")).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+  });
+
+  it("shows workspace error banner when removing a document fails", async () => {
+    const workspaceDoc = makeDocument({ id: 777, filename: "remove-me.pdf" });
+    const workspace = makeWorkspace({ id: 22, name: "Operations", document_count: 1 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [workspaceDoc],
+    });
+    getWorkspacesMock.mockResolvedValueOnce({
+      workspaces: [workspace],
+      total: 1,
+    });
+    getWorkspaceMock.mockResolvedValueOnce({
+      ...workspace,
+      documents: [workspaceDoc],
+    });
+    removeWorkspaceDocumentMock.mockRejectedValueOnce(new ApiError(500, "Remove failed"));
+
+    render(<DashboardPage />);
+
+    await screen.findByText("remove-me.pdf");
+    fireEvent.click(screen.getByRole("button", { name: "Workspaces" }));
+    const operationsWorkspaceText = await screen.findByText("Operations");
+    fireEvent.click(operationsWorkspaceText.closest("button") as HTMLButtonElement);
+    fireEvent.click(await screen.findByRole("button", { name: "Remove remove-me.pdf" }));
+
+    await waitFor(() => {
+      expect(removeWorkspaceDocumentMock).toHaveBeenCalledWith(22, 777);
+      expect(screen.getByText("Remove failed")).toBeInTheDocument();
+    });
+  });
 });
 
 describe("DashboardPage layout contracts", () => {
@@ -303,6 +440,7 @@ describe("DashboardPage layout contracts", () => {
     getDashboardContextMock.mockReset();
     getDocumentsMock.mockReset();
     getMessagesMock.mockReset();
+    getWorkspacesMock.mockReset();
 
     isLoggedInMock.mockReturnValue(true);
     getDashboardContextMock.mockResolvedValue({
@@ -310,6 +448,7 @@ describe("DashboardPage layout contracts", () => {
       documents: [],
     });
     getMessagesMock.mockResolvedValue({ messages: [], total: 0 });
+    getWorkspacesMock.mockResolvedValue({ workspaces: [], total: 0 });
   });
 
   async function selectDocument() {

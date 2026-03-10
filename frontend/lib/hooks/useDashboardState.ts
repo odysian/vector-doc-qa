@@ -68,8 +68,8 @@ export interface UseDashboardStateResult {
   handleWorkspaceClick: (workspace: Workspace) => Promise<void>;
   handleCreateWorkspace: (name: string) => Promise<void>;
   handleDeleteWorkspace: (workspaceId: number) => Promise<void>;
-  handleAddWorkspaceDocuments: (documentIds: number[]) => Promise<void>;
-  handleRemoveWorkspaceDocument: (documentId: number) => Promise<void>;
+  handleAddWorkspaceDocuments: (documentIds: number[]) => Promise<boolean>;
+  handleRemoveWorkspaceDocument: (documentId: number) => Promise<boolean>;
   handleViewerDocumentSwitch: (documentId: number) => void;
   handleBackToWorkspaces: () => void;
   setSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -481,7 +481,7 @@ export function useDashboardState({
   }, [handleApiError, selectedWorkspace]);
 
   const handleAddWorkspaceDocuments = useCallback(async (documentIds: number[]) => {
-    if (!selectedWorkspace || documentIds.length === 0) return;
+    if (!selectedWorkspace || documentIds.length === 0) return false;
 
     setError("");
     try {
@@ -508,13 +508,15 @@ export function useDashboardState({
             : item
         )
       );
+      return true;
     } catch (err) {
       handleApiError(err, "Failed to add documents to workspace");
+      return false;
     }
   }, [handleApiError, selectedWorkspace]);
 
   const handleRemoveWorkspaceDocument = useCallback(async (documentId: number) => {
-    if (!selectedWorkspace) return;
+    if (!selectedWorkspace) return false;
 
     setError("");
     try {
@@ -542,8 +544,10 @@ export function useDashboardState({
             : item
         )
       );
+      return true;
     } catch (err) {
       handleApiError(err, "Failed to remove document from workspace");
+      return false;
     }
   }, [handleApiError, selectedWorkspace]);
 
