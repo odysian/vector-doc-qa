@@ -1,5 +1,6 @@
 from app.api.dependencies import get_current_user
 from app.database import get_db
+from app.constants import QUERY_CONVERSATION_HISTORY_TURNS, QUERY_SIMILARITY_THRESHOLD
 from app.models.user import User
 from app.schemas.message import MessageListResponse
 from app.schemas.query import QueryRequest
@@ -28,9 +29,9 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
-CONVERSATION_HISTORY_WINDOW_TURNS = 5
-# Keep threshold aligned with document query pipeline.
-SIMILARITY_THRESHOLD = 0.60
+# Keep aliases for existing imports/tests that read router constants.
+CONVERSATION_HISTORY_WINDOW_TURNS = QUERY_CONVERSATION_HISTORY_TURNS
+SIMILARITY_THRESHOLD = QUERY_SIMILARITY_THRESHOLD
 
 
 @router.post("/", response_model=WorkspaceResponse, status_code=status.HTTP_201_CREATED)

@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import MAX_DOCUMENTS_PER_WORKSPACE
 from app.models.base import DocumentStatus
 from app.models.user import User
 from app.models.workspace import Workspace
@@ -46,8 +47,6 @@ from app.services.embedding_service import generate_embedding
 from app.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-MAX_WORKSPACE_DOCUMENTS = 20
 WORKSPACE_MEMBERSHIP_LOCK_NAMESPACE = 104
 
 
@@ -350,10 +349,10 @@ async def add_workspace_documents_command(
         if document_id not in existing_document_ids
     ]
 
-    if len(existing_document_ids) + len(new_document_ids) > MAX_WORKSPACE_DOCUMENTS:
+    if len(existing_document_ids) + len(new_document_ids) > MAX_DOCUMENTS_PER_WORKSPACE:
         raise HTTPException(
             status_code=400,
-            detail=f"Workspace cannot contain more than {MAX_WORKSPACE_DOCUMENTS} documents",
+            detail=f"Workspace cannot contain more than {MAX_DOCUMENTS_PER_WORKSPACE} documents",
         )
 
     if new_document_ids:

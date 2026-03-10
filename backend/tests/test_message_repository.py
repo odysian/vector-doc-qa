@@ -1,6 +1,8 @@
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.message import Message
 from app.models.workspace import Workspace
 from app.repositories.message_repository import create_message
 
@@ -65,3 +67,26 @@ class TestCreateMessageContextContract:
 
         assert message.workspace_id == workspace.id
         assert message.document_id is None
+
+    async def test_check_message_context_constraint_raises_in_db(
+        self,
+        db_session: AsyncSession,
+        test_user,
+        test_document,
+    ):
+        workspace = Workspace(name="ctx", user_id=test_user.id)
+        db_session.add(workspace)
+        await db_session.flush()
+
+        db_session.add(
+            Message(
+                document_id=test_document.id,
+                workspace_id=workspace.id,
+                user_id=test_user.id,
+                role="user",
+                content="invalid context",
+            )
+        )
+
+        with pytest.raises(IntegrityError):
+            await db_session.flush()
