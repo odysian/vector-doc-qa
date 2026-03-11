@@ -138,22 +138,35 @@ class TestAnthropicServiceLogging:
             usage=SimpleNamespace(
                 input_tokens=13,
                 output_tokens=5,
-                cache_creation_input_tokens=0,
-                cache_read_input_tokens=0,
+                cache_creation_input_tokens=2,
+                cache_read_input_tokens=3,
             ),
             content=[SimpleNamespace(text="answer")],
         )
         create_mock = AsyncMock(return_value=response)
         fake_client = SimpleNamespace(messages=SimpleNamespace(create=create_mock))
 
-        with patch("app.services.anthropic_service._get_client", return_value=fake_client):
+        with (
+            patch("app.services.anthropic_service._get_client", return_value=fake_client),
+            patch("app.services.anthropic_service.logger.info") as mock_info,
+        ):
             answer = await generate_answer(query="summary?", chunks=chunks)
 
         usage = consume_last_answer_usage()
         assert answer == "answer"
         assert usage is not None
-        assert usage.input_tokens == 13
+        assert usage.input_tokens == 18
         assert usage.output_tokens == 5
+
+        completion_calls = [
+            call
+            for call in mock_info.call_args_list
+            if call.args and call.args[0] == "external.call_completed"
+        ]
+        assert len(completion_calls) == 1
+        completion_extra = completion_calls[0].kwargs["extra"]
+        assert completion_extra["llm_input_tokens"] == 18
+        assert completion_extra["llm_output_tokens"] == 5
 
     async def test_generate_answer_stream_stores_final_usage_for_callers(self):
         chunks = [{"content": "Timeline details are in this excerpt."}]

@@ -333,6 +333,7 @@ class TestQuery:
         processed_document,
         mock_embeddings,
         mock_anthropic,
+        test_user: User,
     ):
         with patch("app.services.document_query_service.logger.info") as mock_info:
             response = await client.post(
@@ -345,6 +346,30 @@ class TestQuery:
         event_messages = [call.args[0] for call in mock_info.call_args_list if call.args]
         assert "query.started" in event_messages
         assert "query.completed" in event_messages
+
+        completion_calls = [
+            call for call in mock_info.call_args_list if call.args and call.args[0] == "query.completed"
+        ]
+        assert len(completion_calls) == 1
+        completion_extra = completion_calls[0].kwargs["extra"]
+        assert completion_extra["event"] == "query.completed"
+        assert completion_extra["document_id"] == processed_document.id
+        assert completion_extra["user_id"] == test_user.id
+        assert completion_extra["query_mode"] == "sync"
+        assert isinstance(completion_extra["duration_ms"], int)
+        required_pipeline_keys = {
+            "embed_ms",
+            "retrieval_ms",
+            "llm_ms",
+            "total_ms",
+            "top_similarity",
+            "avg_similarity",
+            "chunks_retrieved",
+            "chunks_above_threshold",
+            "similarity_spread",
+            "chat_history_turns_included",
+        }
+        assert required_pipeline_keys.issubset(completion_extra.keys())
 
     async def test_query_emits_failed_event_on_runtime_error(
         self,
@@ -540,6 +565,7 @@ class TestQueryStream:
         processed_document,
         mock_embeddings,
         db_session: AsyncSession,
+        test_user: User,
     ):
         async def _fake_generate_answer_stream(
             query: str,
@@ -572,6 +598,30 @@ class TestQueryStream:
         event_messages = [call.args[0] for call in mock_info.call_args_list if call.args]
         assert "query.started" in event_messages
         assert "query.completed" in event_messages
+
+        completion_calls = [
+            call for call in mock_info.call_args_list if call.args and call.args[0] == "query.completed"
+        ]
+        assert len(completion_calls) == 1
+        completion_extra = completion_calls[0].kwargs["extra"]
+        assert completion_extra["event"] == "query.completed"
+        assert completion_extra["document_id"] == processed_document.id
+        assert completion_extra["user_id"] == test_user.id
+        assert completion_extra["query_mode"] == "stream"
+        assert isinstance(completion_extra["duration_ms"], int)
+        required_pipeline_keys = {
+            "embed_ms",
+            "retrieval_ms",
+            "llm_ms",
+            "total_ms",
+            "top_similarity",
+            "avg_similarity",
+            "chunks_retrieved",
+            "chunks_above_threshold",
+            "similarity_spread",
+            "chat_history_turns_included",
+        }
+        assert required_pipeline_keys.issubset(completion_extra.keys())
 
     async def test_stream_query_returns_400_for_unprocessed_document(
         self, client, auth_headers, test_document
