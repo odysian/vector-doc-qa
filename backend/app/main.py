@@ -12,7 +12,7 @@ from app.utils.logging_config import get_logger, setup_logging
 from app.utils.rate_limit import limiter
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
@@ -78,9 +78,24 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_response(request: Request, _: Exception):
+    request_id = getattr(request.state, "request_id", None) or request.headers.get(
+        "X-Request-ID"
+    )
+    if request_id is None:
+        request_id = str(uuid4())
+    return PlainTextResponse(
+        "Internal Server Error",
+        status_code=500,
+        headers={"X-Request-ID": request_id},
+    )
+
+
 @app.middleware("http")
 async def request_context_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or str(uuid4())
+    request.state.request_id = request_id
     request_id_token = set_request_id(request_id)
     start_time = perf_counter()
     status_code = 500

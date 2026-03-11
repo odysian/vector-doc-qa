@@ -308,6 +308,23 @@ class TestQuery:
         )
         assert response.status_code == 404
 
+    async def test_query_emits_failed_event_on_validation_error(
+        self,
+        client,
+        auth_headers,
+        test_document,
+    ):
+        with patch("app.services.document_query_service.logger.warning") as mock_warning:
+            response = await client.post(
+                f"/api/documents/{test_document.id}/query",
+                headers=auth_headers,
+                json={"query": "test"},
+            )
+
+        assert response.status_code == 400
+        warning_messages = [call.args[0] for call in mock_warning.call_args_list if call.args]
+        assert "query.failed" in warning_messages
+
     async def test_query_emits_started_and_completed_events(
         self,
         client,
@@ -494,6 +511,23 @@ class TestQueryStream:
             json={"query": "test"},
         )
         assert response.status_code == 404
+
+    async def test_stream_query_emits_failed_event_on_validation_error(
+        self,
+        client,
+        auth_headers,
+        test_document,
+    ):
+        with patch("app.services.document_query_service.logger.warning") as mock_warning:
+            response = await client.post(
+                f"/api/documents/{test_document.id}/query/stream",
+                headers=auth_headers,
+                json={"query": "test"},
+            )
+
+        assert response.status_code == 400
+        warning_messages = [call.args[0] for call in mock_warning.call_args_list if call.args]
+        assert "query.failed" in warning_messages
 
     async def test_stream_query_emits_started_and_completed_events(
         self,

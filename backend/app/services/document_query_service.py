@@ -216,13 +216,13 @@ async def query_document_command(
         },
     )
 
-    await _validate_document_for_query(
-        document_id=document_id,
-        current_user=current_user,
-        db=db,
-    )
-
     try:
+        await _validate_document_for_query(
+            document_id=document_id,
+            current_user=current_user,
+            db=db,
+        )
+
         conversation_history = await _build_recent_conversation_history(
             db=db,
             document_id=document_id,
@@ -301,6 +301,21 @@ async def query_document_command(
             sources=sources,
             pipeline_meta=pipeline_meta,
         )
+    except HTTPException as exc:
+        await db.rollback()
+        logger.warning(
+            "query.failed",
+            extra={
+                "event": "query.failed",
+                "document_id": document_id,
+                "user_id": current_user.id,
+                "query_mode": "sync",
+                "duration_ms": _elapsed_ms(query_start),
+                "status_code": exc.status_code,
+                "error_class": "HTTPException",
+            },
+        )
+        raise
     except ValueError as exc:
         await db.rollback()
         logger.warning(
@@ -362,13 +377,13 @@ async def query_document_stream_events_command(
         },
     )
 
-    await _validate_document_for_query(
-        document_id=document_id,
-        current_user=current_user,
-        db=db,
-    )
-
     try:
+        await _validate_document_for_query(
+            document_id=document_id,
+            current_user=current_user,
+            db=db,
+        )
+
         conversation_history = await _build_recent_conversation_history(
             db=db,
             document_id=document_id,
@@ -405,6 +420,22 @@ async def query_document_stream_events_command(
         sources_dict = [source.model_dump() for source in sources]
 
         await db.commit()
+    except HTTPException as exc:
+        await db.rollback()
+        logger.warning(
+            "query.failed",
+            extra={
+                "event": "query.failed",
+                "document_id": document_id,
+                "user_id": current_user.id,
+                "query_mode": "stream",
+                "stage": "validation_or_setup",
+                "duration_ms": _elapsed_ms(query_start),
+                "status_code": exc.status_code,
+                "error_class": "HTTPException",
+            },
+        )
+        raise
     except ValueError as exc:
         await db.rollback()
         logger.warning(
