@@ -83,6 +83,10 @@ jobs:
             exit 1
           fi
           echo "${{ secrets.BACKEND_ENV_B64 }}" | base64 --decode > backend.env
+          # Deploy-time source of truth for app version in logs/observability.
+          # Overwrite any existing APP_VERSION from secret payload.
+          sed -i '/^APP_VERSION=/d' backend.env
+          echo "APP_VERSION=sha-${GITHUB_SHA}" >> backend.env
           chmod 600 backend.env
 
       - name: Ensure deploy/env dirs exist on VM
