@@ -551,3 +551,62 @@ class TestWorkspaceMessages:
         )
 
         assert response.status_code == 404
+
+    async def test_get_workspace_messages_supports_pipeline_meta_token_fields(
+        self,
+        client,
+        auth_headers,
+        test_user: User,
+        db_session: AsyncSession,
+    ):
+        workspace = Workspace(name="Token metadata", user_id=test_user.id)
+        db_session.add(workspace)
+        await db_session.flush()
+
+        db_session.add(
+            Message(
+                workspace_id=workspace.id,
+                user_id=test_user.id,
+                role="assistant",
+                content="Workspace answer",
+                sources={
+                    "sources": [
+                        {
+                            "chunk_id": 1,
+                            "content": "ctx",
+                            "similarity": 0.9,
+                            "chunk_index": 0,
+                            "document_id": 1,
+                            "document_filename": "report.pdf",
+                        }
+                    ],
+                    "pipeline_meta": {
+                        "embed_ms": 10,
+                        "retrieval_ms": 12,
+                        "llm_ms": 30,
+                        "total_ms": 52,
+                        "top_similarity": 0.9,
+                        "avg_similarity": 0.9,
+                        "chunks_retrieved": 1,
+                        "chunks_above_threshold": 1,
+                        "similarity_spread": 0.0,
+                        "chat_history_turns_included": 0,
+                        "embedding_tokens": 7,
+                        "llm_input_tokens": 15,
+                        "llm_output_tokens": 5,
+                    },
+                },
+            )
+        )
+        await db_session.flush()
+
+        response = await client.get(
+            f"/api/workspaces/{workspace.id}/messages",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["messages"][0]["pipeline_meta"]["embedding_tokens"] == 7
+        assert payload["messages"][0]["pipeline_meta"]["llm_input_tokens"] == 15
+        assert payload["messages"][0]["pipeline_meta"]["llm_output_tokens"] == 5

@@ -162,6 +162,7 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 
 - POST /api/documents/{id}/query with valid query returns answer with sources
 - POST /api/documents/{id}/query includes pipeline_meta timing/similarity fields including `chunks_above_threshold`, `similarity_spread`, and `chat_history_turns_included`
+- POST /api/documents/{id}/query and `/query/stream` include optional `pipeline_meta` token fields when provider usage is available: `embedding_tokens`, `llm_input_tokens`, `llm_output_tokens`
 - POST /api/documents/{id}/query/stream returns SSE events in order: sources -> token* -> meta -> done
 - Answer includes cited chunks from the document
 - User message and assistant response are saved to messages table
@@ -181,12 +182,15 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 - Very short query (single word)
 - Very long query (paragraph)
 - History window trims older turns beyond configured bound
+- Historical messages with legacy `pipeline_meta` payloads (without token fields) still deserialize
+- Messages with token-enriched `pipeline_meta` payloads deserialize and return token fields intact
 
 ### Security Cases
 
 - Rate limit: 10/hour shared bucket across /query and /query/stream per user
 - Cannot query another user's documents
 - Query/search/stream error logs include structured context only (IDs + error class) without raw exception-message interpolation
+- External provider logs emit `external.call_completed`/`external.call_failed` events with provider/model/duration and usage counts where available
 
 ---
 

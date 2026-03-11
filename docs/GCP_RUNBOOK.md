@@ -391,6 +391,54 @@ Minimum diagnostics during incidents:
    - `/var/log/nginx/access.log`
    - `/var/log/nginx/error.log`
 
+### Token Usage Dashboard Definitions
+
+Create Cloud Logging charts (or a custom dashboard) backed by these filters:
+
+1. `external.call_completed` volume by provider/model
+   - `jsonPayload.event="external.call_completed"`
+   - Group by `jsonPayload.provider`, `jsonPayload.model`
+2. Embedding token trend
+   - `jsonPayload.event="external.call_completed" AND jsonPayload.embedding_tokens:*`
+   - Plot sum of `jsonPayload.embedding_tokens`
+3. LLM token trend
+   - `jsonPayload.event="query.completed" AND jsonPayload.llm_input_tokens:*`
+   - Plot sum of `jsonPayload.llm_input_tokens` and `jsonPayload.llm_output_tokens`
+4. External call failure rate
+   - `jsonPayload.event="external.call_failed"`
+   - Group by `jsonPayload.provider`, `jsonPayload.model`, `jsonPayload.error_class`
+
+### Alert Definitions
+
+Configure alerting policies from log-based metrics:
+
+1. `external_call_failed_count` spike:
+   - condition: failures > baseline for 5 minutes
+   - labels: provider/model/error_class
+2. Missing token usage on completed queries:
+   - condition: `query.completed` logs with no `llm_input_tokens` for a sustained window after deploy
+   - use as a canary for usage propagation regressions
+3. Embedding token anomaly:
+   - condition: large jump/drop in summed `embedding_tokens` vs trailing average
+
+### Runtime Validation Checklist (Post-Deploy)
+
+Run after each production deploy once traffic is live:
+
+1. Confirm external call completion logs include provider/model/duration:
+   ```bash
+   gcloud logging read 'jsonPayload.event="external.call_completed"' --limit=20 --format=json
+   ```
+2. Confirm query completion logs include timing/retrieval/token top-level keys:
+   ```bash
+   gcloud logging read 'jsonPayload.event="query.completed"' --limit=20 --format=json
+   ```
+3. Confirm failure path emits `external.call_failed` with `error_class`.
+4. Trigger one controlled query and verify:
+   - `embedding_tokens` present when embedding usage is returned
+   - `llm_input_tokens` / `llm_output_tokens` present when LLM usage is returned
+5. Validate alert notification routing by forcing one non-prod test alert.
+
 ---
 
 ## 10. Change Log

@@ -101,6 +101,9 @@ export interface PipelineMeta {
   chunks_above_threshold: number;
   similarity_spread: number;
   chat_history_turns_included: number;
+  embedding_tokens?: number | null;
+  llm_input_tokens?: number | null;
+  llm_output_tokens?: number | null;
 }
 
 // Messages

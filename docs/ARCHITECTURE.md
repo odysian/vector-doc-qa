@@ -374,8 +374,8 @@ back to socket peer IP to prevent header spoofing.
 - **Auth:** Required
 - **Rate Limit:** 10/hour per user/IP
 - **Request Body:** `{ "query": "string" }`
-- **Success (200):** `{ "query": "...", "answer": "...", "sources": [...], "pipeline_meta": { "embed_ms": 12, "retrieval_ms": 8, "llm_ms": 420, "total_ms": 440, "top_similarity": 0.91, "avg_similarity": 0.82, "chunks_retrieved": 5, "chunks_above_threshold": 4, "similarity_spread": 0.12, "chat_history_turns_included": 3 } }`
-- **Notes:** Full RAG pipeline — loads bounded recent chat history (oldest -> newest), embeds query, searches chunks, sends to Claude, saves messages
+- **Success (200):** `{ "query": "...", "answer": "...", "sources": [...], "pipeline_meta": { "embed_ms": 12, "retrieval_ms": 8, "llm_ms": 420, "total_ms": 440, "top_similarity": 0.91, "avg_similarity": 0.82, "chunks_retrieved": 5, "chunks_above_threshold": 4, "similarity_spread": 0.12, "chat_history_turns_included": 3, "embedding_tokens": 120, "llm_input_tokens": 780, "llm_output_tokens": 210 } }`
+- **Notes:** Full RAG pipeline — loads bounded recent chat history (oldest -> newest), embeds query, searches chunks, sends to Claude, saves messages. Token fields in `pipeline_meta` are optional for backward compatibility.
 - **Errors:**
   - 404: Document not found
 
@@ -386,7 +386,7 @@ back to socket peer IP to prevent header spoofing.
 - **Success (200):** `text/event-stream` with ordered events:
   - `sources`: JSON array of search results
   - `token`: streamed answer token text
-  - `meta`: pipeline metadata (`embed_ms`, `retrieval_ms`, `llm_ms`, `total_ms`, `top_similarity`, `avg_similarity`, `chunks_retrieved`, `chunks_above_threshold`, `similarity_spread`, `chat_history_turns_included`)
+  - `meta`: pipeline metadata (`embed_ms`, `retrieval_ms`, `llm_ms`, `total_ms`, `top_similarity`, `avg_similarity`, `chunks_retrieved`, `chunks_above_threshold`, `similarity_spread`, `chat_history_turns_included`, optional `embedding_tokens`, `llm_input_tokens`, `llm_output_tokens`)
   - `done`: `{ "message_id": <int> }`
   - `error`: `{ "detail": "..." }` on failures
 - **Notes:** Uses a two-transaction pattern to avoid holding a DB session while streaming; includes the same bounded recent chat history window used by `/query`

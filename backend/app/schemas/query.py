@@ -22,6 +22,9 @@ class PipelineMeta(BaseModel):
     chunks_above_threshold: int
     similarity_spread: float
     chat_history_turns_included: int
+    embedding_tokens: int | None = None
+    llm_input_tokens: int | None = None
+    llm_output_tokens: int | None = None
 
 
 class QueryResponse(BaseModel):
