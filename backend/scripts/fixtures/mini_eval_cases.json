@@ -401,7 +401,7 @@
       "expected_facts": [
         "callable at 102.95",
         "101.47 from 2026-07-01 through 2027-06-30",
-        "2027-07-01"
+        "callable at par"
       ]
     },
     {
