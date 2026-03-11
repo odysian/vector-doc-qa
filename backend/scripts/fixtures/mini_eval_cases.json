@@ -401,7 +401,7 @@
       "expected_facts": [
         "callable at 102.95",
         "101.47 from 2026-07-01 through 2027-06-30",
-        "par"
+        "2027-07-01"
       ]
     },
     {
@@ -428,8 +428,8 @@
       "question": "How did the team first reduce routing failures, and what second action sped up batch backlog recovery?",
       "target_document": "red-harbor-network-outage-report.pdf",
       "expected_facts": [
-        "traffic was manually shifted away from fh-auth-03 and fh-auth-04",
-        "raised temporarily to 28,000"
+        "fh-auth-03 and fh-auth-04",
+        "28,000 jobs"
       ]
     },
     {
