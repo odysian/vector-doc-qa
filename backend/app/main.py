@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from sqlalchemy import text
 
 setup_logging(
@@ -27,6 +29,57 @@ setup_logging(
     version=settings.app_version,
 )
 logger = get_logger(__name__)
+
+
+class RequestContextASGIMiddleware:
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    @staticmethod
+    def _resolve_request_id(scope: Scope) -> str:
+        for header_name, header_value in scope.get("headers", []):
+            if header_name == b"x-request-id":
+                candidate = header_value.decode("latin1").strip()
+                if candidate:
+                    return candidate
+        return str(uuid4())
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request_id = self._resolve_request_id(scope)
+        scope.setdefault("state", {})["request_id"] = request_id
+        request_id_token = set_request_id(request_id)
+        start_time = perf_counter()
+        status_code = 500
+        method = scope.get("method", "UNKNOWN")
+        path = scope.get("path", "")
+
+        async def send_wrapper(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = int(message["status"])
+                headers = MutableHeaders(raw=message["headers"])
+                headers["X-Request-ID"] = request_id
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            logger.info(
+                "request.completed",
+                extra={
+                    "event": "request.completed",
+                    "request_id": request_id,
+                    "method": method,
+                    "path": path,
+                    "status_code": status_code,
+                    "duration_ms": int((perf_counter() - start_time) * 1000),
+                },
+            )
+            reset_request_id(request_id_token)
 
 
 async def _cleanup_expired_refresh_tokens() -> None:
@@ -76,48 +129,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
 )
+app.add_middleware(RequestContextASGIMiddleware)
 
 
 @app.exception_handler(Exception)
-async def unhandled_exception_response(request: Request, _: Exception):
+async def unhandled_exception_response(request: Request, exc: Exception):
     request_id = getattr(request.state, "request_id", None) or request.headers.get(
         "X-Request-ID"
     )
     if request_id is None:
         request_id = str(uuid4())
+    logger.exception(
+        "request.unhandled_exception",
+        extra={
+            "event": "request.unhandled_exception",
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+        },
+        exc_info=exc,
+    )
     return PlainTextResponse(
         "Internal Server Error",
         status_code=500,
         headers={"X-Request-ID": request_id},
     )
-
-
-@app.middleware("http")
-async def request_context_middleware(request: Request, call_next):
-    request_id = request.headers.get("X-Request-ID") or str(uuid4())
-    request.state.request_id = request_id
-    request_id_token = set_request_id(request_id)
-    start_time = perf_counter()
-    status_code = 500
-
-    try:
-        response = await call_next(request)
-        status_code = response.status_code
-        response.headers["X-Request-ID"] = request_id
-        return response
-    finally:
-        logger.info(
-            "request.completed",
-            extra={
-                "event": "request.completed",
-                "request_id": request_id,
-                "method": request.method,
-                "path": request.url.path,
-                "status_code": status_code,
-                "duration_ms": int((perf_counter() - start_time) * 1000),
-            },
-        )
-        reset_request_id(request_id_token)
 
 
 app.include_router(
