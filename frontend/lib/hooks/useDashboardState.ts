@@ -55,6 +55,7 @@ export interface UseDashboardStateResult {
   workspaceElement: HTMLDivElement | null;
   isDemoUser: boolean;
   hasActiveDocuments: boolean;
+  clearError: () => void;
   handleUpload: (file: File) => Promise<void>;
   handleLogout: () => Promise<void>;
   handleDocumentClick: (document: Document) => void;
@@ -336,6 +337,10 @@ export function useDashboardState({
     handleSessionExpired();
   };
 
+  const clearError = useCallback(() => {
+    setError("");
+  }, []);
+
   const handleDocumentClick = (document: Document) => {
     if (document.status !== "completed") return;
     setDashboardModeState("documents");
@@ -595,6 +600,7 @@ export function useDashboardState({
     workspaceElement,
     isDemoUser,
     hasActiveDocuments,
+    clearError,
     handleUpload,
     handleLogout,
     handleDocumentClick,

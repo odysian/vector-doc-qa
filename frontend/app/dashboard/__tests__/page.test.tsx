@@ -269,11 +269,12 @@ describe("DashboardPage regression behavior", () => {
     });
   });
 
-  it("queues document processing and reloads the list", async () => {
-    const pendingDoc = makeDocument({
+  it("retries failed document processing and reloads the list", async () => {
+    const failedDoc = makeDocument({
       id: 201,
-      status: "pending",
+      status: "failed",
       processed_at: null,
+      error_message: "Queue failed",
     });
     const processingDoc = makeDocument({
       id: 201,
@@ -283,19 +284,47 @@ describe("DashboardPage regression behavior", () => {
 
     getDashboardContextMock.mockResolvedValueOnce({
       user: makeUser(),
-      documents: [pendingDoc],
+      documents: [failedDoc],
     });
     getDocumentsMock.mockResolvedValueOnce({ documents: [processingDoc], total: 1 });
 
     render(<DashboardPage />);
 
     await screen.findByText("alpha.pdf");
-    fireEvent.click(screen.getByRole("button", { name: "Process" }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     await waitFor(() => {
       expect(processDocumentMock).toHaveBeenCalledWith(201);
       expect(getDocumentsMock).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("dismisses sidebar errors and allows later errors to render", async () => {
+    const failedDoc = makeDocument({
+      id: 202,
+      status: "failed",
+      processed_at: null,
+      error_message: "Queue failed",
+    });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [failedDoc],
+    });
+    processDocumentMock
+      .mockRejectedValueOnce(new ApiError(500, "First queue failure"))
+      .mockRejectedValueOnce(new ApiError(500, "Second queue failure"));
+
+    render(<DashboardPage />);
+
+    await screen.findByText("alpha.pdf");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("First queue failure")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
+    expect(screen.queryByText("First queue failure")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Second queue failure")).toBeInTheDocument();
   });
 
   it("deletes a document and reloads the list", async () => {

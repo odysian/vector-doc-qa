@@ -58,6 +58,7 @@ export default function DashboardPage() {
     useTabLayout,
     desktopSidebarCollapsed,
     isDemoUser,
+    clearError,
     handleUpload,
     handleLogout,
     handleDocumentClick,
@@ -128,6 +129,19 @@ export default function DashboardPage() {
 
   const showPdfPane = !useTabLayout || mobileTab === "pdf";
   const showChatPane = !useTabLayout || mobileTab === "chat";
+  const errorBanner = error ? (
+    <div className="bg-red-900/20 border border-red-900/50 text-error p-3 rounded-lg text-body-sm flex items-start gap-2">
+      <p className="flex-1 min-w-0">{error}</p>
+      <button
+        type="button"
+        onClick={clearError}
+        className="p-0.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+        aria-label="Dismiss error"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  ) : null;
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
@@ -174,11 +188,7 @@ export default function DashboardPage() {
               disabled={isDemoUser}
               disabledReason="Create an account to upload your own documents."
             />
-            {error && (
-              <div className="bg-red-900/20 border border-red-900/50 text-error p-3 rounded-lg text-body-sm">
-                {error}
-              </div>
-            )}
+            {errorBanner}
             {loading ? (
               <p className="text-empty">Loading...</p>
             ) : (
@@ -193,11 +203,7 @@ export default function DashboardPage() {
           </>
         ) : selectedWorkspace ? (
           <>
-            {error && (
-              <div className="bg-red-900/20 border border-red-900/50 text-error p-3 rounded-lg text-body-sm">
-                {error}
-              </div>
-            )}
+            {errorBanner}
             <WorkspaceSidebar
               workspace={selectedWorkspace}
               activeDocumentId={viewerDocumentId}
@@ -219,11 +225,7 @@ export default function DashboardPage() {
           </>
         ) : (
           <>
-            {error && (
-              <div className="bg-red-900/20 border border-red-900/50 text-error p-3 rounded-lg text-body-sm">
-                {error}
-              </div>
-            )}
+            {errorBanner}
             {workspacesLoading ? (
               <p className="text-empty">Loading workspaces...</p>
             ) : (
