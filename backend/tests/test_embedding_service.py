@@ -5,7 +5,10 @@ import pytest
 
 from app.constants import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
 from app.services import embedding_service
-from app.services.embedding_service import generate_embeddings_batch
+from app.services.embedding_service import (
+    consume_last_embedding_usage_tokens,
+    generate_embeddings_batch,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -59,3 +62,42 @@ class TestGenerateEmbeddingsBatch:
 
             with pytest.raises(ValueError, match="Expected 2 embeddings, got 1"):
                 await generate_embeddings_batch(["chunk-0", "chunk-1"])
+
+    async def test_records_embedding_usage_tokens_for_callers(self):
+        response = SimpleNamespace(
+            usage=SimpleNamespace(prompt_tokens=42),
+            data=[SimpleNamespace(index=0, embedding=[0.1] * EMBEDDING_DIMENSIONS)],
+        )
+        create_mock = AsyncMock(return_value=response)
+
+        with patch("app.services.embedding_service.AsyncOpenAI") as mock_client:
+            mock_client.return_value.embeddings.create = create_mock
+            await generate_embeddings_batch(["chunk-0"])
+
+        assert consume_last_embedding_usage_tokens() == 42
+        assert consume_last_embedding_usage_tokens() is None
+
+    async def test_emits_external_call_completed_with_embedding_tokens(self):
+        response = SimpleNamespace(
+            usage=SimpleNamespace(prompt_tokens=11),
+            data=[SimpleNamespace(index=0, embedding=[0.1] * EMBEDDING_DIMENSIONS)],
+        )
+        create_mock = AsyncMock(return_value=response)
+
+        with (
+            patch("app.services.embedding_service.AsyncOpenAI") as mock_client,
+            patch("app.services.embedding_service.logger.info") as mock_info,
+        ):
+            mock_client.return_value.embeddings.create = create_mock
+            await generate_embeddings_batch(["chunk-0"])
+
+        completion_calls = [
+            call
+            for call in mock_info.call_args_list
+            if call.args and call.args[0] == "external.call_completed"
+        ]
+        assert len(completion_calls) == 1
+        completion_extra = completion_calls[0].kwargs["extra"]
+        assert completion_extra["provider"] == "openai"
+        assert completion_extra["model"] == EMBEDDING_MODEL
+        assert completion_extra["embedding_tokens"] == 11

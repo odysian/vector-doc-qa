@@ -182,6 +182,30 @@ raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 In query/search/LLM paths, INFO logs must not include raw user query text.
 Log metadata only (for example `document_id`, `user_id`, `query_chars`, `chunk_count`, `top_k`) and keep detailed exception context in error logs.
 
+### External Provider Observability Events
+
+Every outbound OpenAI/Anthropic call emits one structured event:
+
+- Success: `external.call_completed`
+- Failure: `external.call_failed`
+
+Required top-level fields:
+
+- `provider`
+- `model`
+- `duration_ms`
+
+Optional usage fields:
+
+- `embedding_tokens` (OpenAI embedding usage)
+- `llm_input_tokens`, `llm_output_tokens` (Anthropic completion usage)
+
+### Query Completion Event Enrichment
+
+`query.completed` logs include top-level timing/retrieval/token fields from `pipeline_meta`
+(`embed_ms`, `retrieval_ms`, `llm_ms`, `total_ms`, retrieval similarity fields, plus optional token counts)
+to keep Cloud Logging queries straightforward without nested JSON extraction.
+
 ### Refresh Token Rotation
 
 The refresh endpoint consumes tokens with a single SQL statement (`DELETE ... RETURNING`) and commits exactly once after staging the replacement token.

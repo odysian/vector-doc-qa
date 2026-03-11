@@ -3,7 +3,10 @@ import time
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.document_repository import search_document_chunks_by_embedding
-from app.services.embedding_service import generate_embedding
+from app.services.embedding_service import (
+    consume_last_embedding_usage_tokens,
+    generate_embedding,
+)
 from app.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -46,7 +49,7 @@ async def search_chunks_with_timings(
     document_id: int,
     top_k: int,
     db: AsyncSession,
-) -> tuple[list[dict], int, int]:
+) -> tuple[list[dict], int, int, int | None]:
     """
     Search for chunks semantically similar to the query and return timing metadata.
     """
@@ -57,6 +60,7 @@ async def search_chunks_with_timings(
     embed_start = time.perf_counter()
     query_embedding = await generate_embedding(query)
     embed_ms = int((time.perf_counter() - embed_start) * 1000)
+    embedding_tokens = consume_last_embedding_usage_tokens()
     logger.debug(f"Generated query embedding with {len(query_embedding)} dimensions")
 
     retrieval_start = time.perf_counter()
@@ -69,4 +73,4 @@ async def search_chunks_with_timings(
     retrieval_ms = int((time.perf_counter() - retrieval_start) * 1000)
 
     logger.info(f"Found {len(search_results)} results")
-    return search_results, embed_ms, retrieval_ms
+    return search_results, embed_ms, retrieval_ms, embedding_tokens

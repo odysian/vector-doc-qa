@@ -19,8 +19,16 @@ from app.repositories.message_repository import (
 from app.schemas.message import MessageListResponse, MessageResponse
 from app.schemas.query import PipelineMeta, QueryRequest, QueryResponse
 from app.schemas.search import SearchRequest, SearchResponse, SearchResult
-from app.services.anthropic_service import generate_answer, generate_answer_stream
-from app.services.embedding_service import generate_embedding
+from app.services.anthropic_service import (
+    consume_last_answer_usage,
+    consume_last_stream_usage,
+    generate_answer,
+    generate_answer_stream,
+)
+from app.services.embedding_service import (
+    consume_last_embedding_usage_tokens,
+    generate_embedding,
+)
 from app.services.search_service import search_chunks_from_embedding, search_chunks_with_timings
 from app.utils.logging_config import get_logger
 
@@ -41,6 +49,9 @@ def _build_pipeline_meta(
     llm_ms: int,
     total_ms: int,
     similarity_threshold: float,
+    embedding_tokens: int | None = None,
+    llm_input_tokens: int | None = None,
+    llm_output_tokens: int | None = None,
 ) -> PipelineMeta:
     similarities = [result["similarity"] for result in search_results]
     top_similarity = max(similarities) if similarities else 0.0
@@ -60,7 +71,44 @@ def _build_pipeline_meta(
         ),
         similarity_spread=round(similarity_spread, 4),
         chat_history_turns_included=len(conversation_history) // 2,
+        embedding_tokens=embedding_tokens,
+        llm_input_tokens=llm_input_tokens,
+        llm_output_tokens=llm_output_tokens,
     )
+
+
+def _build_query_completed_log_payload(
+    *,
+    document_id: int,
+    user_id: int,
+    query_mode: str,
+    duration_ms: int,
+    pipeline_meta: PipelineMeta,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "event": "query.completed",
+        "document_id": document_id,
+        "user_id": user_id,
+        "query_mode": query_mode,
+        "duration_ms": duration_ms,
+        "embed_ms": pipeline_meta.embed_ms,
+        "retrieval_ms": pipeline_meta.retrieval_ms,
+        "llm_ms": pipeline_meta.llm_ms,
+        "total_ms": pipeline_meta.total_ms,
+        "top_similarity": pipeline_meta.top_similarity,
+        "avg_similarity": pipeline_meta.avg_similarity,
+        "chunks_retrieved": pipeline_meta.chunks_retrieved,
+        "chunks_above_threshold": pipeline_meta.chunks_above_threshold,
+        "similarity_spread": pipeline_meta.similarity_spread,
+        "chat_history_turns_included": pipeline_meta.chat_history_turns_included,
+    }
+    if pipeline_meta.embedding_tokens is not None:
+        payload["embedding_tokens"] = pipeline_meta.embedding_tokens
+    if pipeline_meta.llm_input_tokens is not None:
+        payload["llm_input_tokens"] = pipeline_meta.llm_input_tokens
+    if pipeline_meta.llm_output_tokens is not None:
+        payload["llm_output_tokens"] = pipeline_meta.llm_output_tokens
+    return payload
 
 
 def _build_message_sources_payload(
@@ -166,7 +214,7 @@ async def search_document_command(
     )
 
     try:
-        results, _, _ = await search_chunks_with_timings(
+        results, _, _, _ = await search_chunks_with_timings(
             query=search.query,
             document_id=document_id,
             top_k=search.top_k,
@@ -240,7 +288,7 @@ async def query_document_command(
         )
 
         pipeline_start = time.perf_counter()
-        search_results, embed_ms, retrieval_ms = await search_chunks_with_timings(
+        search_results, embed_ms, retrieval_ms, embedding_tokens = await search_chunks_with_timings(
             query=body.query,
             document_id=document_id,
             top_k=5,
@@ -253,6 +301,7 @@ async def query_document_command(
             chunks=search_results,
             conversation_history=conversation_history,
         )
+        llm_usage = consume_last_answer_usage()
         llm_ms = _elapsed_ms(llm_start)
         total_ms = _elapsed_ms(pipeline_start)
 
@@ -265,6 +314,9 @@ async def query_document_command(
             llm_ms=llm_ms,
             total_ms=total_ms,
             similarity_threshold=similarity_threshold,
+            embedding_tokens=embedding_tokens,
+            llm_input_tokens=llm_usage.input_tokens if llm_usage is not None else None,
+            llm_output_tokens=llm_usage.output_tokens if llm_usage is not None else None,
         )
 
         sources_dict = [source.model_dump() for source in sources]
@@ -286,13 +338,13 @@ async def query_document_command(
         )
         logger.info(
             "query.completed",
-            extra={
-                "event": "query.completed",
-                "document_id": document_id,
-                "user_id": current_user.id,
-                "query_mode": "sync",
-                "duration_ms": total_ms,
-            },
+            extra=_build_query_completed_log_payload(
+                document_id=document_id,
+                user_id=current_user.id,
+                query_mode="sync",
+                duration_ms=total_ms,
+                pipeline_meta=pipeline_meta,
+            ),
         )
 
         return QueryResponse(
@@ -363,6 +415,7 @@ async def query_document_stream_events_command(
     similarity_threshold: float,
 ) -> AsyncGenerator[ServerSentEvent, None]:
     query_start = time.perf_counter()
+    embedding_tokens: int | None = None
     logger.info(
         f"Streaming query request for document_id={document_id}, user_id={current_user.id}, query_chars={len(body.query)}"
     )
@@ -406,6 +459,7 @@ async def query_document_stream_events_command(
         embedding_start = time.perf_counter()
         query_embedding = await generate_embedding(body.query)
         embed_ms = _elapsed_ms(embedding_start)
+        embedding_tokens = consume_last_embedding_usage_tokens()
 
         retrieval_start = time.perf_counter()
         search_results = await search_chunks_from_embedding(
@@ -552,6 +606,7 @@ async def query_document_stream_events_command(
             return
 
         llm_ms = _elapsed_ms(llm_start)
+        llm_usage = consume_last_stream_usage()
         pipeline_meta = _build_pipeline_meta(
             search_results=search_results,
             conversation_history=conversation_history,
@@ -560,6 +615,9 @@ async def query_document_stream_events_command(
             llm_ms=llm_ms,
             total_ms=_elapsed_ms(pipeline_start),
             similarity_threshold=similarity_threshold,
+            embedding_tokens=embedding_tokens,
+            llm_input_tokens=llm_usage.input_tokens if llm_usage is not None else None,
+            llm_output_tokens=llm_usage.output_tokens if llm_usage is not None else None,
         )
         yield ServerSentEvent(event="meta", raw_data=pipeline_meta.model_dump_json())
 
@@ -594,13 +652,13 @@ async def query_document_stream_events_command(
 
         logger.info(
             "query.completed",
-            extra={
-                "event": "query.completed",
-                "document_id": document_id,
-                "user_id": current_user.id,
-                "query_mode": "stream",
-                "duration_ms": _elapsed_ms(query_start),
-            },
+            extra=_build_query_completed_log_payload(
+                document_id=document_id,
+                user_id=current_user.id,
+                query_mode="stream",
+                duration_ms=_elapsed_ms(query_start),
+                pipeline_meta=pipeline_meta,
+            ),
         )
 
         yield ServerSentEvent(

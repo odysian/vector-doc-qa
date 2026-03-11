@@ -3,21 +3,44 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.anthropic_service import (
     _build_prompt,
+    consume_last_answer_usage,
+    consume_last_stream_usage,
     generate_answer,
     generate_answer_stream,
 )
 
 
 class _FakeStreamContext:
-    def __init__(self, tokens: list[str]):
+    def __init__(
+        self,
+        tokens: list[str],
+        *,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+    ):
         self._tokens = tokens
+        self._input_tokens = input_tokens
+        self._output_tokens = output_tokens
 
     async def __aenter__(self) -> SimpleNamespace:
         async def _token_stream():
             for token in self._tokens:
                 yield token
 
-        return SimpleNamespace(text_stream=_token_stream())
+        async def _get_final_message() -> SimpleNamespace:
+            return SimpleNamespace(
+                usage=SimpleNamespace(
+                    input_tokens=self._input_tokens,
+                    output_tokens=self._output_tokens,
+                    cache_creation_input_tokens=None,
+                    cache_read_input_tokens=None,
+                )
+            )
+
+        return SimpleNamespace(
+            text_stream=_token_stream(),
+            get_final_message=_get_final_message,
+        )
 
     async def __aexit__(self, exc_type, exc, tb) -> bool:  # type: ignore[no-untyped-def]
         return False
@@ -87,3 +110,46 @@ class TestAnthropicServiceLogging:
         info_messages = [call.args[0] for call in mock_info.call_args_list]
         assert any("query_chars=" in message for message in info_messages)
         assert all(raw_query not in message for message in info_messages)
+
+    async def test_generate_answer_stores_usage_for_callers(self):
+        chunks = [{"content": "Compensation details are in this excerpt."}]
+        response = SimpleNamespace(
+            usage=SimpleNamespace(
+                input_tokens=13,
+                output_tokens=5,
+                cache_creation_input_tokens=0,
+                cache_read_input_tokens=0,
+            ),
+            content=[SimpleNamespace(text="answer")],
+        )
+        create_mock = AsyncMock(return_value=response)
+        fake_client = SimpleNamespace(messages=SimpleNamespace(create=create_mock))
+
+        with patch("app.services.anthropic_service._get_client", return_value=fake_client):
+            answer = await generate_answer(query="summary?", chunks=chunks)
+
+        usage = consume_last_answer_usage()
+        assert answer == "answer"
+        assert usage is not None
+        assert usage.input_tokens == 13
+        assert usage.output_tokens == 5
+
+    async def test_generate_answer_stream_stores_final_usage_for_callers(self):
+        chunks = [{"content": "Timeline details are in this excerpt."}]
+        stream_mock = MagicMock(
+            return_value=_FakeStreamContext(
+                ["part 1", " part 2"],
+                input_tokens=21,
+                output_tokens=8,
+            )
+        )
+        fake_client = SimpleNamespace(messages=SimpleNamespace(stream=stream_mock))
+
+        with patch("app.services.anthropic_service._get_client", return_value=fake_client):
+            tokens = [token async for token in generate_answer_stream(query="timeline?", chunks=chunks)]
+
+        usage = consume_last_stream_usage()
+        assert tokens == ["part 1", " part 2"]
+        assert usage is not None
+        assert usage.input_tokens == 21
+        assert usage.output_tokens == 8

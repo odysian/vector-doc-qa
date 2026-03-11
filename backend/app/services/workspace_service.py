@@ -63,6 +63,9 @@ def _build_pipeline_meta(
     llm_ms: int,
     total_ms: int,
     similarity_threshold: float,
+    embedding_tokens: int | None = None,
+    llm_input_tokens: int | None = None,
+    llm_output_tokens: int | None = None,
 ) -> PipelineMeta:
     similarities = [result["similarity"] for result in search_results]
     top_similarity = max(similarities) if similarities else 0.0
@@ -82,6 +85,9 @@ def _build_pipeline_meta(
         ),
         similarity_spread=round(similarity_spread, 4),
         chat_history_turns_included=len(conversation_history) // 2,
+        embedding_tokens=embedding_tokens,
+        llm_input_tokens=llm_input_tokens,
+        llm_output_tokens=llm_output_tokens,
     )
 
 

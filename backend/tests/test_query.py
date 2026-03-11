@@ -7,6 +7,7 @@ and "Chat History".
 
 import json
 from collections.abc import AsyncGenerator
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from sqlalchemy import select
@@ -497,6 +498,9 @@ class TestQueryStream:
             "chunks_above_threshold",
             "similarity_spread",
             "chat_history_turns_included",
+            "embedding_tokens",
+            "llm_input_tokens",
+            "llm_output_tokens",
         }
 
         done_payload = json.loads(events[5][1])
@@ -901,6 +905,54 @@ class TestQueryStream:
 
         assert observed_history["messages"] == expected_history
 
+    async def test_stream_query_meta_includes_token_fields_when_available(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        mock_embeddings,
+        db_session: AsyncSession,
+    ):
+        async def _fake_generate_answer_stream(
+            query: str,
+            chunks: list[dict],
+            conversation_history: list[dict[str, str]] | None = None,
+        ) -> AsyncGenerator[str, None]:
+            del query, chunks, conversation_history
+            yield "token"
+
+        with (
+            patch(
+                "app.services.document_query_service.generate_answer_stream",
+                new=_fake_generate_answer_stream,
+            ),
+            patch(
+                "app.services.document_query_service.consume_last_embedding_usage_tokens",
+                return_value=9,
+            ),
+            patch(
+                "app.services.document_query_service.consume_last_stream_usage",
+                return_value=SimpleNamespace(input_tokens=12, output_tokens=4),
+            ),
+            patch(
+                "app.services.document_query_service.AsyncSessionLocal",
+                new=lambda: _NoCloseSessionContext(db_session),
+            ),
+        ):
+            async with client.stream(
+                "POST",
+                f"/api/documents/{processed_document.id}/query/stream",
+                headers=auth_headers,
+                json={"query": "Summarize with usage"},
+            ) as response:
+                assert response.status_code == 200
+                events = await _read_sse_events(response)
+
+        meta_payload = json.loads([payload for event, payload in events if event == "meta"][0])
+        assert meta_payload["embedding_tokens"] == 9
+        assert meta_payload["llm_input_tokens"] == 12
+        assert meta_payload["llm_output_tokens"] == 4
+
 
 # ---------------------------------------------------------------------------
 # Messages (Chat History)
@@ -1013,3 +1065,70 @@ class TestMessages:
             headers=second_user_headers,
         )
         assert response.status_code == 404
+
+
+class TestQueryPipelineTokenFields:
+    async def test_query_response_includes_token_fields_when_available(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+    ):
+        async def _fake_search_chunks_with_timings(
+            *,
+            query: str,
+            document_id: int,
+            top_k: int,
+            db: AsyncSession,
+        ) -> tuple[list[dict], int, int, int | None]:
+            del query, document_id, top_k, db
+            return (
+                [
+                    {
+                        "chunk_id": 1,
+                        "content": "source",
+                        "similarity": 0.9,
+                        "chunk_index": 0,
+                        "page_start": 1,
+                        "page_end": 1,
+                    }
+                ],
+                7,
+                5,
+                23,
+            )
+
+        async def _fake_generate_answer(
+            *,
+            query: str,
+            chunks: list[dict],
+            conversation_history: list[dict[str, str]] | None = None,
+        ) -> str:
+            del query, chunks, conversation_history
+            return "answer"
+
+        with (
+            patch(
+                "app.services.document_query_service.search_chunks_with_timings",
+                new=_fake_search_chunks_with_timings,
+            ),
+            patch(
+                "app.services.document_query_service.generate_answer",
+                new=_fake_generate_answer,
+            ),
+            patch(
+                "app.services.document_query_service.consume_last_answer_usage",
+                return_value=SimpleNamespace(input_tokens=14, output_tokens=6),
+            ),
+        ):
+            response = await client.post(
+                f"/api/documents/{processed_document.id}/query",
+                headers=auth_headers,
+                json={"query": "What changed?"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["pipeline_meta"]["embedding_tokens"] == 23
+        assert data["pipeline_meta"]["llm_input_tokens"] == 14
+        assert data["pipeline_meta"]["llm_output_tokens"] == 6
