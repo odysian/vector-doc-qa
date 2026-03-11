@@ -51,7 +51,8 @@ if [[ "$${ENABLE_OPS_AGENT}" == "true" ]]; then
     apt-get update
 
     # Fresh images may not have the Ops Agent repo configured yet.
-    if apt-cache policy google-cloud-ops-agent 2>/dev/null | grep -q "Candidate: (none)"; then
+    OPS_AGENT_AVAILABLE_VERSIONS="$(apt-cache madison google-cloud-ops-agent 2>/dev/null | awk '{print $3}')"
+    if [[ -z "$${OPS_AGENT_AVAILABLE_VERSIONS}" ]]; then
       if ! command -v curl >/dev/null 2>&1; then
         apt-get install -y ca-certificates curl
       fi
@@ -60,6 +61,14 @@ if [[ "$${ENABLE_OPS_AGENT}" == "true" ]]; then
       bash "$${OPS_AGENT_REPO_SCRIPT}" --also-install=false
       rm -f "$${OPS_AGENT_REPO_SCRIPT}"
       apt-get update
+      OPS_AGENT_AVAILABLE_VERSIONS="$(apt-cache madison google-cloud-ops-agent 2>/dev/null | awk '{print $3}')"
+    fi
+
+    if ! printf '%s\n' "$${OPS_AGENT_AVAILABLE_VERSIONS}" | grep -Fxq "$${OPS_AGENT_VERSION}"; then
+      echo "Requested Ops Agent version $${OPS_AGENT_VERSION} not found in apt repositories." >&2
+      echo "Available versions:" >&2
+      printf '%s\n' "$${OPS_AGENT_AVAILABLE_VERSIONS}" >&2
+      exit 1
     fi
 
     apt-get install -y --allow-downgrades "google-cloud-ops-agent=$${OPS_AGENT_VERSION}"
