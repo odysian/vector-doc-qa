@@ -57,8 +57,11 @@ if [[ "$${ENABLE_OPS_AGENT}" == "true" ]]; then
         apt-get install -y ca-certificates curl
       fi
       OPS_AGENT_REPO_SCRIPT="$(mktemp)"
-      curl -fsSL "https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh" -o "$${OPS_AGENT_REPO_SCRIPT}"
-      bash "$${OPS_AGENT_REPO_SCRIPT}" --also-install=false
+      curl --retry 5 --retry-all-errors --connect-timeout 10 --max-time 120 -fsSL \
+        "https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh" \
+        -o "$${OPS_AGENT_REPO_SCRIPT}"
+      # Without --also-install this script only adds the apt repository.
+      bash "$${OPS_AGENT_REPO_SCRIPT}"
       rm -f "$${OPS_AGENT_REPO_SCRIPT}"
       apt-get update
       OPS_AGENT_AVAILABLE_VERSIONS="$(apt-cache madison google-cloud-ops-agent 2>/dev/null | awk '{print $3}')"
