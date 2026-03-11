@@ -1,6 +1,7 @@
 import asyncio
 from unittest.mock import patch
 
+from app.config import settings
 from app.main import app
 from fastapi import APIRouter
 from httpx import ASGITransport, AsyncClient
@@ -149,3 +150,31 @@ class TestRequestContextMiddleware:
                 for route in app.router.routes
                 if getattr(route, "path", None) != route_path
             ]
+
+    async def test_cors_preflight_allows_x_request_id_header(self, client) -> None:
+        response = await client.options(
+            "/",
+            headers={
+                "Origin": settings.frontend_url,
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "X-Request-ID",
+            },
+        )
+
+        assert response.status_code == 200
+        allow_headers = response.headers["access-control-allow-headers"]
+        assert "x-request-id" in allow_headers.lower()
+
+    async def test_cors_exposes_x_request_id_header_for_browser_clients(self, client) -> None:
+        response = await client.get(
+            "/",
+            headers={
+                "Origin": settings.frontend_url,
+                "X-Request-ID": "browser-correlation-id",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == settings.frontend_url
+        exposed_headers = response.headers["access-control-expose-headers"]
+        assert "x-request-id" in exposed_headers.lower()

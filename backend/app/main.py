@@ -127,7 +127,8 @@ app.add_middleware(
     allow_origins=[settings.frontend_url],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
+    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
 )
 app.add_middleware(RequestContextASGIMiddleware)
 
