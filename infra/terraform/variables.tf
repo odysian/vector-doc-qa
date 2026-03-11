@@ -123,8 +123,40 @@ variable "enable_tls_bootstrap" {
   default     = false
 }
 
+variable "enable_ops_agent" {
+  description = "Whether startup bootstrap should install/configure Google Cloud Ops Agent."
+  type        = bool
+  default     = false
+}
+
+variable "ops_agent_version" {
+  description = "Pinned google-cloud-ops-agent package version (required, non-empty, and not 'latest')."
+  type        = string
+
+  validation {
+    condition = (
+      length(trimspace(var.ops_agent_version)) > 0
+      && lower(trimspace(var.ops_agent_version)) != "latest"
+      && can(regex("^[0-9A-Za-z.+:~_-]+$", trimspace(var.ops_agent_version)))
+    )
+    error_message = "ops_agent_version must be a non-empty pinned package version and cannot be 'latest'."
+  }
+}
+
+variable "ops_agent_collect_docker_logs" {
+  description = "Whether Ops Agent logging config should collect Docker container logs."
+  type        = bool
+  default     = true
+}
+
+variable "ops_agent_collect_host_metrics" {
+  description = "Whether Ops Agent metrics config should collect host metrics."
+  type        = bool
+  default     = true
+}
+
 variable "vm_service_account_scopes" {
-  description = "OAuth scopes attached to the VM service account."
+  description = "Additional OAuth scopes attached to the VM service account. Required storage/logging/monitoring scopes are always enforced additively."
   type        = list(string)
   default     = ["https://www.googleapis.com/auth/devstorage.read_write"]
 }

@@ -1,6 +1,16 @@
 locals {
   vm_service_account_id = replace("${var.vm_name}-sa", "_", "-")
   ssh_keys_metadata     = join("\n", [for key in var.ssh_public_keys : "${var.ssh_user}:${key}"])
+  vm_required_scopes = [
+    "https://www.googleapis.com/auth/devstorage.read_write",
+    "https://www.googleapis.com/auth/logging.write",
+    "https://www.googleapis.com/auth/monitoring.write",
+  ]
+  vm_service_account_scopes = distinct(concat(var.vm_service_account_scopes, local.vm_required_scopes))
+  ops_agent_config = templatefile("${path.module}/scripts/ops-agent-config.yaml.tftpl", {
+    ops_agent_collect_docker_logs  = var.ops_agent_collect_docker_logs
+    ops_agent_collect_host_metrics = var.ops_agent_collect_host_metrics
+  })
 }
 
 resource "google_compute_address" "backend" {
@@ -24,6 +34,18 @@ resource "google_storage_bucket_iam_member" "backend_vm_bucket_access" {
   bucket = google_storage_bucket.documents.name
   role   = "roles/storage.objectUser"
   member = "serviceAccount:${google_service_account.backend_vm.email}"
+}
+
+resource "google_project_iam_member" "backend_vm_log_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.backend_vm.email}"
+}
+
+resource "google_project_iam_member" "backend_vm_metric_writer" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.backend_vm.email}"
 }
 
 resource "google_compute_firewall" "allow_http" {
@@ -113,11 +135,14 @@ resource "google_compute_instance" "backend" {
     enable_tls_bootstrap = var.enable_tls_bootstrap
     bucket_name          = var.bucket_name
     project_id           = var.project_id
+    enable_ops_agent     = var.enable_ops_agent
+    ops_agent_version    = trimspace(var.ops_agent_version)
+    ops_agent_config_b64 = base64encode(local.ops_agent_config)
   })
 
   service_account {
     email  = google_service_account.backend_vm.email
-    scopes = var.vm_service_account_scopes
+    scopes = local.vm_service_account_scopes
   }
 
   shielded_instance_config {

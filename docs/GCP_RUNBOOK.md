@@ -33,7 +33,7 @@ For full VM reprovision/reset steps, use `docs/GCP_VM_REBUILD_TERRAFORM_PLAN.md`
 - Vercel `NEXT_PUBLIC_API_URL` update
 - Cloud Storage bucket/IAM setup
 
-Terraform startup bootstrap now handles Docker + NGINX + Certbot + env file stub creation on VM rebuild.
+Terraform startup bootstrap now handles Docker + NGINX + Certbot + env file stub creation + Ops Agent install/config on VM rebuild.
 
 ---
 
@@ -267,6 +267,19 @@ sudo systemctl status certbot.timer --no-pager
 sudo certbot renew --dry-run
 ```
 
+## Ops Agent status (Terraform-managed)
+
+```bash
+sudo systemctl status google-cloud-ops-agent --no-pager
+sudo journalctl -u google-cloud-ops-agent -n 200 --no-pager
+sudo cat /etc/google-cloud-ops-agent/config.yaml
+```
+
+Toggle notes:
+
+- `enable_ops_agent=false` in Terraform cleanly disables collection and is safe when the package is absent.
+- Docker receiver reads `/var/lib/docker/containers/*/*-json.log`; nested app JSON parsing is best-effort and mixed-format lines remain queryable as plain message text.
+
 ---
 
 ## 8. Common Failure Scenarios
@@ -379,15 +392,18 @@ Actions:
 
 Minimum diagnostics during incidents:
 
-1. VM resource pressure:
+1. Ops Agent health:
+   - `sudo systemctl status google-cloud-ops-agent --no-pager`
+   - `sudo journalctl -u google-cloud-ops-agent -n 200 --no-pager`
+2. VM resource pressure:
    - `free -h`
    - `top`
-2. Container lifecycle:
+3. Container lifecycle:
    - `docker ps -a --filter "name=quaero-backend"`
    - `docker inspect quaero-backend --format '{{.State.Restarting}} {{.State.ExitCode}}'`
-3. App logs:
+4. App logs:
    - `docker logs quaero-backend --tail 500`
-4. NGINX logs:
+5. NGINX logs:
    - `/var/log/nginx/access.log`
    - `/var/log/nginx/error.log`
 

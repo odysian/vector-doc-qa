@@ -38,6 +38,7 @@ Update #12 lock text to:
   - personal key (local terminal only)
   - GitHub deploy key (GitHub secret only)
 - VM/network/storage/IAM managed in `infra/terraform/`
+- Ops Agent install/config/version pin managed in Terraform bootstrap (no manual SSH-only setup)
 - GitHub Actions deploy uses `odys@<static_ip>` with `IdentitiesOnly=yes`
 - No manual key edits via GCP console for routine operations
 
@@ -152,6 +153,7 @@ Also include startup script to initialize:
 - Docker prerequisites and permissions for `odys`
 - NGINX reverse proxy for `api.quaero.odysian.dev`
 - Certbot TLS bootstrap + renewal timer
+- Ops Agent install/version reconciliation + config render at `/etc/google-cloud-ops-agent/config.yaml`
 - `backend.env` stub file with placeholders for secrets
 
 ---
@@ -236,6 +238,7 @@ This ensures Actions uses only `vm_key.pem` and avoids agent/default-key interfe
    - container running (`quaero-backend`)
    - VM health: `curl -f http://127.0.0.1:8000/health`
    - public health: `curl -f https://api.quaero.odysian.dev/health`
+   - Ops Agent health: `systemctl status google-cloud-ops-agent --no-pager`
 3. Run app smoke flow:
    - login
    - upload/process/query/delete document
