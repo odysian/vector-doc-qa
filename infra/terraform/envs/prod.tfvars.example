@@ -15,6 +15,11 @@ frontend_url         = "https://app.example.com"
 backend_port         = 8000
 enable_tls_bootstrap = true
 certbot_email        = "you@example.com"
+enable_ops_agent     = false
+ops_agent_version    = "2.51.0-1"
+
+ops_agent_collect_docker_logs = true
+ops_agent_collect_host_metrics = true
 
 ssh_public_keys = [
   "ssh-ed25519 AAAA... your-personal-key",

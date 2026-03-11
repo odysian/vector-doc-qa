@@ -13,6 +13,7 @@ VM bootstrap via startup script also configures:
 - Docker engine
 - NGINX reverse proxy (`server_name = api.quaero.odysian.dev`)
 - Certbot TLS issuance/renewal (when enabled)
+- Google Cloud Ops Agent install/config (when enabled)
 - `/opt/quaero/env/backend.env` directory/path (file is provisioned by deploy workflow secret)
 - `/opt/quaero/{deploy,env,logs}` directories
 
@@ -26,8 +27,7 @@ gcloud auth application-default login
 
 ## Environment tfvars
 
-`envs/prod.tfvars` is local-only and gitignored. Start from the committed
-template:
+Start from the committed template:
 
 ```bash
 cd infra/terraform
@@ -53,7 +53,25 @@ terraform plan -var-file=envs/prod.tfvars
 - Shielded VM secure boot is enabled by default (`enable_secure_boot=true`).
 - VM service account defaults to least privilege for current runtime:
   - Bucket IAM: `roles/storage.objectUser`
-  - OAuth scope: `https://www.googleapis.com/auth/devstorage.read_write`
+  - Project IAM (Ops Agent writes): `roles/logging.logWriter`, `roles/monitoring.metricWriter`
+  - OAuth scopes (additive): `devstorage.read_write`, `logging.write`, `monitoring.write`
+
+## Ops Agent Controls
+
+Set these in `envs/prod.tfvars`:
+
+- `enable_ops_agent` (bool): enables/disables Ops Agent bootstrap path.
+- `ops_agent_version` (string): required pinned package version; empty/unset or `latest` fails validation.
+- `ops_agent_collect_docker_logs` (bool): when false, Docker log receiver/pipeline is omitted.
+- `ops_agent_collect_host_metrics` (bool): when false, hostmetrics receiver/pipeline is omitted.
+
+Behavior details:
+
+- Startup script reconciles Ops Agent install/version independently from `/opt/quaero/.bootstrap_v2_done`.
+- Config is rendered from `scripts/ops-agent-config.yaml.tftpl` and written atomically to `/etc/google-cloud-ops-agent/config.yaml`.
+- Agent restart is gated on config hash drift; no restart occurs when config is unchanged.
+- `enable_ops_agent=false` is safe even if package/service is absent.
+- Docker log parsing includes nested JSON parse from container `log` content; if logs are mixed-format, envelope fields still ingest and non-JSON message lines remain as plain text.
 
 ### Existing Environment Rollout
 
@@ -75,6 +93,9 @@ terraform plan -var-file=envs/prod.tfvars
   apply, investigate startup logs, and re-enable once fixed.
 - If workload expands beyond GCS object access, add only required IAM role(s)
   and scope(s) instead of restoring broad `cloud-platform`.
+- If Ops Agent rollout causes observability noise or instability, set
+  `enable_ops_agent = false` and apply to stop/disable the service without
+  requiring manual SSH edits.
 
 ## Import Existing Resources (If Already Present)
 
@@ -97,6 +118,12 @@ terraform import -var-file=envs/prod.tfvars google_compute_instance.backend \
 
 terraform import -var-file=envs/prod.tfvars google_storage_bucket.documents \
   "quaero-pdf-storage"
+
+terraform import -var-file=envs/prod.tfvars google_project_iam_member.backend_vm_log_writer \
+  "portfolio-488721 roles/logging.logWriter serviceAccount:quaero-backend-sa@portfolio-488721.iam.gserviceaccount.com"
+
+terraform import -var-file=envs/prod.tfvars google_project_iam_member.backend_vm_metric_writer \
+  "portfolio-488721 roles/monitoring.metricWriter serviceAccount:quaero-backend-sa@portfolio-488721.iam.gserviceaccount.com"
 ```
 
 Notes:
@@ -138,7 +165,14 @@ sudo systemctl status nginx --no-pager
 sudo systemctl status certbot.timer --no-pager
 ```
 
-3. Trigger GitHub Actions `Deploy Backend` (it now uploads `/opt/quaero/env/backend.env` from `BACKEND_ENV_B64` on every deploy).
+3. Confirm Ops Agent status (when enabled):
+
+```bash
+sudo systemctl status google-cloud-ops-agent --no-pager
+sudo cat /etc/google-cloud-ops-agent/config.yaml
+```
+
+4. Trigger GitHub Actions `Deploy Backend` (it now uploads `/opt/quaero/env/backend.env` from `BACKEND_ENV_B64` on every deploy).
 
 ## Outputs
 
