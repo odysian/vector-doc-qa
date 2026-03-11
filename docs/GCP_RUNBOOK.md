@@ -390,6 +390,8 @@ Actions:
 
 ## 9. Observability Pointers
 
+Prerequisite infra task: [Task #180](https://github.com/odysian/vector-doc-qa/issues/180) (Terraform-persistent Ops Agent bootstrap).
+
 Minimum diagnostics during incidents:
 
 1. Ops Agent health:
