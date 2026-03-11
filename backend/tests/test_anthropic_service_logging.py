@@ -46,6 +46,27 @@ class _FakeStreamContext:
         return False
 
 
+class _FailingFinalMessageStreamContext:
+    def __init__(self, tokens: list[str]):
+        self._tokens = tokens
+
+    async def __aenter__(self) -> SimpleNamespace:
+        async def _token_stream():
+            for token in self._tokens:
+                yield token
+
+        async def _get_final_message() -> SimpleNamespace:
+            raise RuntimeError("final usage unavailable")
+
+        return SimpleNamespace(
+            text_stream=_token_stream(),
+            get_final_message=_get_final_message,
+        )
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:  # type: ignore[no-untyped-def]
+        return False
+
+
 class TestAnthropicServiceLogging:
     def test_build_prompt_formats_history_with_explicit_roles(self):
         prompt = _build_prompt(
@@ -153,3 +174,29 @@ class TestAnthropicServiceLogging:
         assert usage is not None
         assert usage.input_tokens == 21
         assert usage.output_tokens == 8
+
+    async def test_generate_answer_stream_tolerates_final_usage_extraction_failure(self):
+        chunks = [{"content": "Timeline details are in this excerpt."}]
+        stream_mock = MagicMock(
+            return_value=_FailingFinalMessageStreamContext(["part 1", " part 2"])
+        )
+        fake_client = SimpleNamespace(messages=SimpleNamespace(stream=stream_mock))
+
+        with (
+            patch("app.services.anthropic_service._get_client", return_value=fake_client),
+            patch("app.services.anthropic_service.logger.warning") as mock_warning,
+            patch("app.services.anthropic_service.logger.info") as mock_info,
+        ):
+            tokens = [token async for token in generate_answer_stream(query="timeline?", chunks=chunks)]
+
+        usage = consume_last_stream_usage()
+        assert tokens == ["part 1", " part 2"]
+        assert usage is None
+
+        warning_messages = [call.args[0] for call in mock_warning.call_args_list if call.args]
+        assert "external.call_usage_unavailable" in warning_messages
+
+        completion_calls = [
+            call for call in mock_info.call_args_list if call.args and call.args[0] == "external.call_completed"
+        ]
+        assert len(completion_calls) == 1

@@ -280,8 +280,20 @@ async def generate_answer_stream(
             get_final_message = getattr(stream, "get_final_message", None)
             usage = None
             if callable(get_final_message):
-                final_message = await get_final_message()
-                usage = _extract_llm_token_usage(getattr(final_message, "usage", None))
+                try:
+                    final_message = await get_final_message()
+                    usage = _extract_llm_token_usage(getattr(final_message, "usage", None))
+                except Exception as exc:
+                    # Usage extraction is observability-only and must not fail the stream.
+                    logger.warning(
+                        "external.call_usage_unavailable",
+                        extra={
+                            "event": "external.call_usage_unavailable",
+                            "provider": "anthropic",
+                            "model": ANTHROPIC_MODEL,
+                            "error_class": type(exc).__name__,
+                        },
+                    )
 
             _last_stream_usage.set(usage)
             _log_external_call_completed(
