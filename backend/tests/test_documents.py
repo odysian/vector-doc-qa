@@ -178,6 +178,26 @@ class TestUpload:
         response = await _upload_pdf(client, auth_headers)
         assert response.status_code == 201
 
+    async def test_upload_emits_document_upload_accepted_event(
+        self, client, auth_headers
+    ):
+        with (
+            patch(
+                "app.services.document_commands_service.enqueue_document_processing",
+                new=AsyncMock(return_value=True),
+            ),
+            patch("app.services.document_commands_service.logger.info") as mock_info,
+        ):
+            response = await client.post(
+                "/api/documents/upload",
+                headers=auth_headers,
+                files={"file": ("test.pdf", io.BytesIO(MINIMAL_PDF), "application/pdf")},
+            )
+
+        assert response.status_code == 201
+        event_messages = [call.args[0] for call in mock_info.call_args_list if call.args]
+        assert "document.upload_accepted" in event_messages
+
 
 # ---------------------------------------------------------------------------
 # List

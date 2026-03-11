@@ -268,3 +268,77 @@ class TestDocumentServiceProcessingIntegrity:
         assert chunks[0].page_end == 1
         assert chunks[1].page_start == 1
         assert chunks[1].page_end == 2
+
+    async def test_processing_emits_started_and_completed_events(
+        self, db_session, test_user
+    ):
+        document = await _create_document(
+            db_session, test_user.id, status=DocumentStatus.PENDING
+        )
+
+        with (
+            patch(
+                "app.services.document_service.read_file_bytes",
+                new=AsyncMock(return_value=b"%PDF-1.4 test"),
+            ),
+            patch(
+                "app.services.document_service.extract_text_with_page_boundaries_from_pdf_bytes",
+                new=AsyncMock(
+                    return_value=ExtractedPdfText(
+                        text="alpha beta gamma",
+                        page_boundaries=[],
+                    )
+                ),
+            ),
+            patch(
+                "app.services.document_service.chunk_text",
+                return_value=[ChunkWithPage(content="chunk-a")],
+            ),
+            patch(
+                "app.services.document_service.generate_embeddings_batch",
+                new=AsyncMock(return_value=[[0.2] * 1536]),
+            ),
+            patch("app.services.document_service.logger.info") as mock_info,
+        ):
+            await process_document_text(document_id=document.id, db=db_session)
+
+        event_messages = [call.args[0] for call in mock_info.call_args_list if call.args]
+        assert "document.processing_started" in event_messages
+        assert "document.processing_completed" in event_messages
+
+    async def test_processing_emits_failed_event(
+        self, db_session, test_user
+    ):
+        document = await _create_document(
+            db_session, test_user.id, status=DocumentStatus.PENDING
+        )
+
+        with (
+            patch(
+                "app.services.document_service.read_file_bytes",
+                new=AsyncMock(return_value=b"%PDF-1.4 test"),
+            ),
+            patch(
+                "app.services.document_service.extract_text_with_page_boundaries_from_pdf_bytes",
+                new=AsyncMock(
+                    return_value=ExtractedPdfText(
+                        text="alpha beta gamma",
+                        page_boundaries=[],
+                    )
+                ),
+            ),
+            patch(
+                "app.services.document_service.chunk_text",
+                return_value=[ChunkWithPage(content="chunk-a")],
+            ),
+            patch(
+                "app.services.document_service.generate_embeddings_batch",
+                new=AsyncMock(side_effect=RuntimeError("embedding failure")),
+            ),
+            patch("app.services.document_service.logger.error") as mock_error,
+        ):
+            with pytest.raises(RuntimeError, match="embedding failure"):
+                await process_document_text(document_id=document.id, db=db_session)
+
+        event_messages = [call.args[0] for call in mock_error.call_args_list if call.args]
+        assert "document.processing_failed" in event_messages

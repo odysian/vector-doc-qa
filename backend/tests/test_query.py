@@ -308,6 +308,49 @@ class TestQuery:
         )
         assert response.status_code == 404
 
+    async def test_query_emits_started_and_completed_events(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        mock_embeddings,
+        mock_anthropic,
+    ):
+        with patch("app.services.document_query_service.logger.info") as mock_info:
+            response = await client.post(
+                f"/api/documents/{processed_document.id}/query",
+                headers=auth_headers,
+                json={"query": "What is this document about?"},
+            )
+
+        assert response.status_code == 200
+        event_messages = [call.args[0] for call in mock_info.call_args_list if call.args]
+        assert "query.started" in event_messages
+        assert "query.completed" in event_messages
+
+    async def test_query_emits_failed_event_on_runtime_error(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+    ):
+        with (
+            patch(
+                "app.services.document_query_service.search_chunks_with_timings",
+                side_effect=RuntimeError("forced query failure"),
+            ),
+            patch("app.services.document_query_service.logger.info") as mock_info,
+        ):
+            response = await client.post(
+                f"/api/documents/{processed_document.id}/query",
+                headers=auth_headers,
+                json={"query": "where is the budget?"},
+            )
+
+        assert response.status_code == 500
+        event_messages = [call.args[0] for call in mock_info.call_args_list if call.args]
+        assert "query.failed" in event_messages
+
     async def test_query_info_logs_redact_raw_query(
         self,
         client,
@@ -451,6 +494,46 @@ class TestQueryStream:
             json={"query": "test"},
         )
         assert response.status_code == 404
+
+    async def test_stream_query_emits_started_and_completed_events(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        mock_embeddings,
+        db_session: AsyncSession,
+    ):
+        async def _fake_generate_answer_stream(
+            query: str,
+            chunks: list[dict],
+            conversation_history: list[dict[str, str]] | None = None,
+        ) -> AsyncGenerator[str, None]:
+            del query, chunks, conversation_history
+            yield "done"
+
+        with (
+            patch(
+                "app.services.document_query_service.generate_answer_stream",
+                new=_fake_generate_answer_stream,
+            ),
+            patch(
+                "app.services.document_query_service.AsyncSessionLocal",
+                new=lambda: _NoCloseSessionContext(db_session),
+            ),
+            patch("app.services.document_query_service.logger.info") as mock_info,
+        ):
+            async with client.stream(
+                "POST",
+                f"/api/documents/{processed_document.id}/query/stream",
+                headers=auth_headers,
+                json={"query": "Summarize this document"},
+            ) as response:
+                assert response.status_code == 200
+                await _read_sse_events(response)
+
+        event_messages = [call.args[0] for call in mock_info.call_args_list if call.args]
+        assert "query.started" in event_messages
+        assert "query.completed" in event_messages
 
     async def test_stream_query_returns_400_for_unprocessed_document(
         self, client, auth_headers, test_document

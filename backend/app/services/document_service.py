@@ -1,4 +1,6 @@
 # backend/app/services/document_service.py
+from time import perf_counter
+
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,8 +35,6 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
         Exception: If processing fails
     """
 
-    logger.info(f"Starting document processing: document_id={document_id}")
-
     # Get document
     document = await get_document_by_id(db=db, document_id=document_id)
 
@@ -48,6 +48,15 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
 
     if document.status == DocumentStatus.PROCESSING:
         raise ValueError(f"Document {document_id} is currently being processed")
+
+    process_start = perf_counter()
+    logger.info(
+        "document.processing_started",
+        extra={
+            "event": "document.processing_started",
+            "document_id": document_id,
+        },
+    )
 
     try:
         document.status = DocumentStatus.PROCESSING
@@ -110,10 +119,27 @@ async def process_document_text(document_id: int, db: AsyncSession) -> None:
 
         await db.commit()
 
-        logger.info(f"Processing complete: {len(chunks)} chunks with embeddings")
+        logger.info(
+            "document.processing_completed",
+            extra={
+                "event": "document.processing_completed",
+                "document_id": document_id,
+                "chunk_count": len(chunks),
+                "duration_ms": int((perf_counter() - process_start) * 1000),
+            },
+        )
 
     except Exception as e:
-        logger.error(f"Processing failed: {e}", exc_info=True)
+        logger.error(
+            "document.processing_failed",
+            extra={
+                "event": "document.processing_failed",
+                "document_id": document_id,
+                "duration_ms": int((perf_counter() - process_start) * 1000),
+                "error_class": type(e).__name__,
+            },
+            exc_info=True,
+        )
 
         # Explicitly clear the current unit of work so flushed chunk rows are not committed.
         await db.rollback()

@@ -42,19 +42,46 @@ async def enqueue_document_processing(document_id: int) -> bool:
         True if a new job was enqueued.
         False if a job with the same ID already exists.
     """
-    pool = await _get_queue_pool()
     job_id = f"doc:{document_id}"
 
-    job = await pool.enqueue_job(
-        "process_document_task",
-        document_id,
-        _job_id=job_id,
-        _queue_name=settings.arq_queue_name,
-    )
+    try:
+        pool = await _get_queue_pool()
+        job = await pool.enqueue_job(
+            "process_document_task",
+            document_id,
+            _job_id=job_id,
+            _queue_name=settings.arq_queue_name,
+        )
+    except Exception as exc:
+        logger.error(
+            "document.queue_failed",
+            extra={
+                "event": "document.queue_failed",
+                "document_id": document_id,
+                "job_id": job_id,
+                "error_class": type(exc).__name__,
+            },
+            exc_info=True,
+        )
+        raise
 
     if job is None:
-        logger.info(f"Job already queued: {job_id}")
+        logger.info(
+            "document.queue_duplicate",
+            extra={
+                "event": "document.queue_duplicate",
+                "document_id": document_id,
+                "job_id": job_id,
+            },
+        )
         return False
 
-    logger.info(f"Queued document processing: job_id={job_id}")
+    logger.info(
+        "document.queue_enqueued",
+        extra={
+            "event": "document.queue_enqueued",
+            "document_id": document_id,
+            "job_id": job_id,
+        },
+    )
     return True

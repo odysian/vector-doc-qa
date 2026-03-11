@@ -201,8 +201,19 @@ async def query_document_command(
     history_window_turns: int,
     similarity_threshold: float,
 ) -> QueryResponse:
+    query_start = time.perf_counter()
     logger.info(
         f"Query request for document_id={document_id}, user_id={current_user.id}, query_chars={len(body.query)}"
+    )
+    logger.info(
+        "query.started",
+        extra={
+            "event": "query.started",
+            "document_id": document_id,
+            "user_id": current_user.id,
+            "query_chars": len(body.query),
+            "query_mode": "sync",
+        },
     )
 
     await _validate_document_for_query(
@@ -273,6 +284,16 @@ async def query_document_command(
         logger.info(
             f"Saved messages for document_id={document_id}: user_msg_id={user_message.id}, assistant_msg_id={assistant_message.id}"
         )
+        logger.info(
+            "query.completed",
+            extra={
+                "event": "query.completed",
+                "document_id": document_id,
+                "user_id": current_user.id,
+                "query_mode": "sync",
+                "duration_ms": total_ms,
+            },
+        )
 
         return QueryResponse(
             query=body.query,
@@ -282,9 +303,31 @@ async def query_document_command(
         )
     except ValueError as exc:
         await db.rollback()
+        logger.warning(
+            "query.failed",
+            extra={
+                "event": "query.failed",
+                "document_id": document_id,
+                "user_id": current_user.id,
+                "query_mode": "sync",
+                "duration_ms": _elapsed_ms(query_start),
+                "error_class": type(exc).__name__,
+            },
+        )
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         await db.rollback()
+        logger.info(
+            "query.failed",
+            extra={
+                "event": "query.failed",
+                "document_id": document_id,
+                "user_id": current_user.id,
+                "query_mode": "sync",
+                "duration_ms": _elapsed_ms(query_start),
+                "error_class": type(exc).__name__,
+            },
+        )
         logger.error(
             "Query failed for document_id=%s, user_id=%s, error_class=%s",
             document_id,
@@ -304,8 +347,19 @@ async def query_document_stream_events_command(
     history_window_turns: int,
     similarity_threshold: float,
 ) -> AsyncGenerator[ServerSentEvent, None]:
+    query_start = time.perf_counter()
     logger.info(
         f"Streaming query request for document_id={document_id}, user_id={current_user.id}, query_chars={len(body.query)}"
+    )
+    logger.info(
+        "query.started",
+        extra={
+            "event": "query.started",
+            "document_id": document_id,
+            "user_id": current_user.id,
+            "query_chars": len(body.query),
+            "query_mode": "stream",
+        },
     )
 
     await _validate_document_for_query(
@@ -353,9 +407,33 @@ async def query_document_stream_events_command(
         await db.commit()
     except ValueError as exc:
         await db.rollback()
+        logger.warning(
+            "query.failed",
+            extra={
+                "event": "query.failed",
+                "document_id": document_id,
+                "user_id": current_user.id,
+                "query_mode": "stream",
+                "stage": "setup",
+                "duration_ms": _elapsed_ms(query_start),
+                "error_class": type(exc).__name__,
+            },
+        )
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         await db.rollback()
+        logger.info(
+            "query.failed",
+            extra={
+                "event": "query.failed",
+                "document_id": document_id,
+                "user_id": current_user.id,
+                "query_mode": "stream",
+                "stage": "setup",
+                "duration_ms": _elapsed_ms(query_start),
+                "error_class": type(exc).__name__,
+            },
+        )
         logger.error(
             "Streaming query setup failed for document_id=%s, user_id=%s, error_class=%s",
             document_id,
@@ -407,6 +485,18 @@ async def query_document_stream_events_command(
                 answer_tokens.append(token)
                 yield ServerSentEvent(event="token", raw_data=token)
         except Exception as exc:
+            logger.info(
+                "query.failed",
+                extra={
+                    "event": "query.failed",
+                    "document_id": document_id,
+                    "user_id": current_user.id,
+                    "query_mode": "stream",
+                    "stage": "llm_stream",
+                    "duration_ms": _elapsed_ms(query_start),
+                    "error_class": type(exc).__name__,
+                },
+            )
             logger.error(
                 "Streaming query failed for document_id=%s, user_id=%s, error_class=%s",
                 document_id,
@@ -451,6 +541,18 @@ async def query_document_stream_events_command(
             ),
         )
         if assistant_message_id is None:
+            logger.warning(
+                "query.failed",
+                extra={
+                    "event": "query.failed",
+                    "document_id": document_id,
+                    "user_id": current_user.id,
+                    "query_mode": "stream",
+                    "stage": "persist_assistant",
+                    "duration_ms": _elapsed_ms(query_start),
+                    "error_class": "MessagePersistError",
+                },
+            )
             # Best effort fallback so chat history still has a terminal assistant turn.
             await _persist_assistant_message(
                 content="I encountered an internal error saving the final response. Please retry.",
@@ -458,6 +560,17 @@ async def query_document_stream_events_command(
             )
             yield ServerSentEvent(event="error", raw_data=json.dumps({"detail": "Query failed"}))
             return
+
+        logger.info(
+            "query.completed",
+            extra={
+                "event": "query.completed",
+                "document_id": document_id,
+                "user_id": current_user.id,
+                "query_mode": "stream",
+                "duration_ms": _elapsed_ms(query_start),
+            },
+        )
 
         yield ServerSentEvent(
             event="done",

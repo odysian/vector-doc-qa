@@ -1,13 +1,16 @@
 from contextlib import asynccontextmanager
+from time import perf_counter
+from uuid import uuid4
 
 from app.api import auth, documents, workspaces
 from app.api.dependencies import csrf_header_for_docs, verify_csrf
 from app.config import settings
 from app.database import AsyncSessionLocal, async_engine, get_db, init_db
 from app.services.demo_seed_service import seed_demo_user
+from app.utils.logging_context import reset_request_id, set_request_id
 from app.utils.logging_config import get_logger, setup_logging
 from app.utils.rate_limit import limiter
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
@@ -19,6 +22,9 @@ setup_logging(
     enable_file_logging=settings.enable_file_logging,
     log_file_max_bytes=settings.log_file_max_bytes,
     log_file_backup_count=settings.log_file_backup_count,
+    service="api",
+    app_env=settings.app_env,
+    version=settings.app_version,
 )
 logger = get_logger(__name__)
 
@@ -70,6 +76,33 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
 )
+
+
+@app.middleware("http")
+async def request_context_middleware(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or str(uuid4())
+    request_id_token = set_request_id(request_id)
+    start_time = perf_counter()
+    status_code = 500
+
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        logger.info(
+            "request.completed",
+            extra={
+                "event": "request.completed",
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": status_code,
+                "duration_ms": int((perf_counter() - start_time) * 1000),
+            },
+        )
+        reset_request_id(request_id_token)
 
 
 app.include_router(
