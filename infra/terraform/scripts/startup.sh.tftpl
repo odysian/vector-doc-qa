@@ -18,8 +18,6 @@ ENV_FILE="/opt/quaero/env/backend.env"
 NGINX_SITE="/etc/nginx/sites-available/quaero-backend"
 OPS_AGENT_CONFIG_DIR="/etc/google-cloud-ops-agent"
 OPS_AGENT_CONFIG_PATH="$${OPS_AGENT_CONFIG_DIR}/config.yaml"
-OPS_AGENT_STATE_DIR="/opt/quaero/ops-agent"
-OPS_AGENT_CONFIG_HASH_FILE="$${OPS_AGENT_STATE_DIR}/config.sha256"
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -31,7 +29,6 @@ install -d -m 755 /opt/quaero
 install -d -m 755 /opt/quaero/deploy
 install -d -m 755 /opt/quaero/env
 install -d -m 755 /opt/quaero/logs
-install -d -m 755 "$${OPS_AGENT_STATE_DIR}"
 
 if [[ ! -f "$${BOOTSTRAP_MARKER}" ]]; then
   apt-get update
@@ -65,8 +62,8 @@ if [[ "$${ENABLE_OPS_AGENT}" == "true" ]]; then
 
   NEW_OPS_AGENT_CONFIG_HASH="$(sha256sum "$${RENDERED_OPS_AGENT_CONFIG}" | awk '{print $1}')"
   CURRENT_OPS_AGENT_CONFIG_HASH=""
-  if [[ -f "$${OPS_AGENT_CONFIG_HASH_FILE}" ]]; then
-    CURRENT_OPS_AGENT_CONFIG_HASH="$(cat "$${OPS_AGENT_CONFIG_HASH_FILE}")"
+  if [[ -f "$${OPS_AGENT_CONFIG_PATH}" ]]; then
+    CURRENT_OPS_AGENT_CONFIG_HASH="$(sha256sum "$${OPS_AGENT_CONFIG_PATH}" | awk '{print $1}')"
   fi
 
   OPS_AGENT_CONFIG_CHANGED="false"
@@ -74,7 +71,6 @@ if [[ "$${ENABLE_OPS_AGENT}" == "true" ]]; then
     install -d -m 755 "$${OPS_AGENT_CONFIG_DIR}"
     install -m 640 -o root -g root "$${RENDERED_OPS_AGENT_CONFIG}" "$${OPS_AGENT_CONFIG_PATH}.tmp"
     mv "$${OPS_AGENT_CONFIG_PATH}.tmp" "$${OPS_AGENT_CONFIG_PATH}"
-    printf '%s' "$${NEW_OPS_AGENT_CONFIG_HASH}" > "$${OPS_AGENT_CONFIG_HASH_FILE}"
     OPS_AGENT_CONFIG_CHANGED="true"
   fi
   rm -f "$${RENDERED_OPS_AGENT_CONFIG}"
