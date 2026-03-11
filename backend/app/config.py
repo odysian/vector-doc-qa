@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     """Application settings loaded from env vars."""
 
     app_env: str = "development"
+    app_version: str = "unknown"
 
     database_url: str = (
         "postgresql://postgres:postgres@localhost:5434/document_intelligence"

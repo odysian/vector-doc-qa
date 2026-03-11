@@ -3,11 +3,20 @@ from datetime import datetime, timedelta
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models.base import Document, DocumentStatus
-from app.utils.logging_config import get_logger
+from app.utils.logging_config import get_logger, setup_logging
 from app.workers.document_tasks import process_document_task
 from arq.connections import RedisSettings
 from sqlalchemy import select
 
+setup_logging(
+    log_level=settings.log_level,
+    enable_file_logging=settings.enable_file_logging,
+    log_file_max_bytes=settings.log_file_max_bytes,
+    log_file_backup_count=settings.log_file_backup_count,
+    service="worker",
+    app_env=settings.app_env,
+    version=settings.app_version,
+)
 logger = get_logger(__name__)
 
 

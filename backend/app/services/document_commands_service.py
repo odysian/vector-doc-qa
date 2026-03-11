@@ -74,6 +74,15 @@ async def upload_document_command(
     )
     await db.commit()
     await db.refresh(document)
+    logger.info(
+        "document.upload_accepted",
+        extra={
+            "event": "document.upload_accepted",
+            "document_id": document.id,
+            "user_id": current_user.id,
+            "file_size": document.file_size,
+        },
+    )
 
     try:
         await enqueue_document_processing(document.id)
