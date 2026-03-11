@@ -289,6 +289,199 @@
         "tear up the planks",
         "beating of his hideous heart"
       ]
+    },
+    {
+      "case_id": "case-033-break-glass-review-interval",
+      "question": "How often must break-glass administrator accounts be reviewed, and what default state do they have to remain in?",
+      "target_document": "northstar-access-policy.pdf",
+      "expected_facts": [
+        "reviewed every 7",
+        "must remain disabled by default"
+      ]
+    },
+    {
+      "case_id": "case-034-standard-offboarding-deadline",
+      "question": "For a normal resignation, by what time must access be disabled and when must hardware be collected?",
+      "target_document": "northstar-access-policy.pdf",
+      "expected_facts": [
+        "18:00 Eastern",
+        "within 3 business days"
+      ]
+    },
+    {
+      "case_id": "case-035-restricted-data-access-controls",
+      "question": "What controls are required before someone can access restricted data?",
+      "target_document": "northstar-access-policy.pdf",
+      "expected_facts": [
+        "managed laptop",
+        "Arcway VPN",
+        "resistant multi-factor authentication",
+        "membership in an approved"
+      ]
+    },
+    {
+      "case_id": "case-036-intern-export-exception",
+      "question": "Which permissions are withheld from interns even though they share the same core role bundle as temporary analysts?",
+      "target_document": "northstar-access-policy.pdf",
+      "expected_facts": [
+        "are not granted export rights in Lattice",
+        "Arcway VPN exceptions"
+      ]
+    },
+    {
+      "case_id": "case-037-evaluation-license-limit",
+      "question": "How long does an evaluation license last and how many named users can it include?",
+      "target_document": "stonebridge-license-notice.pdf",
+      "expected_facts": [
+        "expire 21 days after issuance",
+        "limited to 12 named users"
+      ]
+    },
+    {
+      "case_id": "case-038-delinquency-suspension-threshold",
+      "question": "After what delinquency notice threshold may support be suspended, and when can nonpayment lead to license termination?",
+      "target_document": "stonebridge-license-notice.pdf",
+      "expected_facts": [
+        "more than 22 days after written notice of delinquency",
+        "at least 35 days of delinquency"
+      ]
+    },
+    {
+      "case_id": "case-039-gold-support-severity-one",
+      "question": "Under the notice, what response target applies to Gold support for a severity one issue, and what kinds of problems qualify as severity one?",
+      "target_document": "stonebridge-license-notice.pdf",
+      "expected_facts": [
+        "2 hours for severity one issues",
+        "transactional posting",
+        "corruption of signed export files",
+        "active exploitation"
+      ]
+    },
+    {
+      "case_id": "case-040-managed-provider-exception",
+      "question": "What narrow exception allows a managed service provider to run the software, and what pooling restriction still applies?",
+      "target_document": "stonebridge-license-notice.pdf",
+      "expected_facts": [
+        "delegated operator",
+        "may not pool multiple end customers"
+      ]
+    },
+    {
+      "case_id": "case-041-dividend-blockers",
+      "question": "Which two conditions keep Emberlake from declaring an ordinary dividend?",
+      "target_document": "emberlake-quarterly-treasury-memo.pdf",
+      "expected_facts": [
+        "borrowings exceed 15.0 million",
+        "leverage exceeds 3.00x"
+      ]
+    },
+    {
+      "case_id": "case-042-springing-lockbox-trigger",
+      "question": "What triggers the springing lockbox?",
+      "target_document": "emberlake-quarterly-treasury-memo.pdf",
+      "expected_facts": [
+        "minimum availability falls below 9.5 million",
+        "springing lockbox"
+      ]
+    },
+    {
+      "case_id": "case-043-large-payment-approvals",
+      "question": "What approval path is required for payments over one million, and what extra safeguard applies to emergency wires above two and a half million?",
+      "target_document": "emberlake-quarterly-treasury-memo.pdf",
+      "expected_facts": [
+        "the treasurer and either the controller or the chief financial officer",
+        "verbal callback verification",
+        "retained call log"
+      ]
+    },
+    {
+      "case_id": "case-044-note-call-premium-comparison",
+      "question": "What call prices apply to the senior notes before and after July 1, 2026, and when do they become callable at par?",
+      "target_document": "emberlake-quarterly-treasury-memo.pdf",
+      "expected_facts": [
+        "callable at 102.95",
+        "101.47 from 2026-07-01 through 2027-06-30",
+        "callable at par"
+      ]
+    },
+    {
+      "case_id": "case-045-incident-closure-time",
+      "question": "When was incident IR-2419 closed, and who served as incident commander?",
+      "target_document": "red-harbor-network-outage-report.pdf",
+      "expected_facts": [
+        "closed on 2026-02-14 at 11:42 Eastern",
+        "Sera Dain"
+      ]
+    },
+    {
+      "case_id": "case-046-policy-package-root-cause",
+      "question": "Which identity policy package caused the auth problem, and what incorrect audience value did it compare against?",
+      "target_document": "red-harbor-network-outage-report.pdf",
+      "expected_facts": [
+        "IDP-77",
+        "compared token audience to atlas-route",
+        "required atlas-public"
+      ]
+    },
+    {
+      "case_id": "case-047-recovery-sequence-auth-and-backlog",
+      "question": "How did the team first reduce routing failures, and what second action sped up batch backlog recovery?",
+      "target_document": "red-harbor-network-outage-report.pdf",
+      "expected_facts": [
+        "fh-auth-03 and fh-auth-04",
+        "28,000 jobs"
+      ]
+    },
+    {
+      "case_id": "case-048-impact-scope-vs-unaffected-services",
+      "question": "Which customer-facing systems were impacted, and which major service stayed healthy during the outage?",
+      "target_document": "red-harbor-network-outage-report.pdf",
+      "expected_facts": [
+        "Atlas routing API",
+        "geocoder batch ingress queue",
+        "Falcon auth gateway",
+        "tile rendering"
+      ]
+    },
+    {
+      "case_id": "case-049-low-attendance-escalation",
+      "question": "What must a zone lead do if actual attendance is too low before startup, and what is the threshold?",
+      "target_document": "pinecrest-warehouse-shift-start-procedure.pdf",
+      "expected_facts": [
+        "below 82 percent of scheduled staffing",
+        "notify the shift manager before machine startup"
+      ]
+    },
+    {
+      "case_id": "case-050-zone-d-startup-order",
+      "question": "During conveyor startup, what is unusual about zone D, and what checklist action follows the lane verifier step?",
+      "target_document": "pinecrest-warehouse-shift-start-procedure.pdf",
+      "expected_facts": [
+        "segment 4 before segment 3",
+        "Cedar tablet"
+      ]
+    },
+    {
+      "case_id": "case-051-export-order-wind-thresholds",
+      "question": "How do wind readings change whether XP export orders can begin, be staged, or stay closed?",
+      "target_document": "pinecrest-warehouse-shift-start-procedure.pdf",
+      "expected_facts": [
+        "below 24 miles per hour",
+        "24 to 31 miles per hour",
+        "above 31 miles per hour",
+        "export lane stays closed"
+      ]
+    },
+    {
+      "case_id": "case-052-dock-9-temperature-exception",
+      "question": "What temperature control rule applies to refrigerated dock 9 before loading, and what temporary produce exception is allowed?",
+      "target_document": "pinecrest-warehouse-shift-start-procedure.pdf",
+      "expected_facts": [
+        "plus or minus 2 degrees of set point",
+        "36 degrees Fahrenheit",
+        "38 degrees",
+        "temporary produce loads"
+      ]
     }
   ]
 }

@@ -33,8 +33,8 @@ const SUGGESTED_PROMPTS = [
   "Find key dates or numbers",
 ];
 const DEBUG_MODE_STORAGE_KEY = "quaero_debug_mode";
-const HIGH_CONFIDENCE_THRESHOLD = 0.60;
-const MEDIUM_CONFIDENCE_THRESHOLD = 0.43;
+const HIGH_CONFIDENCE_THRESHOLD = 0.5864;
+const MEDIUM_CONFIDENCE_THRESHOLD = 0.3699;
 
 /**
  * Renders the pop up window with query input and message history.
@@ -305,7 +305,7 @@ export function ChatWindow({
                   <p>Generation: {msg.pipeline_meta.llm_ms}ms</p>
                   <p>Top similarity: {(msg.pipeline_meta.top_similarity * 100).toFixed(1)}%</p>
                   <p>Average similarity: {(msg.pipeline_meta.avg_similarity * 100).toFixed(1)}%</p>
-                  <p>Chunks above {HIGH_CONFIDENCE_THRESHOLD.toFixed(2)}: {msg.pipeline_meta.chunks_above_threshold}</p>
+                  <p>Chunks above retrieval threshold: {msg.pipeline_meta.chunks_above_threshold}</p>
                   <p>Similarity spread: {(msg.pipeline_meta.similarity_spread * 100).toFixed(1)}%</p>
                   <p>History turns included: {msg.pipeline_meta.chat_history_turns_included}</p>
                   <div className="border-t border-zinc-700/50 pt-1 mt-1">
