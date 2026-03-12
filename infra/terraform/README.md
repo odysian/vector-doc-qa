@@ -6,6 +6,7 @@ This directory manages Quaero's GCP infrastructure excluding Cloud SQL:
 - static external IP (`quaero-backend-ip`)
 - firewall rules (`80`, `443`, `22`)
 - VM service account and IAM bindings
+- GitHub OIDC trust and golden-image builder service account
 - GCS bucket for documents (`quaero-pdf-storage`)
 
 VM bootstrap via startup script also configures:
@@ -55,6 +56,39 @@ terraform plan -var-file=envs/prod.tfvars
   - Bucket IAM: `roles/storage.objectUser`
   - Project IAM (Ops Agent writes): `roles/logging.logWriter`, `roles/monitoring.metricWriter`
   - OAuth scopes (additive): `devstorage.read_write`, `logging.write`, `monitoring.write`
+- Golden-image pipeline auth is OIDC-only (no static cloud key):
+  - Workload Identity Pool + Provider trust `token.actions.githubusercontent.com`
+  - Repository scope is locked to `github_repository` (`owner/repo`) via provider condition
+  - Builder service account has only image-build roles:
+    - `roles/compute.instanceAdmin.v1`
+    - `roles/compute.imageAdmin`
+    - `roles/compute.networkUser`
+    - `roles/iam.serviceAccountUser` only on the project default Compute SA
+
+## Golden Image Pipeline
+
+- Workflow: `.github/workflows/golden-image-build.yml`
+- Trigger policy: weekly schedule (`cron`) + manual `workflow_dispatch` (emergency only)
+- Naming pattern: `quaero-backend-golden-YYYYMMDD-HHMM-<sha7>`
+- Family: `golden_image_family` (default `quaero-backend-golden`)
+- Provenance labels on each image:
+  - `quaero_role=backend-golden`
+  - `quaero_repo=<owner-repo>`
+  - `quaero_commit=<sha7>`
+  - `quaero_build_time=<UTC yyyymmddhhmm>`
+  - `quaero_run_id=<github run id>`
+- Retention policy: keep latest `golden_image_retention_count` images (default `5`) and delete older images in the family.
+
+### Required GitHub Repository Variables
+
+Set these before running golden-image workflow:
+
+- `GCP_PROJECT_ID`: target GCP project ID.
+- `GCP_GOLDEN_IMAGE_WIF_PROVIDER`: output `github_actions_workload_identity_provider`.
+- `GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT`: output `golden_image_builder_service_account_email`.
+- Optional: `GCP_GOLDEN_IMAGE_BUILD_ZONE` (default `us-east1-b`).
+- Optional: `GCP_GOLDEN_IMAGE_FAMILY` (default `quaero-backend-golden`).
+- Optional: `GCP_GOLDEN_IMAGE_RETENTION_COUNT` (default `5`).
 
 ## Ops Agent Controls
 

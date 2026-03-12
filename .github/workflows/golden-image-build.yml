@@ -1,0 +1,120 @@
+name: Build Golden Backend Image
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      emergency_reason:
+        description: "Emergency trigger reason for out-of-band build"
+        required: true
+        type: string
+      retention_count:
+        description: "Optional override for retained image count"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_GOLDEN_IMAGE_WIF_PROVIDER: ${{ vars.GCP_GOLDEN_IMAGE_WIF_PROVIDER }}
+      GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT: ${{ vars.GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT }}
+      GOLDEN_IMAGE_FAMILY: ${{ vars.GCP_GOLDEN_IMAGE_FAMILY || 'quaero-backend-golden' }}
+      GOLDEN_IMAGE_ZONE: ${{ vars.GCP_GOLDEN_IMAGE_BUILD_ZONE || 'us-east1-b' }}
+      RETENTION_COUNT: ${{ github.event.inputs.retention_count || vars.GCP_GOLDEN_IMAGE_RETENTION_COUNT || '5' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required workflow variables
+        run: |
+          set -euo pipefail
+          [ -n "${GCP_PROJECT_ID}" ] || { echo "Missing required repository variable: GCP_PROJECT_ID"; exit 1; }
+          [ -n "${GCP_GOLDEN_IMAGE_WIF_PROVIDER}" ] || { echo "Missing required repository variable: GCP_GOLDEN_IMAGE_WIF_PROVIDER"; exit 1; }
+          [ -n "${GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT}" ] || { echo "Missing required repository variable: GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT"; exit 1; }
+
+      - name: Authenticate to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_GOLDEN_IMAGE_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set up Packer
+        uses: hashicorp/setup-packer@v3
+        with:
+          version: "1.11.2"
+
+      - name: Initialize Packer plugin
+        run: packer init infra/packer
+
+      - name: Derive image metadata
+        run: |
+          set -euo pipefail
+          image_ts="$(date -u +%Y%m%d-%H%M)"
+          image_name="quaero-backend-golden-${image_ts}-${GITHUB_SHA::7}"
+          build_label_ts="$(date -u +%Y%m%d%H%M)"
+          repo_label="$(echo "${GITHUB_REPOSITORY,,}" | tr '/' '-')"
+          echo "IMAGE_NAME=${image_name}" >> "$GITHUB_ENV"
+          echo "BUILD_LABEL_TS=${build_label_ts}" >> "$GITHUB_ENV"
+          echo "COMMIT_SHA_SHORT=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "REPO_LABEL=${repo_label}" >> "$GITHUB_ENV"
+
+      - name: Build golden image
+        run: |
+          set -euo pipefail
+          packer build \
+            -var "project_id=${GCP_PROJECT_ID}" \
+            -var "zone=${GOLDEN_IMAGE_ZONE}" \
+            -var "image_name=${IMAGE_NAME}" \
+            -var "image_family=${GOLDEN_IMAGE_FAMILY}" \
+            -var "build_timestamp_label=${BUILD_LABEL_TS}" \
+            -var "repo_label=${REPO_LABEL}" \
+            -var "commit_sha_short=${COMMIT_SHA_SHORT}" \
+            -var "workflow_run_id=${GITHUB_RUN_ID}" \
+            infra/packer
+
+      - name: Retain latest rollback candidates
+        run: |
+          set -euo pipefail
+          if ! [[ "${RETENTION_COUNT}" =~ ^[0-9]+$ ]]; then
+            echo "RETENTION_COUNT must be numeric, got: ${RETENTION_COUNT}"
+            exit 1
+          fi
+          if [ "${RETENTION_COUNT}" -lt 2 ]; then
+            echo "RETENTION_COUNT must be at least 2"
+            exit 1
+          fi
+
+          mapfile -t images < <(gcloud compute images list \
+            --project "${GCP_PROJECT_ID}" \
+            --filter="family=${GOLDEN_IMAGE_FAMILY} AND labels.quaero_role=backend-golden" \
+            --sort-by="~creationTimestamp" \
+            --format="value(name)")
+
+          echo "Found ${#images[@]} images in family ${GOLDEN_IMAGE_FAMILY}"
+          if [ "${#images[@]}" -le "${RETENTION_COUNT}" ]; then
+            echo "No cleanup required."
+            exit 0
+          fi
+
+          for image in "${images[@]:${RETENTION_COUNT}}"; do
+            echo "Deleting old image: ${image}"
+            gcloud compute images delete "${image}" --project "${GCP_PROJECT_ID}" --quiet
+          done
+
+      - name: Summarize build
+        run: |
+          echo "Built image: ${IMAGE_NAME}"
+          gcloud compute images describe "${IMAGE_NAME}" \
+            --project "${GCP_PROJECT_ID}" \
+            --format="table(name,family,creationTimestamp,labels)"
