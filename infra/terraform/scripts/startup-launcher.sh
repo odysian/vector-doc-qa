@@ -36,10 +36,16 @@ get_metadata_or_fail() {
 RECONCILE_RELEASE_ID="$(get_metadata_or_fail "reconcile_release_id")"
 RECONCILE_BUCKET="$(get_metadata_or_fail "reconcile_bucket")"
 RECONCILE_OBJECT="$(get_metadata_or_fail "reconcile_object")"
+RECONCILE_SHA256="$(get_metadata_or_fail "reconcile_sha256")"
 
 RELEASE_DIR="/opt/quaero/reconcile/releases/${RECONCILE_RELEASE_ID}"
 RECONCILE_SCRIPT_PATH="${RELEASE_DIR}/reconcile.sh"
 RECONCILE_SCRIPT_TMP_PATH="${RECONCILE_SCRIPT_PATH}.tmp"
+
+if [[ ! "${RECONCILE_SHA256}" =~ ^[0-9a-f]{64}$ ]]; then
+  echo "Invalid reconcile_sha256 metadata value." >&2
+  exit 1
+fi
 
 install -d -m 755 "${RELEASE_DIR}"
 
@@ -66,10 +72,22 @@ if curl --silent --show-error --fail --location \
     exit 1
   fi
 
+  DOWNLOADED_SHA256="$(sha256sum "${RECONCILE_SCRIPT_TMP_PATH}" | awk '{print $1}')"
+  if [[ "${DOWNLOADED_SHA256}" != "${RECONCILE_SHA256}" ]]; then
+    echo "Downloaded reconcile artifact hash mismatch for release ${RECONCILE_RELEASE_ID}." >&2
+    rm -f "${RECONCILE_SCRIPT_TMP_PATH}"
+    exit 1
+  fi
+
   install -m 700 "${RECONCILE_SCRIPT_TMP_PATH}" "${RECONCILE_SCRIPT_PATH}"
   rm -f "${RECONCILE_SCRIPT_TMP_PATH}"
 elif [[ -f "${RECONCILE_SCRIPT_PATH}" ]]; then
   rm -f "${RECONCILE_SCRIPT_TMP_PATH}" || true
+  CACHED_SHA256="$(sha256sum "${RECONCILE_SCRIPT_PATH}" | awk '{print $1}')"
+  if [[ "${CACHED_SHA256}" != "${RECONCILE_SHA256}" ]]; then
+    echo "Cached reconcile artifact hash mismatch for release ${RECONCILE_RELEASE_ID}." >&2
+    exit 1
+  fi
   echo "Failed to download reconcile artifact; using cached artifact for release ${RECONCILE_RELEASE_ID}." >&2
 else
   rm -f "${RECONCILE_SCRIPT_TMP_PATH}" || true

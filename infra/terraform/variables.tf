@@ -66,6 +66,20 @@ variable "bucket_name" {
   type        = string
 }
 
+variable "reconcile_bucket_name" {
+  description = "Optional dedicated GCS bucket for reconcile artifacts. Leave empty to default to <bucket_name>-reconcile."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      trimspace(var.reconcile_bucket_name) == ""
+      || can(regex("^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$", trimspace(var.reconcile_bucket_name)))
+    )
+    error_message = "reconcile_bucket_name must be empty or a valid GCS bucket name."
+  }
+}
+
 variable "ssh_user" {
   description = "Linux SSH username provisioned on the VM."
   type        = string

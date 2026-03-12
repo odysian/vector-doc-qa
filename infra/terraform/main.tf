@@ -12,6 +12,12 @@ locals {
     ops_agent_collect_host_metrics = var.ops_agent_collect_host_metrics
   })
   reconcile_artifact_source = "${path.module}/scripts/reconcile.sh"
+  reconcile_artifact_sha256 = filesha256(local.reconcile_artifact_source)
+  reconcile_bucket_name = (
+    length(trimspace(var.reconcile_bucket_name)) > 0
+    ? trimspace(var.reconcile_bucket_name)
+    : "${var.bucket_name}-reconcile"
+  )
   reconcile_artifact_object = "reconcile/releases/${var.reconcile_release_id}/reconcile.sh"
 }
 
@@ -32,14 +38,31 @@ resource "google_storage_bucket" "documents" {
   force_destroy               = false
 }
 
+resource "google_storage_bucket" "reconcile_artifacts" {
+  name                        = local.reconcile_bucket_name
+  location                    = var.region
+  uniform_bucket_level_access = true
+  force_destroy               = false
+
+  versioning {
+    enabled = true
+  }
+}
+
 resource "google_storage_bucket_iam_member" "backend_vm_bucket_access" {
   bucket = google_storage_bucket.documents.name
   role   = "roles/storage.objectUser"
   member = "serviceAccount:${google_service_account.backend_vm.email}"
 }
 
+resource "google_storage_bucket_iam_member" "backend_vm_reconcile_bucket_read" {
+  bucket = google_storage_bucket.reconcile_artifacts.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.backend_vm.email}"
+}
+
 resource "google_storage_bucket_object" "startup_reconcile_artifact" {
-  bucket = google_storage_bucket.documents.name
+  bucket = google_storage_bucket.reconcile_artifacts.name
   name   = local.reconcile_artifact_object
   source = local.reconcile_artifact_source
 
@@ -147,8 +170,9 @@ resource "google_compute_instance" "backend" {
     "ops_agent_version"      = trimspace(var.ops_agent_version)
     "ops_agent_config_b64"   = base64encode(local.ops_agent_config)
     "reconcile_release_id"   = var.reconcile_release_id
-    "reconcile_bucket"       = google_storage_bucket.documents.name
+    "reconcile_bucket"       = google_storage_bucket.reconcile_artifacts.name
     "reconcile_object"       = google_storage_bucket_object.startup_reconcile_artifact.name
+    "reconcile_sha256"       = local.reconcile_artifact_sha256
   }
 
   metadata_startup_script = file("${path.module}/scripts/startup-launcher.sh")

@@ -9,6 +9,8 @@ machine_type   = "e2-micro"
 static_ip_name = "quaero-backend-ip"
 
 bucket_name          = "your-gcs-bucket-name"
+# Optional override; default is "<bucket_name>-reconcile".
+reconcile_bucket_name = ""
 ssh_user             = "your-ssh-user"
 api_domain           = "api.example.com"
 frontend_url         = "https://app.example.com"
