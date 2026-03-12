@@ -37,14 +37,17 @@ Accepted. This keeps release identity explicit and makes rollback rehearsals and
 ## Decision
 
 1. Define production rollout identity as a tuple: `vm_image` (`image_version`) + `reconcile_release_id`.
-2. Pin production Terraform config to the golden-image path by setting `vm_image` in `infra/terraform/envs/prod.tfvars`.
-3. Add a required cutover evidence section to `docs/GCP_RUNBOOK.md` covering:
+2. Require production `vm_image` to be an exact image self-link (not an image family reference) for deterministic rollback.
+3. Add deterministic pins to rollout records: `infra_commit_sha` and expected `reconcile_sha256` from Terraform plan.
+4. Require Terraform apply/rollback to run from the exact pinned `infra_commit_sha` so computed `reconcile_sha256` matches the intended reconcile artifact.
+5. Pin production Terraform config to the golden-image path by setting `vm_image` in `infra/terraform/envs/prod.tfvars`.
+6. Add a required cutover evidence section to `docs/GCP_RUNBOOK.md` covering:
    - non-prod rollback rehearsal
    - pre-cutover checkpoint + named owner signoff
    - post-cutover `/health` gate (15 checks, 10s interval)
    - Ops Agent 10-minute no-restart gate
    - bootstrap target evaluation (`<= 6 minutes` or `>= 40%` improvement, whichever is stricter)
-4. Require rollback drills and production rollback to re-pin the previous known-good tuple and re-run the same health gates.
+7. Require rollback drills and production rollback to re-pin the previous known-good tuple and deterministic pins, then re-run the same health gates.
 
 ---
 
@@ -53,4 +56,4 @@ Accepted. This keeps release identity explicit and makes rollback rehearsals and
 - Rollout and rollback now share one explicit release contract and are easier to audit.
 - Production cutover evidence is standardized in the runbook instead of spread across chat/notes.
 - Terraform plans now clearly show image-source intent through `vm_image` configuration.
-- Family-based image references remain operationally simple, but teams should use exact image pins when tighter deterministic rollback is needed.
+- Production rollback determinism depends on preserving both tuple values and infra commit/hash pins.

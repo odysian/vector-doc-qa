@@ -6,8 +6,8 @@ network        = "default"
 subnetwork     = "default"
 vm_name        = "quaero-backend"
 machine_type   = "e2-micro"
-# Production cutover path: use promoted golden image family (or pin exact image path for tighter rollback control).
-vm_image       = "projects/your-gcp-project-id/global/images/family/quaero-backend-golden"
+# Production cutover path: pin exact promoted image self-link (not family) for deterministic rollback.
+vm_image       = "projects/your-gcp-project-id/global/images/quaero-backend-golden-YYYYMMDD-HHMM-sha7"
 static_ip_name = "quaero-backend-ip"
 
 bucket_name          = "your-gcs-bucket-name"

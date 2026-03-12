@@ -463,23 +463,35 @@ Run after each production deploy once traffic is live:
 
 Use this section for the production cutover from stock image path to golden image path.
 Decision record: `docs/adr/008-vm-golden-image-cutover-and-tuple-rollback.md`.
+This section is an execution log template. Do not close Task #186 until placeholder fields are replaced with concrete values/links.
 
 Release tuple mapping:
 
 - `image_version` -> Terraform variable `vm_image`
 - `reconcile_release_id` -> Terraform variable `reconcile_release_id`
+- Determinism pins (required for reproducible rollback):
+  - `infra_commit_sha` -> exact repo commit used for Terraform apply
+  - `reconcile_sha256` -> expected metadata hash from Terraform plan at that commit
 
 ### 10.1 Pre-cutover record (required)
 
 Record these before any production apply:
 
-- UTC window:
-- Named owner signoff:
-- Baseline bootstrap time (minutes):
-- Previous rollback tuple (`vm_image`, `reconcile_release_id`):
-- Target rollout tuple (`vm_image`, `reconcile_release_id`):
-- Pre-cutover snapshot/checkpoint ID:
-- Non-prod rollback rehearsal evidence:
+- UTC window: `<required>`
+- Named owner signoff: `<required>`
+- Baseline bootstrap time (minutes): `<required>`
+- Previous rollback tuple (`vm_image`, `reconcile_release_id`): `<required>`
+- Previous determinism pins (`infra_commit_sha`, `reconcile_sha256`): `<required>`
+- Target rollout tuple (`vm_image`, `reconcile_release_id`): `<required>`
+- Target determinism pins (`infra_commit_sha`, `reconcile_sha256`): `<required>`
+- Pre-cutover snapshot/checkpoint ID: `<required>`
+- Non-prod rollback rehearsal evidence link: `<required>`
+
+Production pin rules:
+
+- `vm_image` must be an exact image self-link (not an image family reference).
+- Terraform apply must run from the exact `infra_commit_sha` recorded for that tuple.
+- `reconcile_sha256` from Terraform plan must match the recorded value before apply.
 
 Capture a checkpoint snapshot:
 
@@ -492,10 +504,17 @@ echo "checkpoint snapshot: $SNAPSHOT_ID"
 
 ### 10.2 Cutover apply
 
-1. Set rollout tuple in `infra/terraform/envs/prod.tfvars`:
-   - `vm_image` -> promoted golden image (family or explicit image pin)
+1. Checkout the exact infra commit for the target tuple:
+
+```bash
+git checkout <infra_commit_sha>
+```
+
+2. Set rollout tuple in `infra/terraform/envs/prod.tfvars`:
+   - `vm_image` -> exact promoted image self-link (for example `projects/<project>/global/images/<image-name>`)
    - `reconcile_release_id` -> approved reconcile artifact release
-2. Run Terraform plan/apply in approved window:
+3. Confirm planned metadata hash matches recorded `reconcile_sha256`.
+4. Run Terraform plan/apply in approved window:
 
 ```bash
 cd infra/terraform
@@ -546,15 +565,19 @@ Record:
 
 ### 10.5 Rollback drill (required)
 
-1. In non-prod, pin previous known-good rollback tuple.
-2. Run apply and confirm health gates.
-3. Document the tuple and evidence link in this runbook.
+1. In non-prod, checkout the exact `infra_commit_sha` for the previous known-good tuple.
+2. Re-pin previous known-good tuple in `envs/prod.tfvars` (`vm_image` exact self-link + `reconcile_release_id`).
+3. Run `terraform plan` and verify planned `reconcile_sha256` matches the recorded value.
+4. Run apply and confirm health gates.
+5. Document the tuple, determinism pins, and evidence link in this runbook.
 
 If production rollback is required:
 
-1. Re-pin previous tuple in `envs/prod.tfvars`.
-2. Apply Terraform in controlled window.
-3. Re-run the same health gates from section 10.3.
+1. Checkout the exact `infra_commit_sha` for the previous known-good tuple.
+2. Re-pin previous tuple in `envs/prod.tfvars` (`vm_image` exact self-link + `reconcile_release_id`).
+3. Run `terraform plan` and confirm `reconcile_sha256` matches the recorded value.
+4. Apply Terraform in controlled window.
+5. Re-run the same health gates from section 10.3.
 
 ## 11. Change Log
 
