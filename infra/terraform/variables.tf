@@ -143,6 +143,19 @@ variable "ops_agent_version" {
   }
 }
 
+variable "reconcile_release_id" {
+  description = "Version identifier for the external startup reconcile artifact."
+  type        = string
+
+  validation {
+    condition = (
+      length(trimspace(var.reconcile_release_id)) > 0
+      && can(regex("^[A-Za-z0-9._-]+$", trimspace(var.reconcile_release_id)))
+    )
+    error_message = "reconcile_release_id must be non-empty and use only letters, numbers, dots, hyphens, or underscores."
+  }
+}
+
 variable "ops_agent_collect_docker_logs" {
   description = "Whether Ops Agent logging config should collect Docker container logs."
   type        = bool

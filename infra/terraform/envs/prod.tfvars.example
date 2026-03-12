@@ -17,6 +17,7 @@ enable_tls_bootstrap = true
 certbot_email        = "you@example.com"
 enable_ops_agent     = false
 ops_agent_version    = "2.51.0"
+reconcile_release_id = "r20260311a"
 
 ops_agent_collect_docker_logs = true
 ops_agent_collect_host_metrics = true

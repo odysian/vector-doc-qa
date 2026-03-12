@@ -34,7 +34,7 @@ Quaero is a document intelligence platform that allows users to upload PDF docum
 - **Terraform ownership (non-DB):** VM instance, static IP, firewall rules, VM service account/IAM, and GCS document bucket are managed from `infra/terraform` via import-first workflow.
 - **Golden image baseline pipeline:** GitHub Actions builds `quaero-backend-golden` images weekly and on manual emergency trigger using GitHub OIDC -> GCP Workload Identity; images are versioned and retained for rollback.
 - **Infra hardening defaults:** SSH ingress requires explicit CIDRs, world-open SSH needs explicit temporary opt-in, Shielded VM secure boot defaults on, and VM SA defaults to GCS object-only access scope/role.
-- **Bootstrap model:** VM startup script installs Docker, NGINX, Certbot, and creates `/opt/quaero` deploy/env directories. Production `backend.env` is pushed by deploy workflow from GitHub secret `BACKEND_ENV_B64`.
+- **Bootstrap model:** VM startup script is a stable launcher that provisions `quaero-reconcile.service`/timer; runtime host reconciliation (Docker, NGINX, Certbot, Ops Agent, `/opt/quaero` directories) is versioned via external reconcile artifact (`reconcile_release_id`). Production `backend.env` is pushed by deploy workflow from GitHub secret `BACKEND_ENV_B64`.
 - **Streaming proxy hardening:** NGINX includes a dedicated `/api/documents/{id}/query/stream` location with buffering/cache/compression disabled and extended timeouts so SSE tokens flush incrementally to clients.
 - **CI trigger policy:** `Backend CI` runs on every PR and direct push to non-`main` branches.
 - **Deploy trigger policy:** `Deploy Backend` runs on `main` pushes and manual `workflow_dispatch` from `main`; deploy is blocked unless backend tests pass.
