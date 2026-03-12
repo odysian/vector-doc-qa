@@ -51,6 +51,77 @@ terraform validate
 terraform plan -var-file=envs/prod.tfvars
 ```
 
+## Workflow-First Infra Rollout
+
+Use GitHub Actions as the default path for Terraform rollout automation:
+
+- `.github/workflows/infra-terraform-plan.yml` on Terraform PRs
+  - runs `fmt` / `validate` / `plan`
+  - uploads plan artifacts
+  - posts concise plan/risk summary
+  - updates labels: `risk:terraform-safe` or `risk:terraform-gated`
+- `.github/workflows/infra-prod-cutover.yml` for production execution
+  - trigger: manual `workflow_dispatch`
+  - approval: protected environment `infra-prod`
+  - flow: `prepare` -> `apply` (optional skip guard) -> `postcheck`
+  - modes: `apply` and `rollback` (same postcheck path)
+
+Label taxonomy used by automation:
+
+- `area:infra`
+- `deploy:terraform`
+- `risk:terraform-safe`
+- `risk:terraform-gated`
+- `gate:prod-approval-required`
+
+Required repository variables for Terraform workflows:
+
+- `GCP_PROJECT_ID`
+- `GCP_TERRAFORM_WIF_PROVIDER` (or fallback `GCP_GOLDEN_IMAGE_WIF_PROVIDER`)
+- `GCP_TERRAFORM_SERVICE_ACCOUNT` (or fallback `GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT`)
+
+## Cutover Automation Helper
+
+From repo root, use these wrappers instead of manually chaining commands:
+
+```bash
+make infra-cutover-prepare
+```
+
+`infra-cutover-prepare` runs:
+- snapshot checkpoint creation
+- `terraform fmt -check`
+- `terraform validate`
+- `terraform plan`
+- cutover evidence draft generation (includes `infra_commit_sha`, tuple fields, and `reconcile_sha256`)
+
+If your tfvars still uses an image family and you want one-command pinning:
+
+```bash
+make infra-cutover-prepare CUTOVER_PIN_FAMILY=true
+```
+
+Then run post-cutover gates:
+
+```bash
+make infra-cutover-postcheck
+```
+
+Optional flags:
+
+```bash
+make infra-cutover-postcheck CUTOVER_OPS_AGENT_GATE=true
+make infra-cutover-postcheck CUTOVER_BASELINE_MIN=10 CUTOVER_POST_MIN=5.8
+```
+
+For custom tfvars:
+
+```bash
+make infra-cutover-prepare CUTOVER_TFVARS=envs/prod.tfvars
+```
+
+This helper remains the terminal fallback when workflow execution is unavailable.
+
 ## Security Defaults and Rollout
 
 - `ssh_source_ranges` is now explicit and must be provided.

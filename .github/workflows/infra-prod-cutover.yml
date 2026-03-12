@@ -1,0 +1,330 @@
+name: Infra Prod Cutover
+
+on:
+  workflow_dispatch:
+    inputs:
+      execution_mode:
+        description: "Execution mode"
+        required: true
+        default: apply
+        type: choice
+        options:
+          - apply
+          - rollback
+      target_ref:
+        description: "Git ref (branch/tag/SHA) to run Terraform from"
+        required: true
+        default: main
+        type: string
+      tfvars_file:
+        description: "Terraform var-file path relative to infra/terraform"
+        required: true
+        default: envs/prod.tfvars
+        type: string
+      vm_image:
+        description: "Optional vm_image override (must be exact self-link for production)"
+        required: false
+        type: string
+      reconcile_release_id:
+        description: "Optional reconcile_release_id override"
+        required: false
+        type: string
+      expected_infra_commit_sha:
+        description: "Optional expected commit SHA to enforce determinism"
+        required: false
+        type: string
+      expected_reconcile_sha256:
+        description: "Optional expected reconcile_sha256 from plan"
+        required: false
+        type: string
+      pin_image_family:
+        description: "Resolve vm_image family to exact self-link before apply"
+        required: true
+        default: false
+        type: boolean
+      skip_snapshot:
+        description: "Skip pre-cutover snapshot (defaults to false)"
+        required: true
+        default: false
+        type: boolean
+      skip_apply:
+        description: "Skip Terraform apply (for guarded non-prod-safe workflow drills)"
+        required: true
+        default: false
+        type: boolean
+      health_url:
+        description: "Health endpoint used by postcheck"
+        required: true
+        default: https://api.quaero.odysian.dev/health
+        type: string
+      baseline_min:
+        description: "Optional baseline bootstrap minutes"
+        required: false
+        type: string
+      post_min:
+        description: "Optional post-cutover bootstrap minutes"
+        required: false
+        type: string
+      ops_agent_gate:
+        description: "Run 10-minute Ops Agent no-restart gate"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: infra-prod-cutover
+  cancel-in-progress: false
+
+env:
+  TF_DIR: infra/terraform
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_TERRAFORM_WIF_PROVIDER: ${{ vars.GCP_TERRAFORM_WIF_PROVIDER || vars.GCP_GOLDEN_IMAGE_WIF_PROVIDER }}
+  GCP_TERRAFORM_SERVICE_ACCOUNT: ${{ vars.GCP_TERRAFORM_SERVICE_ACCOUNT || vars.GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT }}
+
+jobs:
+  cutover:
+    runs-on: ubuntu-latest
+    environment: infra-prod
+
+    steps:
+      - name: Checkout target ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_ref }}
+
+      - name: Validate required workflow variables
+        run: |
+          set -euo pipefail
+          [ -n "${GCP_PROJECT_ID}" ] || { echo "Missing required repository variable: GCP_PROJECT_ID"; exit 1; }
+          [ -n "${GCP_TERRAFORM_WIF_PROVIDER}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_WIF_PROVIDER (or fallback GCP_GOLDEN_IMAGE_WIF_PROVIDER)"; exit 1; }
+          [ -n "${GCP_TERRAFORM_SERVICE_ACCOUNT}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_SERVICE_ACCOUNT (or fallback GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT)"; exit 1; }
+
+      - name: Authenticate to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_TERRAFORM_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init
+        run: terraform -chdir="${TF_DIR}" init -input=false
+
+      - name: Validate inputs and prepare runtime paths
+        id: configure
+        run: |
+          set -euo pipefail
+
+          mode="${{ inputs.execution_mode }}"
+          tfvars_rel="${{ inputs.tfvars_file }}"
+          tfvars_path="${TF_DIR}/${tfvars_rel}"
+          vm_image_override="${{ inputs.vm_image }}"
+          reconcile_release_override="${{ inputs.reconcile_release_id }}"
+          expected_commit="${{ inputs.expected_infra_commit_sha }}"
+          expected_reconcile_sha256="${{ inputs.expected_reconcile_sha256 }}"
+          pin_image_family="${{ inputs.pin_image_family }}"
+
+          [ -f "${tfvars_path}" ] || { echo "tfvars file not found: ${tfvars_path}"; exit 1; }
+
+          if [ "${mode}" = "rollback" ]; then
+            [ -n "${vm_image_override}" ] || { echo "rollback mode requires vm_image input"; exit 1; }
+            [ -n "${reconcile_release_override}" ] || { echo "rollback mode requires reconcile_release_id input"; exit 1; }
+            [ -n "${expected_commit}" ] || { echo "rollback mode requires expected_infra_commit_sha input"; exit 1; }
+            [ -n "${expected_reconcile_sha256}" ] || { echo "rollback mode requires expected_reconcile_sha256 input"; exit 1; }
+          fi
+
+          if [ -n "${vm_image_override}" ]; then
+            case "${vm_image_override}" in
+              */global/images/*) ;;
+              *) echo "vm_image must reference /global/images/ self-link"; exit 1 ;;
+            esac
+            case "${vm_image_override}" in
+              */global/images/family/*)
+                if [ "${pin_image_family}" != "true" ]; then
+                  echo "vm_image family references require pin_image_family=true"
+                  exit 1
+                fi
+                ;;
+            esac
+            perl -0pi -e 's|^vm_image\s*=\s*"[^"]*"|vm_image       = "'"${vm_image_override}"'"|m' "${tfvars_path}"
+          fi
+
+          if [ -n "${reconcile_release_override}" ]; then
+            if ! [[ "${reconcile_release_override}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+              echo "reconcile_release_id contains invalid characters"
+              exit 1
+            fi
+            perl -0pi -e 's|^reconcile_release_id\s*=\s*"[^"]*"|reconcile_release_id = "'"${reconcile_release_override}"'"|m' "${tfvars_path}"
+          fi
+
+          active_vm_image="$(sed -n 's/^[[:space:]]*vm_image[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "${tfvars_path}" | head -n1)"
+          active_reconcile_release_id="$(sed -n 's/^[[:space:]]*reconcile_release_id[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "${tfvars_path}" | head -n1)"
+
+          [ -n "${active_vm_image}" ] || { echo "vm_image must be set in tfvars"; exit 1; }
+          [ -n "${active_reconcile_release_id}" ] || { echo "reconcile_release_id must be set in tfvars"; exit 1; }
+
+          case "${active_vm_image}" in
+            */global/images/*) ;;
+            *) echo "production vm_image must be an exact image self-link under /global/images/"; exit 1 ;;
+          esac
+          case "${active_vm_image}" in
+            */global/images/family/*)
+              if [ "${pin_image_family}" != "true" ]; then
+                echo "production vm_image family references require pin_image_family=true"
+                exit 1
+              fi
+              ;;
+          esac
+
+          current_commit="$(git rev-parse HEAD)"
+          if [ -n "${expected_commit}" ] && [ "${expected_commit}" != "${current_commit}" ]; then
+            echo "expected_infra_commit_sha mismatch: expected=${expected_commit}, current=${current_commit}"
+            exit 1
+          fi
+
+          plan_output="${RUNNER_TEMP}/infra-cutover-plan-${mode}-${GITHUB_RUN_ID}.txt"
+          plan_json_output="${RUNNER_TEMP}/infra-cutover-plan-${mode}-${GITHUB_RUN_ID}.json"
+          evidence_file="${RUNNER_TEMP}/infra-cutover-evidence-${mode}-${GITHUB_RUN_ID}.md"
+          apply_log="${RUNNER_TEMP}/infra-cutover-apply-${mode}-${GITHUB_RUN_ID}.log"
+          postcheck_log="${RUNNER_TEMP}/infra-cutover-postcheck-${mode}-${GITHUB_RUN_ID}.log"
+
+          : > "${apply_log}"
+          : > "${postcheck_log}"
+
+          echo "mode=${mode}" >> "${GITHUB_OUTPUT}"
+          echo "tfvars_rel=${tfvars_rel}" >> "${GITHUB_OUTPUT}"
+          echo "tfvars_path=${tfvars_path}" >> "${GITHUB_OUTPUT}"
+          echo "active_vm_image=${active_vm_image}" >> "${GITHUB_OUTPUT}"
+          echo "active_reconcile_release_id=${active_reconcile_release_id}" >> "${GITHUB_OUTPUT}"
+          echo "current_commit=${current_commit}" >> "${GITHUB_OUTPUT}"
+          echo "plan_output=${plan_output}" >> "${GITHUB_OUTPUT}"
+          echo "plan_json_output=${plan_json_output}" >> "${GITHUB_OUTPUT}"
+          echo "evidence_file=${evidence_file}" >> "${GITHUB_OUTPUT}"
+          echo "apply_log=${apply_log}" >> "${GITHUB_OUTPUT}"
+          echo "postcheck_log=${postcheck_log}" >> "${GITHUB_OUTPUT}"
+
+      - name: Prepare cutover plan and evidence
+        run: |
+          set -euo pipefail
+
+          args=(
+            prepare
+            --tfvars "${{ steps.configure.outputs.tfvars_rel }}"
+            --evidence-file "${{ steps.configure.outputs.evidence_file }}"
+            --plan-output "${{ steps.configure.outputs.plan_output }}"
+            --plan-json-output "${{ steps.configure.outputs.plan_json_output }}"
+          )
+
+          if [ "${{ inputs.pin_image_family }}" = "true" ]; then
+            args+=(--pin-image-family)
+          fi
+          if [ "${{ inputs.skip_snapshot }}" = "true" ]; then
+            args+=(--skip-snapshot)
+          fi
+
+          bash scripts/infra_cutover.sh "${args[@]}"
+
+      - name: Enforce expected reconcile_sha256 (optional)
+        run: |
+          set -euo pipefail
+
+          expected="${{ inputs.expected_reconcile_sha256 }}"
+          if [ -z "${expected}" ]; then
+            echo "No expected_reconcile_sha256 provided; skipping strict sha verification."
+            exit 0
+          fi
+
+          actual="$(
+            jq -r '
+              def all_resources(mod):
+                (mod.resources // []) + ((mod.child_modules // []) | map(all_resources(.)) | add // []);
+              (
+                [
+                  .resource_changes[]?
+                  | select(.address == "google_compute_instance.backend")
+                  | .change.after.metadata.reconcile_sha256?
+                ] +
+                [
+                  all_resources((.planned_values.root_module? // {}))[]
+                  | select(.address == "google_compute_instance.backend")
+                  | .values.metadata.reconcile_sha256?
+                ]
+              )
+              | map(select(type == "string" and test("^[0-9a-f]{64}$")))
+              | first // empty
+            ' "${{ steps.configure.outputs.plan_json_output }}" || true
+          )"
+          [ -n "${actual}" ] || { echo "Could not parse reconcile_sha256 from plan output"; exit 1; }
+          [ "${actual}" = "${expected}" ] || { echo "reconcile_sha256 mismatch: expected=${expected}, actual=${actual}"; exit 1; }
+
+      - name: Terraform apply
+        if: inputs.skip_apply != true
+        run: |
+          set -euo pipefail
+          terraform -chdir="${TF_DIR}" apply -input=false -auto-approve -var-file="${{ steps.configure.outputs.tfvars_rel }}" | tee "${{ steps.configure.outputs.apply_log }}"
+
+      - name: Record skipped apply
+        if: inputs.skip_apply == true
+        run: |
+          set -euo pipefail
+          echo "skip_apply=true: Terraform apply intentionally skipped." | tee "${{ steps.configure.outputs.apply_log }}"
+
+      - name: Run post-cutover gates
+        run: |
+          set -euo pipefail
+
+          args=(
+            postcheck
+            --health-url "${{ inputs.health_url }}"
+            --tfvars "${{ steps.configure.outputs.tfvars_rel }}"
+          )
+
+          if [ -n "${{ inputs.baseline_min }}" ]; then
+            args+=(--baseline-min "${{ inputs.baseline_min }}")
+          fi
+          if [ -n "${{ inputs.post_min }}" ]; then
+            args+=(--post-min "${{ inputs.post_min }}")
+          fi
+          if [ "${{ inputs.ops_agent_gate }}" = "true" ]; then
+            args+=(--ops-agent-gate)
+          fi
+
+          bash scripts/infra_cutover.sh "${args[@]}" | tee "${{ steps.configure.outputs.postcheck_log }}"
+
+      - name: Upload cutover evidence artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: infra-cutover-${{ github.run_id }}-${{ inputs.execution_mode }}
+          if-no-files-found: warn
+          path: |
+            ${{ steps.configure.outputs.evidence_file }}
+            ${{ steps.configure.outputs.plan_output }}
+            ${{ steps.configure.outputs.plan_json_output }}
+            ${{ steps.configure.outputs.apply_log }}
+            ${{ steps.configure.outputs.postcheck_log }}
+
+      - name: Summarize cutover run
+        if: always()
+        run: |
+          {
+            echo "## Infra Prod Cutover Summary"
+            echo
+            echo "- Mode: \`${{ steps.configure.outputs.mode }}\`"
+            echo "- Protected environment gate: \`infra-prod\`"
+            echo "- Target ref: \`${{ inputs.target_ref }}\`"
+            echo "- Effective infra commit: \`${{ steps.configure.outputs.current_commit }}\`"
+            echo "- Effective vm_image: \`${{ steps.configure.outputs.active_vm_image }}\`"
+            echo "- Effective reconcile_release_id: \`${{ steps.configure.outputs.active_reconcile_release_id }}\`"
+            echo "- skip_snapshot: \`${{ inputs.skip_snapshot }}\`"
+            echo "- skip_apply: \`${{ inputs.skip_apply }}\`"
+            echo "- Evidence artifact bundle: \`infra-cutover-${{ github.run_id }}-${{ inputs.execution_mode }}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

@@ -1,6 +1,12 @@
-.PHONY: help verify backend-verify frontend-verify eval backend-mini-eval
+.PHONY: help verify backend-verify frontend-verify eval backend-mini-eval infra-cutover-prepare infra-cutover-postcheck
 
 MINI_EVAL_ARGS ?= --user-id 1
+CUTOVER_TFVARS ?= envs/prod.tfvars
+CUTOVER_HEALTH_URL ?= https://api.quaero.odysian.dev/health
+CUTOVER_BASELINE_MIN ?=
+CUTOVER_POST_MIN ?=
+CUTOVER_OPS_AGENT_GATE ?= false
+CUTOVER_PIN_FAMILY ?= false
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -32,3 +38,16 @@ eval: ## Run mini eval harness and write report artifacts (override with MINI_EV
 			$(MINI_EVAL_ARGS)
 
 backend-mini-eval: eval ## Backward-compatible alias for eval
+
+infra-cutover-prepare: ## Cutover prep automation: snapshot + terraform checks/plan + evidence draft
+	@bash scripts/infra_cutover.sh prepare \
+		--tfvars "$(CUTOVER_TFVARS)" \
+		$(if $(filter true TRUE 1 yes YES,$(CUTOVER_PIN_FAMILY)),--pin-image-family,)
+
+infra-cutover-postcheck: ## Cutover postchecks: health gate + optional ops-agent/bootstrap target checks
+	@bash scripts/infra_cutover.sh postcheck \
+		--health-url "$(CUTOVER_HEALTH_URL)" \
+		--tfvars "$(CUTOVER_TFVARS)" \
+		$(if $(CUTOVER_BASELINE_MIN),--baseline-min $(CUTOVER_BASELINE_MIN),) \
+		$(if $(CUTOVER_POST_MIN),--post-min $(CUTOVER_POST_MIN),) \
+		$(if $(filter true TRUE 1 yes YES,$(CUTOVER_OPS_AGENT_GATE)),--ops-agent-gate,)
