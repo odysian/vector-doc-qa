@@ -1,0 +1,239 @@
+name: Terraform PR Plan
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "infra/terraform/**"
+      - "scripts/infra_cutover.sh"
+      - "Makefile"
+      - ".github/workflows/infra-terraform-plan.yml"
+      - ".github/workflows/infra-prod-cutover.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: terraform-pr-plan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_DIR: infra/terraform
+  TFVARS_FILE: envs/prod.tfvars
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_TERRAFORM_WIF_PROVIDER: ${{ vars.GCP_TERRAFORM_WIF_PROVIDER || vars.GCP_GOLDEN_IMAGE_WIF_PROVIDER }}
+  GCP_TERRAFORM_SERVICE_ACCOUNT: ${{ vars.GCP_TERRAFORM_SERVICE_ACCOUNT || vars.GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT }}
+
+jobs:
+  terraform-plan:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required workflow variables
+        run: |
+          set -euo pipefail
+          [ -n "${GCP_PROJECT_ID}" ] || { echo "Missing required repository variable: GCP_PROJECT_ID"; exit 1; }
+          [ -n "${GCP_TERRAFORM_WIF_PROVIDER}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_WIF_PROVIDER (or fallback GCP_GOLDEN_IMAGE_WIF_PROVIDER)"; exit 1; }
+          [ -n "${GCP_TERRAFORM_SERVICE_ACCOUNT}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_SERVICE_ACCOUNT (or fallback GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT)"; exit 1; }
+
+      - name: Authenticate to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_TERRAFORM_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform fmt/validate/plan
+        id: run_plan
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+
+          plan_text="${RUNNER_TEMP}/terraform-plan.txt"
+          plan_json="${RUNNER_TEMP}/terraform-plan.json"
+
+          echo "Terraform plan did not complete successfully." > "${plan_text}"
+          echo '{"resource_changes": []}' > "${plan_json}"
+
+          terraform -chdir="${TF_DIR}" init -input=false
+          terraform -chdir="${TF_DIR}" fmt -check
+          terraform -chdir="${TF_DIR}" validate
+          terraform -chdir="${TF_DIR}" plan -input=false -no-color -var-file="${TFVARS_FILE}" -out=tfplan.binary
+          terraform -chdir="${TF_DIR}" show -no-color tfplan.binary > "${plan_text}"
+          terraform -chdir="${TF_DIR}" show -json tfplan.binary > "${plan_json}"
+
+      - name: Classify Terraform plan risk
+        id: classify
+        if: always()
+        run: |
+          set -euo pipefail
+
+          plan_json="${RUNNER_TEMP}/terraform-plan.json"
+          plan_status="${{ steps.run_plan.outcome }}"
+
+          risk_label="risk:terraform-gated"
+          risk_reason="terraform plan failed"
+          parse_failed="false"
+          has_replace="false"
+          has_delete="false"
+          tuple_change="false"
+          creates="0"
+          updates="0"
+          deletes="0"
+          replaces="0"
+
+          if [ "${plan_status}" = "success" ]; then
+            if ! creates="$(jq -r '[.resource_changes[]? | select(.change.actions == ["create"])] | length' "${plan_json}")"; then parse_failed="true"; fi
+            if ! updates="$(jq -r '[.resource_changes[]? | select(.change.actions == ["update"])] | length' "${plan_json}")"; then parse_failed="true"; fi
+            if ! deletes="$(jq -r '[.resource_changes[]? | select(.change.actions == ["delete"])] | length' "${plan_json}")"; then parse_failed="true"; fi
+            if ! replaces="$(jq -r '[.resource_changes[]? | select((.change.actions | index("delete")) and (.change.actions | index("create")))] | length' "${plan_json}")"; then parse_failed="true"; fi
+            if ! has_delete="$(jq -r '[.resource_changes[]? | select(.change.actions | index("delete"))] | length > 0' "${plan_json}")"; then parse_failed="true"; fi
+            if ! has_replace="$(jq -r '[.resource_changes[]? | select((.change.actions | index("delete")) and (.change.actions | index("create")))] | length > 0' "${plan_json}")"; then parse_failed="true"; fi
+            if ! tuple_change="$(jq -r '[.resource_changes[]? | select(.address == "google_compute_instance.backend") | (((.change.before.boot_disk[0].initialize_params[0].image // "") != (.change.after.boot_disk[0].initialize_params[0].image // "")) or ((.change.before.metadata.reconcile_release_id // "") != (.change.after.metadata.reconcile_release_id // "")))] | any' "${plan_json}")"; then parse_failed="true"; fi
+
+            if [ "${parse_failed}" = "true" ]; then
+              risk_reason="parser uncertainty (fail-closed)"
+            elif [ "${has_delete}" = "true" ] || [ "${has_replace}" = "true" ] || [ "${tuple_change}" = "true" ]; then
+              risk_reason="replace/delete or rollout tuple change detected"
+            else
+              risk_label="risk:terraform-safe"
+              risk_reason="no replace/delete and no rollout tuple change"
+            fi
+          fi
+
+          echo "risk_label=${risk_label}" >> "${GITHUB_OUTPUT}"
+          echo "risk_reason=${risk_reason}" >> "${GITHUB_OUTPUT}"
+          echo "plan_status=${plan_status}" >> "${GITHUB_OUTPUT}"
+          echo "creates=${creates}" >> "${GITHUB_OUTPUT}"
+          echo "updates=${updates}" >> "${GITHUB_OUTPUT}"
+          echo "deletes=${deletes}" >> "${GITHUB_OUTPUT}"
+          echo "replaces=${replaces}" >> "${GITHUB_OUTPUT}"
+          echo "tuple_change=${tuple_change}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build Terraform summary
+        id: build_summary
+        if: always()
+        run: |
+          set -euo pipefail
+
+          summary_file="${RUNNER_TEMP}/terraform-plan-summary.md"
+          {
+            echo "<!-- terraform-plan-summary -->"
+            echo "## Terraform Plan Summary"
+            echo
+            echo "- Plan status: \`${{ steps.classify.outputs.plan_status }}\`"
+            echo "- Risk label: \`${{ steps.classify.outputs.risk_label }}\`"
+            echo "- Risk reason: ${{ steps.classify.outputs.risk_reason }}"
+            echo "- Change counts: create=${{ steps.classify.outputs.creates }}, update=${{ steps.classify.outputs.updates }}, delete=${{ steps.classify.outputs.deletes }}, replace=${{ steps.classify.outputs.replaces }}"
+            echo "- Rollout tuple change (`vm_image` or `reconcile_release_id`): \`${{ steps.classify.outputs.tuple_change }}\`"
+          } > "${summary_file}"
+
+          cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
+
+          {
+            echo "comment_body<<'EOF'"
+            cat "${summary_file}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Upload Terraform plan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/terraform-plan.txt
+            ${{ runner.temp }}/terraform-plan.json
+            ${{ runner.temp }}/terraform-plan-summary.md
+
+      - name: Sync PR risk labels
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        env:
+          RISK_LABEL: ${{ steps.classify.outputs.risk_label }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.payload.pull_request.number;
+            const riskLabel = process.env.RISK_LABEL;
+            const oppositeRisk = riskLabel === 'risk:terraform-safe' ? 'risk:terraform-gated' : 'risk:terraform-safe';
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number,
+              labels: ['area:infra', 'deploy:terraform', 'gate:prod-approval-required', riskLabel],
+            });
+
+            try {
+              await github.rest.issues.removeLabel({
+                owner,
+                repo,
+                issue_number,
+                name: oppositeRisk,
+              });
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+
+      - name: Upsert PR summary comment
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        env:
+          COMMENT_BODY: ${{ steps.build_summary.outputs.comment_body }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.payload.pull_request.number;
+            const marker = '<!-- terraform-plan-summary -->';
+            const body = process.env.COMMENT_BODY;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) =>
+              comment.user?.type === 'Bot' && comment.body?.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
+
+      - name: Fail workflow if Terraform plan failed
+        if: steps.run_plan.outcome != 'success'
+        run: |
+          echo "Terraform fmt/validate/plan failed; check artifacts and summary."
+          exit 1
