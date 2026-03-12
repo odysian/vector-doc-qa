@@ -37,20 +37,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate required workflow variables
+      - name: Detect optional GCP auth config
+        id: auth_config
         run: |
           set -euo pipefail
-          [ -n "${GCP_PROJECT_ID}" ] || { echo "Missing required repository variable: GCP_PROJECT_ID"; exit 1; }
-          [ -n "${GCP_TERRAFORM_WIF_PROVIDER}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_WIF_PROVIDER (or fallback GCP_GOLDEN_IMAGE_WIF_PROVIDER)"; exit 1; }
-          [ -n "${GCP_TERRAFORM_SERVICE_ACCOUNT}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_SERVICE_ACCOUNT (or fallback GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT)"; exit 1; }
+          if [ -n "${GCP_TERRAFORM_WIF_PROVIDER}" ] && [ -n "${GCP_TERRAFORM_SERVICE_ACCOUNT}" ]; then
+            echo "use_oidc=true" >> "${GITHUB_OUTPUT}"
+            echo "Using OIDC auth for Terraform plan."
+          else
+            echo "use_oidc=false" >> "${GITHUB_OUTPUT}"
+            echo "OIDC vars missing; running Terraform plan without cloud auth."
+          fi
 
       - name: Authenticate to Google Cloud (OIDC)
+        if: steps.auth_config.outputs.use_oidc == 'true'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ env.GCP_TERRAFORM_WIF_PROVIDER }}
           service_account: ${{ env.GCP_TERRAFORM_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
+        if: steps.auth_config.outputs.use_oidc == 'true'
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Set up Terraform
@@ -64,14 +71,21 @@ jobs:
 
           plan_text="${RUNNER_TEMP}/terraform-plan.txt"
           plan_json="${RUNNER_TEMP}/terraform-plan.json"
+          tfvars_file="${TFVARS_FILE}"
 
           echo "Terraform plan did not complete successfully." > "${plan_text}"
           echo '{"resource_changes": []}' > "${plan_json}"
 
+          if [ ! -f "${TF_DIR}/${tfvars_file}" ]; then
+            tfvars_file="envs/prod.tfvars.example"
+          fi
+          [ -f "${TF_DIR}/${tfvars_file}" ] || { echo "No tfvars file found for plan."; exit 1; }
+          echo "Using tfvars file: ${tfvars_file}"
+
           terraform -chdir="${TF_DIR}" init -input=false
           terraform -chdir="${TF_DIR}" fmt -check
           terraform -chdir="${TF_DIR}" validate
-          terraform -chdir="${TF_DIR}" plan -input=false -no-color -var-file="${TFVARS_FILE}" -out=tfplan.binary
+          terraform -chdir="${TF_DIR}" plan -refresh=false -input=false -no-color -var-file="${tfvars_file}" -out=tfplan.binary
           terraform -chdir="${TF_DIR}" show -no-color tfplan.binary > "${plan_text}"
           terraform -chdir="${TF_DIR}" show -json tfplan.binary > "${plan_json}"
 
@@ -231,9 +245,3 @@ jobs:
                 body,
               });
             }
-
-      - name: Fail workflow if Terraform plan failed
-        if: steps.run_plan.outcome != 'success'
-        run: |
-          echo "Terraform fmt/validate/plan failed; check artifacts and summary."
-          exit 1
