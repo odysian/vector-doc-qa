@@ -28,6 +28,7 @@ prepare options:
   --snapshot-id <name>    Snapshot id override
   --evidence-file <path>  Evidence draft output path (default: /tmp/quaero-cutover-<ts>.md)
   --plan-output <path>    Terraform plan output path (default: /tmp/quaero-cutover-plan-<ts>.txt)
+  --plan-json-output <p>  Terraform plan JSON output path (default: /tmp/quaero-cutover-plan-<ts>.json)
 
 postcheck options:
   --health-url <url>      Health endpoint (default: https://api.quaero.odysian.dev/health)
@@ -97,6 +98,7 @@ prepare_cutover() {
   require_cmd terraform
   require_cmd gcloud
   require_cmd rg
+  require_cmd jq
   require_cmd sha256sum
 
   local tf_dir="$DEFAULT_TF_DIR"
@@ -109,6 +111,7 @@ prepare_cutover() {
   local snapshot_id_override=""
   local evidence_file_override=""
   local plan_output_override=""
+  local plan_json_output_override=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -122,6 +125,7 @@ prepare_cutover() {
       --snapshot-id) snapshot_id_override="$2"; shift 2 ;;
       --evidence-file) evidence_file_override="$2"; shift 2 ;;
       --plan-output) plan_output_override="$2"; shift 2 ;;
+      --plan-json-output) plan_json_output_override="$2"; shift 2 ;;
       -h|--help) print_usage; exit 0 ;;
       *) die "Unknown option for prepare: $1" ;;
     esac
@@ -138,7 +142,9 @@ prepare_cutover() {
 
   local timestamp
   timestamp="$(date -u +%Y%m%d-%H%M%S)"
+  local plan_binary="/tmp/quaero-cutover-plan-${timestamp}.binary"
   local plan_output="${plan_output_override:-/tmp/quaero-cutover-plan-${timestamp}.txt}"
+  local plan_json_output="${plan_json_output_override:-/tmp/quaero-cutover-plan-${timestamp}.json}"
   local evidence_file="${evidence_file_override:-/tmp/quaero-cutover-evidence-${timestamp}.md}"
 
   local infra_commit_sha project_id zone instance_name vm_image reconcile_release_id
@@ -202,16 +208,33 @@ prepare_cutover() {
 
   terraform -chdir="$tf_dir" fmt -check
   terraform -chdir="$tf_dir" validate
-  terraform -chdir="$tf_dir" plan -no-color -var-file="$tfvars_path" | tee "$plan_output"
+  terraform -chdir="$tf_dir" plan -no-color -var-file="$tfvars_path" -out="$plan_binary"
+  terraform -chdir="$tf_dir" show -no-color "$plan_binary" | tee "$plan_output"
+  terraform -chdir="$tf_dir" show -json "$plan_binary" > "$plan_json_output"
 
   local reconcile_sha256 reconcile_sha256_source
   reconcile_sha256="$(
-    rg -o 'reconcile_sha256"[[:space:]]*=[[:space:]]*"[0-9a-f]{64}"' "$plan_output" \
-      | rg -o '[0-9a-f]{64}' \
-      | head -n1 || true
+    jq -r '
+      def all_resources(mod):
+        (mod.resources // []) + ((mod.child_modules // []) | map(all_resources(.)) | add // []);
+      (
+        [
+          .resource_changes[]?
+          | select(.address == "google_compute_instance.backend")
+          | .change.after.metadata.reconcile_sha256?
+        ] +
+        [
+          all_resources((.planned_values.root_module? // {}))[]
+          | select(.address == "google_compute_instance.backend")
+          | .values.metadata.reconcile_sha256?
+        ]
+      )
+      | map(select(type == "string" and test("^[0-9a-f]{64}$")))
+      | first // empty
+    ' "$plan_json_output" || true
   )"
   if [[ -n "$reconcile_sha256" ]]; then
-    reconcile_sha256_source="plan"
+    reconcile_sha256_source="plan-json"
   else
     reconcile_sha256="$(sha256sum "${tf_dir}/scripts/reconcile.sh" | awk '{print $1}')"
     reconcile_sha256_source="local-reconcile.sh"
@@ -227,6 +250,7 @@ prepare_cutover() {
 - reconcile_sha256 source: ${reconcile_sha256_source}
 - terraform tfvars: ${tfvars_path}
 - terraform plan output: ${plan_output}
+- terraform plan json: ${plan_json_output}
 - checkpoint snapshot id: ${snapshot_id:-<skipped>}
 
 Fill these before close:
@@ -249,6 +273,7 @@ Prepare complete.
   reconcile_sha256 (${reconcile_sha256_source}): ${reconcile_sha256}
   snapshot_id: ${snapshot_id:-<skipped>}
   plan_output: ${plan_output}
+  plan_json_output: ${plan_json_output}
   evidence_file: ${evidence_file}
 EOF
 }

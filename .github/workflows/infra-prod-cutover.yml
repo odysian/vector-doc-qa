@@ -191,6 +191,7 @@ jobs:
           fi
 
           plan_output="${RUNNER_TEMP}/infra-cutover-plan-${mode}-${GITHUB_RUN_ID}.txt"
+          plan_json_output="${RUNNER_TEMP}/infra-cutover-plan-${mode}-${GITHUB_RUN_ID}.json"
           evidence_file="${RUNNER_TEMP}/infra-cutover-evidence-${mode}-${GITHUB_RUN_ID}.md"
           apply_log="${RUNNER_TEMP}/infra-cutover-apply-${mode}-${GITHUB_RUN_ID}.log"
           postcheck_log="${RUNNER_TEMP}/infra-cutover-postcheck-${mode}-${GITHUB_RUN_ID}.log"
@@ -205,6 +206,7 @@ jobs:
           echo "active_reconcile_release_id=${active_reconcile_release_id}" >> "${GITHUB_OUTPUT}"
           echo "current_commit=${current_commit}" >> "${GITHUB_OUTPUT}"
           echo "plan_output=${plan_output}" >> "${GITHUB_OUTPUT}"
+          echo "plan_json_output=${plan_json_output}" >> "${GITHUB_OUTPUT}"
           echo "evidence_file=${evidence_file}" >> "${GITHUB_OUTPUT}"
           echo "apply_log=${apply_log}" >> "${GITHUB_OUTPUT}"
           echo "postcheck_log=${postcheck_log}" >> "${GITHUB_OUTPUT}"
@@ -218,6 +220,7 @@ jobs:
             --tfvars "${{ steps.configure.outputs.tfvars_rel }}"
             --evidence-file "${{ steps.configure.outputs.evidence_file }}"
             --plan-output "${{ steps.configure.outputs.plan_output }}"
+            --plan-json-output "${{ steps.configure.outputs.plan_json_output }}"
           )
 
           if [ "${{ inputs.pin_image_family }}" = "true" ]; then
@@ -239,7 +242,26 @@ jobs:
             exit 0
           fi
 
-          actual="$(rg -o 'reconcile_sha256"[[:space:]]*=[[:space:]]*"[0-9a-f]{64}"' "${{ steps.configure.outputs.plan_output }}" | rg -o '[0-9a-f]{64}' | head -n1 || true)"
+          actual="$(
+            jq -r '
+              def all_resources(mod):
+                (mod.resources // []) + ((mod.child_modules // []) | map(all_resources(.)) | add // []);
+              (
+                [
+                  .resource_changes[]?
+                  | select(.address == "google_compute_instance.backend")
+                  | .change.after.metadata.reconcile_sha256?
+                ] +
+                [
+                  all_resources((.planned_values.root_module? // {}))[]
+                  | select(.address == "google_compute_instance.backend")
+                  | .values.metadata.reconcile_sha256?
+                ]
+              )
+              | map(select(type == "string" and test("^[0-9a-f]{64}$")))
+              | first // empty
+            ' "${{ steps.configure.outputs.plan_json_output }}" || true
+          )"
           [ -n "${actual}" ] || { echo "Could not parse reconcile_sha256 from plan output"; exit 1; }
           [ "${actual}" = "${expected}" ] || { echo "reconcile_sha256 mismatch: expected=${expected}, actual=${actual}"; exit 1; }
 
@@ -286,6 +308,7 @@ jobs:
           path: |
             ${{ steps.configure.outputs.evidence_file }}
             ${{ steps.configure.outputs.plan_output }}
+            ${{ steps.configure.outputs.plan_json_output }}
             ${{ steps.configure.outputs.apply_log }}
             ${{ steps.configure.outputs.postcheck_log }}
 

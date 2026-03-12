@@ -128,7 +128,7 @@ Use **Hybrid** with one explicit production approval.
 ### Daily Operator Experience (Target)
 
 1. Merge PR.
-2. Open "Infra Prod Apply" workflow.
+2. Open "Infra Prod Cutover" workflow.
 3. Confirm inputs (`vm_image`, `reconcile_release_id`, optional rollback mode).
 4. Approve environment.
 5. Workflow runs snapshot -> plan -> apply -> postchecks -> evidence artifact.
