@@ -61,13 +61,14 @@ terraform plan -var-file=envs/prod.tfvars
 Set these in `envs/prod.tfvars`:
 
 - `enable_ops_agent` (bool): enables/disables Ops Agent bootstrap path.
-- `ops_agent_version` (string): required pinned package version; empty/unset or `latest` fails validation.
+- `ops_agent_version` (string): required pinned version; use upstream `X.Y.Z` (recommended) or exact apt package version. Empty/unset or `latest` fails validation.
 - `ops_agent_collect_docker_logs` (bool): when false, Docker log receiver/pipeline is omitted.
 - `ops_agent_collect_host_metrics` (bool): when false, hostmetrics receiver/pipeline is omitted.
 
 Behavior details:
 
 - Startup script reconciles Ops Agent install/version independently from `/opt/quaero/.bootstrap_v2_done`.
+- Version reconciliation resolves upstream pins (for example `2.51.0`) to matching distro-qualified apt builds (for example `2.51.0~debian12`) when needed.
 - Config is rendered from `scripts/ops-agent-config.yaml.tftpl` and written atomically to `/etc/google-cloud-ops-agent/config.yaml`.
 - Agent restart is gated on config hash drift; no restart occurs when config is unchanged.
 - `enable_ops_agent=false` is safe even if package/service is absent.

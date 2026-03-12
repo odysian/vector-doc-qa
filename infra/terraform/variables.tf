@@ -130,7 +130,7 @@ variable "enable_ops_agent" {
 }
 
 variable "ops_agent_version" {
-  description = "Pinned google-cloud-ops-agent package version (required, non-empty, and not 'latest')."
+  description = "Pinned Ops Agent version. Accepts either exact apt package version or upstream X.Y.Z pin resolved to distro-qualified apt build."
   type        = string
 
   validation {

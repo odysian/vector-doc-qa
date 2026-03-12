@@ -47,7 +47,9 @@ fi
 # so existing VMs can enable/version-pin the agent after initial provisioning.
 if [[ "$${ENABLE_OPS_AGENT}" == "true" ]]; then
   CURRENT_OPS_AGENT_VERSION="$(dpkg-query -W -f='$${Version}' google-cloud-ops-agent 2>/dev/null || true)"
-  if [[ "$${CURRENT_OPS_AGENT_VERSION}" != "$${OPS_AGENT_VERSION}" ]]; then
+  OPS_AGENT_TARGET_VERSION="$${OPS_AGENT_VERSION}"
+
+  if [[ "$${CURRENT_OPS_AGENT_VERSION}" != "$${OPS_AGENT_TARGET_VERSION}" ]]; then
     apt-get update
 
     # Fresh images may not have the Ops Agent repo configured yet.
@@ -67,14 +69,27 @@ if [[ "$${ENABLE_OPS_AGENT}" == "true" ]]; then
       OPS_AGENT_AVAILABLE_VERSIONS="$(apt-cache madison google-cloud-ops-agent 2>/dev/null | awk '{print $3}')"
     fi
 
-    if ! printf '%s\n' "$${OPS_AGENT_AVAILABLE_VERSIONS}" | grep -Fxq "$${OPS_AGENT_VERSION}"; then
-      echo "Requested Ops Agent version $${OPS_AGENT_VERSION} not found in apt repositories." >&2
+    OPS_AGENT_RESOLVED_VERSION=""
+    if printf '%s\n' "$${OPS_AGENT_AVAILABLE_VERSIONS}" | grep -Fxq "$${OPS_AGENT_TARGET_VERSION}"; then
+      OPS_AGENT_RESOLVED_VERSION="$${OPS_AGENT_TARGET_VERSION}"
+    else
+      REQUESTED_OPS_AGENT_BASE_VERSION="$(printf '%s\n' "$${OPS_AGENT_TARGET_VERSION}" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)"
+      if [[ -n "$${REQUESTED_OPS_AGENT_BASE_VERSION}" ]]; then
+        REQUESTED_OPS_AGENT_BASE_VERSION_REGEX="$(printf '%s' "$${REQUESTED_OPS_AGENT_BASE_VERSION}" | sed 's/\./\\./g')"
+        OPS_AGENT_RESOLVED_VERSION="$(printf '%s\n' "$${OPS_AGENT_AVAILABLE_VERSIONS}" | grep -E "^([0-9]+:)?$${REQUESTED_OPS_AGENT_BASE_VERSION_REGEX}([~.+:_-].*)?$" | head -n 1 || true)"
+      fi
+    fi
+
+    if [[ -z "$${OPS_AGENT_RESOLVED_VERSION}" ]]; then
+      echo "Requested Ops Agent version $${OPS_AGENT_TARGET_VERSION} not found in apt repositories." >&2
       echo "Available versions:" >&2
       printf '%s\n' "$${OPS_AGENT_AVAILABLE_VERSIONS}" >&2
       exit 1
     fi
 
-    apt-get install -y --allow-downgrades "google-cloud-ops-agent=$${OPS_AGENT_VERSION}"
+    if [[ "$${CURRENT_OPS_AGENT_VERSION}" != "$${OPS_AGENT_RESOLVED_VERSION}" ]]; then
+      apt-get install -y --allow-downgrades "google-cloud-ops-agent=$${OPS_AGENT_RESOLVED_VERSION}"
+    fi
   fi
 
   RENDERED_OPS_AGENT_CONFIG="$(mktemp)"

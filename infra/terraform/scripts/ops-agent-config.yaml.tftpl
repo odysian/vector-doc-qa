@@ -16,7 +16,7 @@ logging:
     normalize_docker_message:
       type: modify_fields
       fields:
-        message:
+        jsonPayload.message:
           move_from: jsonPayload.log
         jsonPayload.container_stream:
           move_from: jsonPayload.stream
