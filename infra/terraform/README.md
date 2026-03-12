@@ -96,6 +96,7 @@ Dispatch usage:
 - `plan`: must be dispatched from `main` with `target_ref=main`.
 - `apply`: must be dispatched from `main` with `target_ref=main`; workflow plans to `tfplan.binary` then applies that plan.
 - `destroy`: same `main` restrictions as apply, plus `destroy_confirm` must equal `DESTROY_PROD`; workflow plans to `tfplan.destroy.binary` then applies that plan.
+- `tf_dir` and `tfvars_path` are allowlisted to `infra/terraform` and `envs/prod.tfvars` to reduce operator and input-injection risk.
 
 Sensitive runtime files (`envs/prod.tfvars` decoded from secret and local plan binaries) are deleted in an `always()` cleanup step.
 

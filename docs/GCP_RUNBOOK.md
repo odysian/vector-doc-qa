@@ -635,8 +635,8 @@ Dispatch inputs:
 
 - `action`: `plan` | `apply` | `destroy`
 - `target_ref`: git ref input (must be `main`)
-- `tf_dir`: defaults to `infra/terraform`
-- `tfvars_path`: defaults to `envs/prod.tfvars`
+- `tf_dir`: input is allowlisted to `infra/terraform`
+- `tfvars_path`: input is allowlisted to `envs/prod.tfvars`
 - `destroy_confirm`: must equal `DESTROY_PROD` for destroy
 
 Safety gates:
