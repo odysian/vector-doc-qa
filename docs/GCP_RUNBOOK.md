@@ -473,27 +473,17 @@ Release tuple mapping:
   - `infra_commit_sha` -> exact repo commit used for Terraform apply
   - `reconcile_sha256` -> expected metadata hash from Terraform plan at that commit
 
-### 10.0 Workflow-first execution path (default)
+### 10.0 Manual-first execution path (default)
 
-Use GitHub Actions as the default control plane:
+Use terminal-driven Terraform as the default control plane for production rollout.
 
-1. Open a Terraform PR and confirm `.github/workflows/infra-terraform-plan.yml` succeeds.
-2. Verify PR summary/artifact output and risk label:
-   - `risk:terraform-safe` for no replace/destroy and no tuple-cutover risk.
-   - `risk:terraform-gated` for replace/destroy, tuple-cutover risk, or parser uncertainty.
-3. Trigger `.github/workflows/infra-prod-cutover.yml` via `workflow_dispatch`.
-4. Use protected environment approval (`infra-prod`) as the required production click gate.
-5. Use workflow `execution_mode=rollback` for tuple/pin rollback using the same postchecks.
+1. Gather pre-cutover records (section 10.1) and confirm target tuple/pins.
+2. Checkout the exact `infra_commit_sha` for the target tuple.
+3. Run plan/apply manually (section 10.2).
+4. Run required post-cutover health gates (section 10.3).
+5. For rollback, use the same tuple/pin discipline described in section 10.5.
 
-Label taxonomy for this automation track:
-
-- `area:infra`
-- `deploy:terraform`
-- `risk:terraform-safe`
-- `risk:terraform-gated`
-- `gate:prod-approval-required`
-
-Terminal commands below remain fallback when workflow execution is unavailable.
+GitHub workflow-based cutover automation is retired from active process in this repo.
 
 ### 10.1 Pre-cutover record (required)
 
@@ -524,9 +514,9 @@ gcloud compute disks snapshot "$VM_DISK" --zone us-east1-b --snapshot-names "$SN
 echo "checkpoint snapshot: $SNAPSHOT_ID"
 ```
 
-### 10.2 Cutover apply (terminal fallback)
+### 10.2 Cutover apply (default manual path)
 
-Optional automation wrapper from repo root:
+Optional helper wrapper from repo root (legacy helper, not required):
 
 ```bash
 make infra-cutover-prepare CUTOVER_TFVARS=envs/prod.tfvars
@@ -605,14 +595,9 @@ Record:
 
 ### 10.5 Rollback drill (required)
 
-Workflow-first rollback:
+In non-prod, rehearse rollback with the previous known-good tuple before relying on production rollback:
 
-1. Trigger `.github/workflows/infra-prod-cutover.yml`.
-2. Set `execution_mode=rollback`.
-3. Provide previous tuple inputs (`vm_image`, `reconcile_release_id`) and expected pins (`expected_infra_commit_sha`, `expected_reconcile_sha256`).
-4. Approve protected environment gate and review evidence artifacts.
-
-1. In non-prod, checkout the exact `infra_commit_sha` for the previous known-good tuple.
+1. Checkout the exact `infra_commit_sha` for the previous known-good tuple.
 2. Re-pin previous known-good tuple in `envs/prod.tfvars` (`vm_image` exact self-link + `reconcile_release_id`).
 3. Run `terraform plan` and verify planned `reconcile_sha256` matches the recorded value.
 4. Run apply and confirm health gates.
