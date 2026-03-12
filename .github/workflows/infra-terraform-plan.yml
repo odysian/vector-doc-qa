@@ -144,7 +144,7 @@ jobs:
           cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
 
           {
-            echo "comment_body<<'EOF'"
+            echo "comment_body<<EOF"
             cat "${summary_file}"
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
