@@ -6,12 +6,9 @@ This directory manages Quaero's GCP infrastructure excluding Cloud SQL:
 - static external IP (`quaero-backend-ip`)
 - firewall rules (`80`, `443`, `22`)
 - VM service account and IAM bindings
-- GitHub OIDC trust and golden-image builder service account
 - GCS bucket for documents (`quaero-pdf-storage`)
-- dedicated GCS reconcile artifact bucket (read-only from runtime VM)
 
-VM bootstrap uses a stable startup launcher that installs `quaero-reconcile.service` + `quaero-reconcile.timer`.
-Runtime reconcile then applies:
+VM bootstrap via startup script also configures:
 
 - Docker engine
 - NGINX reverse proxy (`server_name = api.quaero.odysian.dev`)
@@ -37,10 +34,6 @@ cd infra/terraform
 cp envs/prod.tfvars.example envs/prod.tfvars
 ```
 
-For golden-image production cutover, set `vm_image` in `envs/prod.tfvars` to
-an exact promoted image self-link (`projects/<project>/global/images/<image-name>`),
-not an image family path.
-
 ## Validate
 
 ```bash
@@ -49,82 +42,6 @@ terraform init
 terraform fmt -check
 terraform validate
 terraform plan -var-file=envs/prod.tfvars
-```
-
-## Manual-First Infra Rollout (Default)
-
-Use terminal-driven Terraform as the default production rollout path.
-
-1. Checkout the exact `infra_commit_sha` for the target rollout tuple.
-2. Set `vm_image` (exact image self-link) and `reconcile_release_id` in `envs/prod.tfvars`.
-3. Run:
-
-```bash
-cd infra/terraform
-terraform fmt -check
-terraform validate
-terraform plan -var-file=envs/prod.tfvars
-terraform apply -var-file=envs/prod.tfvars
-```
-
-4. Run post-cutover health checks from `docs/GCP_RUNBOOK.md` section 10.3.
-5. Record tuple and pins (`vm_image`, `reconcile_release_id`, `infra_commit_sha`, `reconcile_sha256`) in rollout evidence.
-
-## Manual-Dispatch Terraform Ops Workflow (Optional)
-
-For web-triggered Terraform operations, use `.github/workflows/infra-terraform-ops.yml`.
-This workflow intentionally keeps scope minimal: `plan`, `apply`, `destroy`.
-
-Required setup:
-
-- GitHub secret: `TFVARS_PROD_B64` (base64 payload of full `envs/prod.tfvars`)
-- GitHub repository variables:
-  - `GCP_PROJECT_ID`
-  - `GCP_TERRAFORM_WIF_PROVIDER` (fallback: `GCP_GOLDEN_IMAGE_WIF_PROVIDER`)
-  - `GCP_TERRAFORM_SERVICE_ACCOUNT` (fallback: `GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT`)
-- GitHub environment: `infra-prod` with required reviewers for mutating actions
-
-Set secret:
-
-```bash
-cd infra/terraform
-base64 -w 0 envs/prod.tfvars | gh secret set TFVARS_PROD_B64
-```
-
-Dispatch usage:
-
-- `plan`: must be dispatched from `main` with `target_ref=main`.
-- `apply`: must be dispatched from `main` with `target_ref=main`; workflow plans to `tfplan.binary` then applies that plan.
-- `destroy`: same `main` restrictions as apply, plus `destroy_confirm` must equal `DESTROY_PROD`; workflow plans to `tfplan.destroy.binary` then applies that plan.
-- `tf_dir` and `tfvars_path` are allowlisted to `infra/terraform` and `envs/prod.tfvars` to reduce operator and input-injection risk.
-
-Sensitive runtime files (`envs/prod.tfvars` decoded from secret and local plan binaries) are deleted in an `always()` cleanup step.
-
-## Rollback (Manual-First)
-
-1. Checkout the exact prior `infra_commit_sha`.
-2. Re-pin previous known-good tuple values in `envs/prod.tfvars`.
-3. Run `terraform plan` and confirm `reconcile_sha256` matches the recorded pin.
-4. Apply and rerun health gates.
-
-## Cutover Helper (Legacy, Optional)
-
-`scripts/infra_cutover.sh` remains available as a manual helper but is not the default rollout control plane.
-
-Convenience wrappers from repo root:
-
-```bash
-make infra-cutover-prepare
-make infra-cutover-postcheck
-```
-
-Useful optional flags:
-
-```bash
-make infra-cutover-prepare CUTOVER_PIN_FAMILY=true
-make infra-cutover-prepare CUTOVER_TFVARS=envs/prod.tfvars
-make infra-cutover-postcheck CUTOVER_OPS_AGENT_GATE=true
-make infra-cutover-postcheck CUTOVER_BASELINE_MIN=10 CUTOVER_POST_MIN=5.8
 ```
 
 ## Security Defaults and Rollout
@@ -138,39 +55,6 @@ make infra-cutover-postcheck CUTOVER_BASELINE_MIN=10 CUTOVER_POST_MIN=5.8
   - Bucket IAM: `roles/storage.objectUser`
   - Project IAM (Ops Agent writes): `roles/logging.logWriter`, `roles/monitoring.metricWriter`
   - OAuth scopes (additive): `devstorage.read_write`, `logging.write`, `monitoring.write`
-- Golden-image pipeline auth is OIDC-only (no static cloud key):
-  - Workload Identity Pool + Provider trust `token.actions.githubusercontent.com`
-  - Repository scope is locked to `github_repository` (`owner/repo`) via provider condition
-  - Builder service account has only image-build roles:
-    - `roles/compute.instanceAdmin.v1`
-    - `roles/compute.imageAdmin`
-    - `roles/compute.networkUser`
-    - `roles/iam.serviceAccountUser` only on the project default Compute SA
-
-## Golden Image Pipeline
-
-- Workflow: `.github/workflows/golden-image-build.yml`
-- Trigger policy: weekly schedule (`cron`) + manual `workflow_dispatch` (emergency only)
-- Naming pattern: `quaero-backend-golden-YYYYMMDD-HHMM-<sha7>`
-- Family: `golden_image_family` (default `quaero-backend-golden`)
-- Provenance labels on each image:
-  - `quaero_role=backend-golden`
-  - `quaero_repo=<owner-repo>`
-  - `quaero_commit=<sha7>`
-  - `quaero_build_time=<UTC yyyymmddhhmm>`
-  - `quaero_run_id=<github run id>`
-- Retention policy: keep latest `golden_image_retention_count` images (default `5`) and delete older images in the family.
-
-### Required GitHub Repository Variables
-
-Set these before running golden-image workflow:
-
-- `GCP_PROJECT_ID`: target GCP project ID.
-- `GCP_GOLDEN_IMAGE_WIF_PROVIDER`: output `github_actions_workload_identity_provider`.
-- `GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT`: output `golden_image_builder_service_account_email`.
-- Optional: `GCP_GOLDEN_IMAGE_BUILD_ZONE` (default `us-east1-b`).
-- Optional: `GCP_GOLDEN_IMAGE_FAMILY` (default `quaero-backend-golden`).
-- Optional: `GCP_GOLDEN_IMAGE_RETENTION_COUNT` (default `5`).
 
 ## Ops Agent Controls
 
@@ -178,19 +62,12 @@ Set these in `envs/prod.tfvars`:
 
 - `enable_ops_agent` (bool): enables/disables Ops Agent bootstrap path.
 - `ops_agent_version` (string): required pinned version; use upstream `X.Y.Z` (recommended) or exact apt package version. Empty/unset or `latest` fails validation.
-- `reconcile_release_id` (string): reconcile rollout identifier.
-- `reconcile_bucket_name` (string, optional): dedicated reconcile artifact bucket (defaults to `<bucket_name>-reconcile`).
 - `ops_agent_collect_docker_logs` (bool): when false, Docker log receiver/pipeline is omitted.
 - `ops_agent_collect_host_metrics` (bool): when false, hostmetrics receiver/pipeline is omitted.
 
 Behavior details:
 
-- `metadata_startup_script` is a stable launcher (`scripts/startup-launcher.sh`) with no mutable rollout inputs.
-- Reconcile logic is delivered by versioned artifact `scripts/reconcile.sh` uploaded to a dedicated reconcile bucket.
-- Existing VMs have read-only access (`roles/storage.objectViewer`) to the reconcile bucket; document bucket write access is not used for reconcile artifact delivery.
-- Existing VMs read metadata (`reconcile_release_id`, reconcile object path, reconcile sha256, runtime values) and apply updates via `quaero-reconcile.timer` without VM replacement.
-- Launcher validates `sha256` before executing downloaded or cached reconcile artifact.
-- Reconcile script applies Ops Agent install/version independently from `/opt/quaero/.bootstrap_v2_done`.
+- Startup script reconciles Ops Agent install/version independently from `/opt/quaero/.bootstrap_v2_done`.
 - Version reconciliation resolves upstream pins (for example `2.51.0`) to matching distro-qualified apt builds (for example `2.51.0~debian12`) when needed.
 - Config is rendered from `scripts/ops-agent-config.yaml.tftpl` and written atomically to `/etc/google-cloud-ops-agent/config.yaml`.
 - Agent restart is gated on config hash drift; no restart occurs when config is unchanged.
@@ -220,12 +97,6 @@ Behavior details:
 - If Ops Agent rollout causes observability noise or instability, set
   `enable_ops_agent = false` and apply to stop/disable the service without
   requiring manual SSH edits.
-- Roll back startup behavior by pinning the previous release tuple
-  (`vm_image` as image version + `reconcile_release_id`) and deterministic pins
-  (`infra_commit_sha` + `reconcile_sha256`).
-- Run Terraform from the exact `infra_commit_sha` for the target rollback tuple
-  so `reconcile_sha256` derived from local `scripts/reconcile.sh` remains correct.
-- Use controlled VM recreate only when image rollback is required.
 
 ## Import Existing Resources (If Already Present)
 
@@ -248,9 +119,6 @@ terraform import -var-file=envs/prod.tfvars google_compute_instance.backend \
 
 terraform import -var-file=envs/prod.tfvars google_storage_bucket.documents \
   "quaero-pdf-storage"
-
-terraform import -var-file=envs/prod.tfvars google_storage_bucket.reconcile_artifacts \
-  "<reconcile-bucket-name>"
 
 terraform import -var-file=envs/prod.tfvars google_project_iam_member.backend_vm_log_writer \
   "portfolio-488721 roles/logging.logWriter serviceAccount:quaero-backend-sa@portfolio-488721.iam.gserviceaccount.com"
@@ -305,14 +173,7 @@ sudo systemctl status google-cloud-ops-agent --no-pager
 sudo cat /etc/google-cloud-ops-agent/config.yaml
 ```
 
-4. Confirm reconcile service + timer status:
-
-```bash
-sudo systemctl status quaero-reconcile.service --no-pager
-sudo systemctl status quaero-reconcile.timer --no-pager
-```
-
-5. Trigger GitHub Actions `Deploy Backend` (it now uploads `/opt/quaero/env/backend.env` from `BACKEND_ENV_B64` on every deploy).
+4. Trigger GitHub Actions `Deploy Backend` (it now uploads `/opt/quaero/env/backend.env` from `BACKEND_ENV_B64` on every deploy).
 
 ## Outputs
 

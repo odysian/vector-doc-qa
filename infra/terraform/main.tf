@@ -11,14 +11,6 @@ locals {
     ops_agent_collect_docker_logs  = var.ops_agent_collect_docker_logs
     ops_agent_collect_host_metrics = var.ops_agent_collect_host_metrics
   })
-  reconcile_artifact_source = "${path.module}/scripts/reconcile.sh"
-  reconcile_artifact_sha256 = filesha256(local.reconcile_artifact_source)
-  reconcile_bucket_name = (
-    length(trimspace(var.reconcile_bucket_name)) > 0
-    ? trimspace(var.reconcile_bucket_name)
-    : "${var.bucket_name}-reconcile"
-  )
-  reconcile_artifact_object = "reconcile/releases/${var.reconcile_release_id}/reconcile.sh"
 }
 
 resource "google_compute_address" "backend" {
@@ -38,36 +30,10 @@ resource "google_storage_bucket" "documents" {
   force_destroy               = false
 }
 
-resource "google_storage_bucket" "reconcile_artifacts" {
-  name                        = local.reconcile_bucket_name
-  location                    = var.region
-  uniform_bucket_level_access = true
-  force_destroy               = false
-
-  versioning {
-    enabled = true
-  }
-}
-
 resource "google_storage_bucket_iam_member" "backend_vm_bucket_access" {
   bucket = google_storage_bucket.documents.name
   role   = "roles/storage.objectUser"
   member = "serviceAccount:${google_service_account.backend_vm.email}"
-}
-
-resource "google_storage_bucket_iam_member" "backend_vm_reconcile_bucket_read" {
-  bucket = google_storage_bucket.reconcile_artifacts.name
-  role   = "roles/storage.objectViewer"
-  member = "serviceAccount:${google_service_account.backend_vm.email}"
-}
-
-resource "google_storage_bucket_object" "startup_reconcile_artifact" {
-  bucket = google_storage_bucket.reconcile_artifacts.name
-  name   = local.reconcile_artifact_object
-  source = local.reconcile_artifact_source
-
-  content_type   = "text/x-shellscript"
-  source_md5hash = filemd5(local.reconcile_artifact_source)
 }
 
 resource "google_project_iam_member" "backend_vm_log_writer" {
@@ -158,24 +124,21 @@ resource "google_compute_instance" "backend" {
   metadata = {
     "ssh-keys"               = local.ssh_keys_metadata
     "block-project-ssh-keys" = "true"
-    "ssh_user"               = var.ssh_user
-    "api_domain"             = var.api_domain
-    "frontend_url"           = var.frontend_url
-    "backend_port"           = tostring(var.backend_port)
-    "certbot_email"          = var.certbot_email
-    "enable_tls_bootstrap"   = tostring(var.enable_tls_bootstrap)
-    "bucket_name"            = var.bucket_name
-    "project_id"             = var.project_id
-    "enable_ops_agent"       = tostring(var.enable_ops_agent)
-    "ops_agent_version"      = trimspace(var.ops_agent_version)
-    "ops_agent_config_b64"   = base64encode(local.ops_agent_config)
-    "reconcile_release_id"   = var.reconcile_release_id
-    "reconcile_bucket"       = google_storage_bucket.reconcile_artifacts.name
-    "reconcile_object"       = google_storage_bucket_object.startup_reconcile_artifact.name
-    "reconcile_sha256"       = local.reconcile_artifact_sha256
   }
 
-  metadata_startup_script = file("${path.module}/scripts/startup-launcher.sh")
+  metadata_startup_script = templatefile("${path.module}/scripts/startup.sh.tftpl", {
+    ssh_user             = var.ssh_user
+    api_domain           = var.api_domain
+    frontend_url         = var.frontend_url
+    backend_port         = var.backend_port
+    certbot_email        = var.certbot_email
+    enable_tls_bootstrap = var.enable_tls_bootstrap
+    bucket_name          = var.bucket_name
+    project_id           = var.project_id
+    enable_ops_agent     = var.enable_ops_agent
+    ops_agent_version    = trimspace(var.ops_agent_version)
+    ops_agent_config_b64 = base64encode(local.ops_agent_config)
+  })
 
   service_account {
     email  = google_service_account.backend_vm.email
