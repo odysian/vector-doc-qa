@@ -95,11 +95,17 @@ jobs:
             exit 1
           fi
 
-          mapfile -t images < <(gcloud compute images list \
+          images_raw="$(gcloud compute images list \
             --project "${GCP_PROJECT_ID}" \
             --filter="family=${GOLDEN_IMAGE_FAMILY} AND labels.quaero_role=backend-golden" \
             --sort-by="~creationTimestamp" \
-            --format="value(name)")
+            --format="value(name)")"
+
+          if [ -z "${images_raw}" ]; then
+            images=()
+          else
+            mapfile -t images <<< "${images_raw}"
+          fi
 
           echo "Found ${#images[@]} images in family ${GOLDEN_IMAGE_FAMILY}"
           if [ "${#images[@]}" -le "${RETENTION_COUNT}" ]; then
