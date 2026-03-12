@@ -37,6 +37,10 @@ cd infra/terraform
 cp envs/prod.tfvars.example envs/prod.tfvars
 ```
 
+For golden-image production cutover, set `vm_image` in `envs/prod.tfvars` to
+an exact promoted image self-link (`projects/<project>/global/images/<image-name>`),
+not an image family path.
+
 ## Validate
 
 ```bash
@@ -141,8 +145,11 @@ Behavior details:
   `enable_ops_agent = false` and apply to stop/disable the service without
   requiring manual SSH edits.
 - Roll back startup behavior by pinning the previous release tuple
-  (`image_version` + `reconcile_release_id` + `reconcile_sha256`) and applying
-  Terraform. Use controlled VM recreate only when image rollback is required.
+  (`vm_image` as image version + `reconcile_release_id`) and deterministic pins
+  (`infra_commit_sha` + `reconcile_sha256`).
+- Run Terraform from the exact `infra_commit_sha` for the target rollback tuple
+  so `reconcile_sha256` derived from local `scripts/reconcile.sh` remains correct.
+- Use controlled VM recreate only when image rollback is required.
 
 ## Import Existing Resources (If Already Present)
 

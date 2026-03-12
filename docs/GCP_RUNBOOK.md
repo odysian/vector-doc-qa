@@ -459,14 +459,134 @@ Run after each production deploy once traffic is live:
 
 ---
 
-## 10. Change Log
+## 10. Golden Image Cutover + Rollback Evidence (Task #186)
+
+Use this section for the production cutover from stock image path to golden image path.
+Decision record: `docs/adr/008-vm-golden-image-cutover-and-tuple-rollback.md`.
+This section is an execution log template. Do not close Task #186 until placeholder fields are replaced with concrete values/links.
+
+Release tuple mapping:
+
+- `image_version` -> Terraform variable `vm_image`
+- `reconcile_release_id` -> Terraform variable `reconcile_release_id`
+- Determinism pins (required for reproducible rollback):
+  - `infra_commit_sha` -> exact repo commit used for Terraform apply
+  - `reconcile_sha256` -> expected metadata hash from Terraform plan at that commit
+
+### 10.1 Pre-cutover record (required)
+
+Record these before any production apply:
+
+- UTC window: `<required>`
+- Named owner signoff: `<required>`
+- Baseline bootstrap time (minutes): `<required>`
+- Previous rollback tuple (`vm_image`, `reconcile_release_id`): `<required>`
+- Previous determinism pins (`infra_commit_sha`, `reconcile_sha256`): `<required>`
+- Target rollout tuple (`vm_image`, `reconcile_release_id`): `<required>`
+- Target determinism pins (`infra_commit_sha`, `reconcile_sha256`): `<required>`
+- Pre-cutover snapshot/checkpoint ID: `<required>`
+- Non-prod rollback rehearsal evidence link: `<required>`
+
+Production pin rules:
+
+- `vm_image` must be an exact image self-link (not an image family reference).
+- Terraform apply must run from the exact `infra_commit_sha` recorded for that tuple.
+- `reconcile_sha256` from Terraform plan must match the recorded value before apply.
+
+Capture a checkpoint snapshot:
+
+```bash
+VM_DISK="$(gcloud compute instances describe quaero-backend --zone us-east1-b --format='value(disks[0].source.basename())')"
+SNAPSHOT_ID="quaero-backend-pre-cutover-$(date -u +%Y%m%d-%H%M%S)"
+gcloud compute disks snapshot "$VM_DISK" --zone us-east1-b --snapshot-names "$SNAPSHOT_ID"
+echo "checkpoint snapshot: $SNAPSHOT_ID"
+```
+
+### 10.2 Cutover apply
+
+1. Checkout the exact infra commit for the target tuple:
+
+```bash
+git checkout <infra_commit_sha>
+```
+
+2. Set rollout tuple in `infra/terraform/envs/prod.tfvars`:
+   - `vm_image` -> exact promoted image self-link (for example `projects/<project>/global/images/<image-name>`)
+   - `reconcile_release_id` -> approved reconcile artifact release
+3. Confirm planned metadata hash matches recorded `reconcile_sha256`.
+4. Run Terraform plan/apply in approved window:
+
+```bash
+cd infra/terraform
+terraform plan -var-file=envs/prod.tfvars
+terraform apply -var-file=envs/prod.tfvars
+```
+
+### 10.3 Post-cutover health gates (required)
+
+`/health` must pass 15 consecutive checks at 10-second interval:
+
+```bash
+for i in $(seq 1 15); do
+  curl -fsS https://api.quaero.odysian.dev/health >/dev/null || { echo "health gate failed at check ${i}"; exit 1; }
+  echo "health gate ${i}/15 passed"
+  sleep 10
+done
+```
+
+Ops Agent must stay healthy for 10 minutes with no restart loop:
+
+```bash
+sudo systemctl is-active --quiet google-cloud-ops-agent
+before="$(sudo systemctl show google-cloud-ops-agent -p NRestarts --value)"
+sleep 600
+after="$(sudo systemctl show google-cloud-ops-agent -p NRestarts --value)"
+test "$before" = "$after"
+sudo systemctl status google-cloud-ops-agent --no-pager
+```
+
+### 10.4 Bootstrap target calculation (required)
+
+Compute stricter threshold from issue contract (`<= 6 minutes` or `>= 40%` improvement, whichever is stricter):
+
+```bash
+BASELINE_MIN="<baseline-minutes>"
+POST_MIN="<post-cutover-minutes>"
+STRICT_TARGET_MIN="$(awk -v b="$BASELINE_MIN" 'BEGIN { t=b*0.6; if (t < 6) printf "%.2f", t; else printf "6.00" }')"
+awk -v post="$POST_MIN" -v target="$STRICT_TARGET_MIN" 'BEGIN { if (post <= target) { print "target_met=true"; exit 0 } print "target_met=false"; exit 1 }'
+```
+
+Record:
+
+- Post-cutover bootstrap time (minutes):
+- Strict target threshold (minutes):
+- Improvement vs baseline (%):
+- Target met: yes/no
+
+### 10.5 Rollback drill (required)
+
+1. In non-prod, checkout the exact `infra_commit_sha` for the previous known-good tuple.
+2. Re-pin previous known-good tuple in `envs/prod.tfvars` (`vm_image` exact self-link + `reconcile_release_id`).
+3. Run `terraform plan` and verify planned `reconcile_sha256` matches the recorded value.
+4. Run apply and confirm health gates.
+5. Document the tuple, determinism pins, and evidence link in this runbook.
+
+If production rollback is required:
+
+1. Checkout the exact `infra_commit_sha` for the previous known-good tuple.
+2. Re-pin previous tuple in `envs/prod.tfvars` (`vm_image` exact self-link + `reconcile_release_id`).
+3. Run `terraform plan` and confirm `reconcile_sha256` matches the recorded value.
+4. Apply Terraform in controlled window.
+5. Re-run the same health gates from section 10.3.
+
+## 11. Change Log
 
 - Initial runbook created during Step 1 (container + CI/CD foundation).
 - Update this file after each completed migration milestone.
 
 ---
 
-## 11. Cloud Storage Setup (Production)
+## 12. Cloud Storage Setup (Production)
 
 Use this after backend deployment is stable on GCP VM.
 
