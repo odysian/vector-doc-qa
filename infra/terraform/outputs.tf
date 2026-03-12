@@ -18,3 +18,12 @@ output "documents_bucket_name" {
   value       = google_storage_bucket.documents.name
 }
 
+output "github_actions_workload_identity_provider" {
+  description = "Full Workload Identity Provider resource name for GitHub Actions auth."
+  value       = google_iam_workload_identity_pool_provider.github_actions.name
+}
+
+output "terraform_ops_service_account_email_effective" {
+  description = "Service account email bound to GitHub OIDC for Terraform ops."
+  value       = local.terraform_ops_service_account_email_effective
+}

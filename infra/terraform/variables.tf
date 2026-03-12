@@ -166,3 +166,40 @@ variable "enable_secure_boot" {
   type        = bool
   default     = true
 }
+
+variable "github_repository" {
+  description = "GitHub repository allowed to use OIDC for Terraform ops (owner/repo)."
+  type        = string
+  default     = "odysian/vector-doc-qa"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
+    error_message = "github_repository must be in owner/repo format."
+  }
+}
+
+variable "github_oidc_pool_id" {
+  description = "Workload Identity Pool ID for GitHub Actions OIDC auth."
+  type        = string
+  default     = "github-actions-pool"
+}
+
+variable "github_oidc_provider_id" {
+  description = "Workload Identity Pool Provider ID for GitHub Actions OIDC auth."
+  type        = string
+  default     = "github-actions-provider"
+}
+
+variable "terraform_ops_service_account_email" {
+  description = "Service account email used by Terraform ops workflow. Leave empty to default to quaero-terraform-ops-sa@<project_id>.iam.gserviceaccount.com."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      trimspace(var.terraform_ops_service_account_email) == ""
+      || can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", trimspace(var.terraform_ops_service_account_email)))
+    )
+    error_message = "terraform_ops_service_account_email must be empty or a valid email."
+  }
+}

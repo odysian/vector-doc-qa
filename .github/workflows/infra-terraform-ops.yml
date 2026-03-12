@@ -39,8 +39,8 @@ permissions:
 
 env:
   GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-  GCP_TERRAFORM_WIF_PROVIDER: ${{ vars.GCP_TERRAFORM_WIF_PROVIDER || vars.GCP_GOLDEN_IMAGE_WIF_PROVIDER }}
-  GCP_TERRAFORM_SERVICE_ACCOUNT: ${{ vars.GCP_TERRAFORM_SERVICE_ACCOUNT || vars.GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT }}
+  GCP_TERRAFORM_WIF_PROVIDER: ${{ vars.GCP_TERRAFORM_WIF_PROVIDER }}
+  GCP_TERRAFORM_SERVICE_ACCOUNT: ${{ vars.GCP_TERRAFORM_SERVICE_ACCOUNT }}
 
 jobs:
   terraform-plan:
@@ -76,8 +76,8 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "${GCP_PROJECT_ID}" ] || { echo "Missing required repository variable: GCP_PROJECT_ID"; exit 1; }
-          [ -n "${GCP_TERRAFORM_WIF_PROVIDER}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_WIF_PROVIDER (or fallback GCP_GOLDEN_IMAGE_WIF_PROVIDER)"; exit 1; }
-          [ -n "${GCP_TERRAFORM_SERVICE_ACCOUNT}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_SERVICE_ACCOUNT (or fallback GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT)"; exit 1; }
+          [ -n "${GCP_TERRAFORM_WIF_PROVIDER}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_WIF_PROVIDER"; exit 1; }
+          [ -n "${GCP_TERRAFORM_SERVICE_ACCOUNT}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_SERVICE_ACCOUNT"; exit 1; }
           [ -n "${{ secrets.TFVARS_PROD_B64 }}" ] || { echo "Missing required repository secret: TFVARS_PROD_B64"; exit 1; }
 
       - name: Authenticate to Google Cloud (OIDC)
@@ -184,8 +184,8 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "${GCP_PROJECT_ID}" ] || { echo "Missing required repository variable: GCP_PROJECT_ID"; exit 1; }
-          [ -n "${GCP_TERRAFORM_WIF_PROVIDER}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_WIF_PROVIDER (or fallback GCP_GOLDEN_IMAGE_WIF_PROVIDER)"; exit 1; }
-          [ -n "${GCP_TERRAFORM_SERVICE_ACCOUNT}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_SERVICE_ACCOUNT (or fallback GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT)"; exit 1; }
+          [ -n "${GCP_TERRAFORM_WIF_PROVIDER}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_WIF_PROVIDER"; exit 1; }
+          [ -n "${GCP_TERRAFORM_SERVICE_ACCOUNT}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_SERVICE_ACCOUNT"; exit 1; }
           [ -n "${{ secrets.TFVARS_PROD_B64 }}" ] || { echo "Missing required repository secret: TFVARS_PROD_B64"; exit 1; }
 
       - name: Authenticate to Google Cloud (OIDC)

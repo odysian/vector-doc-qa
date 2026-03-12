@@ -44,6 +44,34 @@ terraform validate
 terraform plan -var-file=envs/prod.tfvars
 ```
 
+## Manual-Dispatch Terraform Ops Workflow (Optional)
+
+Use `.github/workflows/infra-terraform-ops.yml` for web-triggered `plan`, `apply`, and `destroy`.
+
+Required GitHub setup:
+
+- Repository variables:
+  - `GCP_PROJECT_ID`
+  - `GCP_TERRAFORM_WIF_PROVIDER` (Terraform output `github_actions_workload_identity_provider`)
+  - `GCP_TERRAFORM_SERVICE_ACCOUNT` (defaults to `quaero-terraform-ops-sa@<project_id>.iam.gserviceaccount.com` unless overridden by `terraform_ops_service_account_email`)
+- Repository secret:
+  - `TFVARS_PROD_B64` (base64 payload of local `envs/prod.tfvars`)
+- GitHub environment:
+  - `infra-prod` with required reviewers for mutating actions
+
+Set `TFVARS_PROD_B64` from repo root:
+
+```bash
+base64 -w 0 infra/terraform/envs/prod.tfvars | gh secret set TFVARS_PROD_B64
+```
+
+Dispatch behavior:
+
+- `plan`: must be dispatched from `main` with `target_ref=main`.
+- `apply`: same `main` restrictions; workflow plans to `tfplan.binary` and applies that plan.
+- `destroy`: same restrictions as `apply`, plus `destroy_confirm` must equal `DESTROY_PROD`.
+- `tf_dir` and `tfvars_path` are allowlisted to `infra/terraform` and `envs/prod.tfvars`.
+
 ## Security Defaults and Rollout
 
 - `ssh_source_ranges` is now explicit and must be provided.
