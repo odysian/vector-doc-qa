@@ -37,6 +37,9 @@ cd infra/terraform
 cp envs/prod.tfvars.example envs/prod.tfvars
 ```
 
+For golden-image production cutover, set `vm_image` in `envs/prod.tfvars` to
+the promoted image family path (or an exact image path for deterministic rollback).
+
 ## Validate
 
 ```bash
@@ -141,8 +144,8 @@ Behavior details:
   `enable_ops_agent = false` and apply to stop/disable the service without
   requiring manual SSH edits.
 - Roll back startup behavior by pinning the previous release tuple
-  (`image_version` + `reconcile_release_id` + `reconcile_sha256`) and applying
-  Terraform. Use controlled VM recreate only when image rollback is required.
+  (`vm_image` as image version + `reconcile_release_id` + `reconcile_sha256`)
+  and applying Terraform. Use controlled VM recreate only when image rollback is required.
 
 ## Import Existing Resources (If Already Present)
 
