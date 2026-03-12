@@ -18,3 +18,22 @@ output "documents_bucket_name" {
   value       = google_storage_bucket.documents.name
 }
 
+output "golden_image_builder_service_account_email" {
+  description = "Service account used by GitHub Actions to build golden images."
+  value       = google_service_account.golden_image_builder.email
+}
+
+output "github_actions_workload_identity_provider" {
+  description = "Full Workload Identity Provider resource name for GitHub Actions auth."
+  value       = google_iam_workload_identity_pool_provider.github_actions.name
+}
+
+output "golden_image_family" {
+  description = "Golden image family name used by image build workflow."
+  value       = var.golden_image_family
+}
+
+output "golden_image_retention_count" {
+  description = "How many latest golden images are retained for rollback."
+  value       = var.golden_image_retention_count
+}

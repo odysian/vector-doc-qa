@@ -166,3 +166,54 @@ variable "enable_secure_boot" {
   type        = bool
   default     = true
 }
+
+variable "github_repository" {
+  description = "GitHub repository allowed to use OIDC for golden image builds (owner/repo)."
+  type        = string
+  default     = "odysian/vector-doc-qa"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
+    error_message = "github_repository must be in owner/repo format."
+  }
+}
+
+variable "github_oidc_pool_id" {
+  description = "Workload Identity Pool ID for GitHub Actions OIDC auth."
+  type        = string
+  default     = "github-actions-pool"
+}
+
+variable "github_oidc_provider_id" {
+  description = "Workload Identity Pool Provider ID for GitHub Actions OIDC auth."
+  type        = string
+  default     = "github-actions-provider"
+}
+
+variable "golden_image_builder_service_account_id" {
+  description = "Service account ID used by GitHub Actions to build golden images."
+  type        = string
+  default     = "quaero-golden-build-sa"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.golden_image_builder_service_account_id))
+    error_message = "golden_image_builder_service_account_id must be 6-30 chars, lowercase alnum/hyphen, and start with a letter."
+  }
+}
+
+variable "golden_image_family" {
+  description = "Image family used by the golden image build workflow."
+  type        = string
+  default     = "quaero-backend-golden"
+}
+
+variable "golden_image_retention_count" {
+  description = "How many latest golden images to keep in the family for rollback."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.golden_image_retention_count >= 2
+    error_message = "golden_image_retention_count must be at least 2 to preserve rollback candidates."
+  }
+}
