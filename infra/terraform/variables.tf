@@ -66,6 +66,20 @@ variable "bucket_name" {
   type        = string
 }
 
+variable "reconcile_bucket_name" {
+  description = "Optional dedicated GCS bucket for reconcile artifacts. Leave empty to default to <bucket_name>-reconcile."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      trimspace(var.reconcile_bucket_name) == ""
+      || can(regex("^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$", trimspace(var.reconcile_bucket_name)))
+    )
+    error_message = "reconcile_bucket_name must be empty or a valid GCS bucket name."
+  }
+}
+
 variable "ssh_user" {
   description = "Linux SSH username provisioned on the VM."
   type        = string
@@ -140,6 +154,19 @@ variable "ops_agent_version" {
       && can(regex("^[0-9A-Za-z.+:~_-]+$", trimspace(var.ops_agent_version)))
     )
     error_message = "ops_agent_version must be a non-empty pinned package version and cannot be 'latest'."
+  }
+}
+
+variable "reconcile_release_id" {
+  description = "Version identifier for the external startup reconcile artifact."
+  type        = string
+
+  validation {
+    condition = (
+      length(trimspace(var.reconcile_release_id)) > 0
+      && can(regex("^[A-Za-z0-9._-]+$", trimspace(var.reconcile_release_id)))
+    )
+    error_message = "reconcile_release_id must be non-empty and use only letters, numbers, dots, hyphens, or underscores."
   }
 }
 

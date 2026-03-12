@@ -8,8 +8,10 @@ This directory manages Quaero's GCP infrastructure excluding Cloud SQL:
 - VM service account and IAM bindings
 - GitHub OIDC trust and golden-image builder service account
 - GCS bucket for documents (`quaero-pdf-storage`)
+- dedicated GCS reconcile artifact bucket (read-only from runtime VM)
 
-VM bootstrap via startup script also configures:
+VM bootstrap uses a stable startup launcher that installs `quaero-reconcile.service` + `quaero-reconcile.timer`.
+Runtime reconcile then applies:
 
 - Docker engine
 - NGINX reverse proxy (`server_name = api.quaero.odysian.dev`)
@@ -96,12 +98,19 @@ Set these in `envs/prod.tfvars`:
 
 - `enable_ops_agent` (bool): enables/disables Ops Agent bootstrap path.
 - `ops_agent_version` (string): required pinned version; use upstream `X.Y.Z` (recommended) or exact apt package version. Empty/unset or `latest` fails validation.
+- `reconcile_release_id` (string): reconcile rollout identifier.
+- `reconcile_bucket_name` (string, optional): dedicated reconcile artifact bucket (defaults to `<bucket_name>-reconcile`).
 - `ops_agent_collect_docker_logs` (bool): when false, Docker log receiver/pipeline is omitted.
 - `ops_agent_collect_host_metrics` (bool): when false, hostmetrics receiver/pipeline is omitted.
 
 Behavior details:
 
-- Startup script reconciles Ops Agent install/version independently from `/opt/quaero/.bootstrap_v2_done`.
+- `metadata_startup_script` is a stable launcher (`scripts/startup-launcher.sh`) with no mutable rollout inputs.
+- Reconcile logic is delivered by versioned artifact `scripts/reconcile.sh` uploaded to a dedicated reconcile bucket.
+- Existing VMs have read-only access (`roles/storage.objectViewer`) to the reconcile bucket; document bucket write access is not used for reconcile artifact delivery.
+- Existing VMs read metadata (`reconcile_release_id`, reconcile object path, reconcile sha256, runtime values) and apply updates via `quaero-reconcile.timer` without VM replacement.
+- Launcher validates `sha256` before executing downloaded or cached reconcile artifact.
+- Reconcile script applies Ops Agent install/version independently from `/opt/quaero/.bootstrap_v2_done`.
 - Version reconciliation resolves upstream pins (for example `2.51.0`) to matching distro-qualified apt builds (for example `2.51.0~debian12`) when needed.
 - Config is rendered from `scripts/ops-agent-config.yaml.tftpl` and written atomically to `/etc/google-cloud-ops-agent/config.yaml`.
 - Agent restart is gated on config hash drift; no restart occurs when config is unchanged.
@@ -131,6 +140,9 @@ Behavior details:
 - If Ops Agent rollout causes observability noise or instability, set
   `enable_ops_agent = false` and apply to stop/disable the service without
   requiring manual SSH edits.
+- Roll back startup behavior by pinning the previous release tuple
+  (`image_version` + `reconcile_release_id` + `reconcile_sha256`) and applying
+  Terraform. Use controlled VM recreate only when image rollback is required.
 
 ## Import Existing Resources (If Already Present)
 
@@ -153,6 +165,9 @@ terraform import -var-file=envs/prod.tfvars google_compute_instance.backend \
 
 terraform import -var-file=envs/prod.tfvars google_storage_bucket.documents \
   "quaero-pdf-storage"
+
+terraform import -var-file=envs/prod.tfvars google_storage_bucket.reconcile_artifacts \
+  "<reconcile-bucket-name>"
 
 terraform import -var-file=envs/prod.tfvars google_project_iam_member.backend_vm_log_writer \
   "portfolio-488721 roles/logging.logWriter serviceAccount:quaero-backend-sa@portfolio-488721.iam.gserviceaccount.com"
@@ -207,7 +222,14 @@ sudo systemctl status google-cloud-ops-agent --no-pager
 sudo cat /etc/google-cloud-ops-agent/config.yaml
 ```
 
-4. Trigger GitHub Actions `Deploy Backend` (it now uploads `/opt/quaero/env/backend.env` from `BACKEND_ENV_B64` on every deploy).
+4. Confirm reconcile service + timer status:
+
+```bash
+sudo systemctl status quaero-reconcile.service --no-pager
+sudo systemctl status quaero-reconcile.timer --no-pager
+```
+
+5. Trigger GitHub Actions `Deploy Backend` (it now uploads `/opt/quaero/env/backend.env` from `BACKEND_ENV_B64` on every deploy).
 
 ## Outputs
 

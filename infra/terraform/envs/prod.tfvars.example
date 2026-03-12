@@ -9,6 +9,8 @@ machine_type   = "e2-micro"
 static_ip_name = "quaero-backend-ip"
 
 bucket_name          = "your-gcs-bucket-name"
+# Optional override; default is "<bucket_name>-reconcile".
+reconcile_bucket_name = ""
 ssh_user             = "your-ssh-user"
 api_domain           = "api.example.com"
 frontend_url         = "https://app.example.com"
@@ -17,6 +19,7 @@ enable_tls_bootstrap = true
 certbot_email        = "you@example.com"
 enable_ops_agent     = false
 ops_agent_version    = "2.51.0"
+reconcile_release_id = "r20260311a"
 
 ops_agent_collect_docker_logs = true
 ops_agent_collect_host_metrics = true
