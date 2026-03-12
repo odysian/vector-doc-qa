@@ -1,0 +1,225 @@
+name: Infra Terraform Ops
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action"
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+      target_ref:
+        description: "Git ref to run from (plan only supports non-main refs)"
+        required: true
+        default: main
+        type: string
+      tf_dir:
+        description: "Terraform directory"
+        required: true
+        default: infra/terraform
+        type: string
+      tfvars_path:
+        description: "Path relative to tf_dir for runtime tfvars file"
+        required: true
+        default: envs/prod.tfvars
+        type: string
+      destroy_confirm:
+        description: "Required for destroy: type DESTROY_PROD"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_TERRAFORM_WIF_PROVIDER: ${{ vars.GCP_TERRAFORM_WIF_PROVIDER || vars.GCP_GOLDEN_IMAGE_WIF_PROVIDER }}
+  GCP_TERRAFORM_SERVICE_ACCOUNT: ${{ vars.GCP_TERRAFORM_SERVICE_ACCOUNT || vars.GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT }}
+
+jobs:
+  terraform-plan:
+    if: ${{ inputs.action == 'plan' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout target ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_ref }}
+
+      - name: Validate required workflow config
+        run: |
+          set -euo pipefail
+          [ -n "${GCP_PROJECT_ID}" ] || { echo "Missing required repository variable: GCP_PROJECT_ID"; exit 1; }
+          [ -n "${GCP_TERRAFORM_WIF_PROVIDER}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_WIF_PROVIDER (or fallback GCP_GOLDEN_IMAGE_WIF_PROVIDER)"; exit 1; }
+          [ -n "${GCP_TERRAFORM_SERVICE_ACCOUNT}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_SERVICE_ACCOUNT (or fallback GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT)"; exit 1; }
+          [ -n "${{ secrets.TFVARS_PROD_B64 }}" ] || { echo "Missing required repository secret: TFVARS_PROD_B64"; exit 1; }
+
+      - name: Authenticate to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_TERRAFORM_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Decode runtime tfvars
+        id: decode_tfvars
+        run: |
+          set -euo pipefail
+          tfvars_file="${{ inputs.tf_dir }}/${{ inputs.tfvars_path }}"
+          mkdir -p "$(dirname "${tfvars_file}")"
+          umask 077
+          printf '%s' "${{ secrets.TFVARS_PROD_B64 }}" | base64 --decode > "${tfvars_file}"
+          [ -s "${tfvars_file}" ] || { echo "Decoded tfvars is missing or empty"; exit 1; }
+          echo "tfvars_file=${tfvars_file}" >> "${GITHUB_OUTPUT}"
+
+      - name: Terraform init and validate
+        run: |
+          set -euo pipefail
+          terraform -chdir="${{ inputs.tf_dir }}" init -input=false
+          terraform -chdir="${{ inputs.tf_dir }}" validate
+
+      - name: Terraform plan
+        run: |
+          set -euo pipefail
+          terraform -chdir="${{ inputs.tf_dir }}" plan -input=false -var-file="${{ inputs.tfvars_path }}"
+
+      - name: Summarize run
+        if: always()
+        run: |
+          {
+            echo "## Infra Terraform Ops"
+            echo
+            echo "- Action: \`${{ inputs.action }}\`"
+            echo "- Ref: \`${{ inputs.target_ref }}\`"
+            echo "- Terraform dir: \`${{ inputs.tf_dir }}\`"
+            echo "- tfvars path: \`${{ inputs.tfvars_path }}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: |
+          tfvars_file="${{ inputs.tf_dir }}/${{ inputs.tfvars_path }}"
+          rm -f "${tfvars_file}" "${{ inputs.tf_dir }}/tfplan.binary" "${{ inputs.tf_dir }}/tfplan.destroy.binary"
+
+  terraform-mutate-guard:
+    if: ${{ inputs.action == 'apply' || inputs.action == 'destroy' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Enforce protected main for mutating actions
+        run: |
+          set -euo pipefail
+          [ "${GITHUB_REF}" = "refs/heads/main" ] || { echo "Mutating actions must be dispatched from main. Current ref: ${GITHUB_REF}"; exit 1; }
+          [ "${{ inputs.target_ref }}" = "main" ] || { echo "Mutating actions require target_ref=main."; exit 1; }
+
+      - name: Guard destroy confirmation
+        if: ${{ inputs.action == 'destroy' }}
+        run: |
+          set -euo pipefail
+          [ "${{ inputs.destroy_confirm }}" = "DESTROY_PROD" ] || { echo "Destroy blocked: destroy_confirm must equal DESTROY_PROD"; exit 1; }
+
+  terraform-mutate:
+    if: ${{ inputs.action == 'apply' || inputs.action == 'destroy' }}
+    needs: terraform-mutate-guard
+    runs-on: ubuntu-latest
+    environment: infra-prod
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Validate required workflow config
+        run: |
+          set -euo pipefail
+          [ -n "${GCP_PROJECT_ID}" ] || { echo "Missing required repository variable: GCP_PROJECT_ID"; exit 1; }
+          [ -n "${GCP_TERRAFORM_WIF_PROVIDER}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_WIF_PROVIDER (or fallback GCP_GOLDEN_IMAGE_WIF_PROVIDER)"; exit 1; }
+          [ -n "${GCP_TERRAFORM_SERVICE_ACCOUNT}" ] || { echo "Missing required repository variable: GCP_TERRAFORM_SERVICE_ACCOUNT (or fallback GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT)"; exit 1; }
+          [ -n "${{ secrets.TFVARS_PROD_B64 }}" ] || { echo "Missing required repository secret: TFVARS_PROD_B64"; exit 1; }
+
+      - name: Authenticate to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_TERRAFORM_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Decode runtime tfvars
+        id: decode_tfvars
+        run: |
+          set -euo pipefail
+          tfvars_file="${{ inputs.tf_dir }}/${{ inputs.tfvars_path }}"
+          mkdir -p "$(dirname "${tfvars_file}")"
+          umask 077
+          printf '%s' "${{ secrets.TFVARS_PROD_B64 }}" | base64 --decode > "${tfvars_file}"
+          [ -s "${tfvars_file}" ] || { echo "Decoded tfvars is missing or empty"; exit 1; }
+          echo "tfvars_file=${tfvars_file}" >> "${GITHUB_OUTPUT}"
+
+      - name: Terraform init and validate
+        run: |
+          set -euo pipefail
+          terraform -chdir="${{ inputs.tf_dir }}" init -input=false
+          terraform -chdir="${{ inputs.tf_dir }}" validate
+
+      - name: Terraform plan for apply
+        if: ${{ inputs.action == 'apply' }}
+        run: |
+          set -euo pipefail
+          terraform -chdir="${{ inputs.tf_dir }}" plan -input=false -var-file="${{ inputs.tfvars_path }}" -out=tfplan.binary
+
+      - name: Terraform plan for destroy
+        if: ${{ inputs.action == 'destroy' }}
+        run: |
+          set -euo pipefail
+          terraform -chdir="${{ inputs.tf_dir }}" plan -destroy -input=false -var-file="${{ inputs.tfvars_path }}" -out=tfplan.destroy.binary
+
+      - name: Terraform apply planned apply
+        if: ${{ inputs.action == 'apply' }}
+        run: |
+          set -euo pipefail
+          terraform -chdir="${{ inputs.tf_dir }}" apply -input=false -auto-approve tfplan.binary
+
+      - name: Terraform apply planned destroy
+        if: ${{ inputs.action == 'destroy' }}
+        run: |
+          set -euo pipefail
+          terraform -chdir="${{ inputs.tf_dir }}" apply -input=false -auto-approve tfplan.destroy.binary
+
+      - name: Summarize run
+        if: always()
+        run: |
+          {
+            echo "## Infra Terraform Ops"
+            echo
+            echo "- Action: \`${{ inputs.action }}\`"
+            echo "- Ref: \`${{ inputs.target_ref }}\`"
+            echo "- Terraform dir: \`${{ inputs.tf_dir }}\`"
+            echo "- tfvars path: \`${{ inputs.tfvars_path }}\`"
+            if [ "${{ inputs.action }}" = "destroy" ]; then
+              echo "- Destroy confirm provided: \`${{ inputs.destroy_confirm == 'DESTROY_PROD' }}\`"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: |
+          tfvars_file="${{ inputs.tf_dir }}/${{ inputs.tfvars_path }}"
+          rm -f "${tfvars_file}" "${{ inputs.tf_dir }}/tfplan.binary" "${{ inputs.tf_dir }}/tfplan.destroy.binary"

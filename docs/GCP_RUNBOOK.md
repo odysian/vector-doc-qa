@@ -483,7 +483,8 @@ Use terminal-driven Terraform as the default control plane for production rollou
 4. Run required post-cutover health gates (section 10.3).
 5. For rollback, use the same tuple/pin discipline described in section 10.5.
 
-GitHub workflow-based cutover automation is retired from active process in this repo.
+High-overhead workflow-based cutover automation is retired from active process in this repo.
+For optional web-based Terraform operations, use the minimal manual-dispatch workflow documented in section 10.6.
 
 ### 10.1 Pre-cutover record (required)
 
@@ -610,6 +611,40 @@ If production rollback is required:
 3. Run `terraform plan` and confirm `reconcile_sha256` matches the recorded value.
 4. Apply Terraform in controlled window.
 5. Re-run the same health gates from section 10.3.
+
+### 10.6 Manual-dispatch Terraform ops workflow (optional)
+
+Use `.github/workflows/infra-terraform-ops.yml` for web-triggered Terraform operations (`plan`, `apply`, `destroy`) when terminal access is not preferred.
+
+Required setup:
+
+- Repository secret: `TFVARS_PROD_B64` (base64-encoded full `infra/terraform/envs/prod.tfvars` payload)
+- Repository variables for OIDC auth:
+  - `GCP_PROJECT_ID`
+  - `GCP_TERRAFORM_WIF_PROVIDER` (or fallback `GCP_GOLDEN_IMAGE_WIF_PROVIDER`)
+  - `GCP_TERRAFORM_SERVICE_ACCOUNT` (or fallback `GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT`)
+- GitHub environment: `infra-prod` with required reviewers (mutating runs only)
+
+Set/update tfvars secret:
+
+```bash
+base64 -w 0 infra/terraform/envs/prod.tfvars | gh secret set TFVARS_PROD_B64
+```
+
+Dispatch inputs:
+
+- `action`: `plan` | `apply` | `destroy`
+- `target_ref`: git ref (must be `main` for `apply`/`destroy`)
+- `tf_dir`: defaults to `infra/terraform`
+- `tfvars_path`: defaults to `envs/prod.tfvars`
+- `destroy_confirm`: must equal `DESTROY_PROD` for destroy
+
+Safety gates:
+
+- `apply`/`destroy` fail unless dispatched from protected `main` and `target_ref=main`
+- `apply`/`destroy` require `infra-prod` environment approval
+- `destroy` fails unless `destroy_confirm=DESTROY_PROD`
+- decoded tfvars and local plan binaries are removed in an `always()` cleanup step
 
 ## 11. Change Log
 

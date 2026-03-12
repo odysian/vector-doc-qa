@@ -70,6 +70,35 @@ terraform apply -var-file=envs/prod.tfvars
 4. Run post-cutover health checks from `docs/GCP_RUNBOOK.md` section 10.3.
 5. Record tuple and pins (`vm_image`, `reconcile_release_id`, `infra_commit_sha`, `reconcile_sha256`) in rollout evidence.
 
+## Manual-Dispatch Terraform Ops Workflow (Optional)
+
+For web-triggered Terraform operations, use `.github/workflows/infra-terraform-ops.yml`.
+This workflow intentionally keeps scope minimal: `plan`, `apply`, `destroy`.
+
+Required setup:
+
+- GitHub secret: `TFVARS_PROD_B64` (base64 payload of full `envs/prod.tfvars`)
+- GitHub repository variables:
+  - `GCP_PROJECT_ID`
+  - `GCP_TERRAFORM_WIF_PROVIDER` (fallback: `GCP_GOLDEN_IMAGE_WIF_PROVIDER`)
+  - `GCP_TERRAFORM_SERVICE_ACCOUNT` (fallback: `GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT`)
+- GitHub environment: `infra-prod` with required reviewers for mutating actions
+
+Set secret:
+
+```bash
+cd infra/terraform
+base64 -w 0 envs/prod.tfvars | gh secret set TFVARS_PROD_B64
+```
+
+Dispatch usage:
+
+- `plan`: choose any `target_ref` and run a non-mutating plan.
+- `apply`: must be dispatched from `main` with `target_ref=main`; workflow plans to `tfplan.binary` then applies that plan.
+- `destroy`: same `main` restrictions as apply, plus `destroy_confirm` must equal `DESTROY_PROD`; workflow plans to `tfplan.destroy.binary` then applies that plan.
+
+Sensitive runtime files (`envs/prod.tfvars` decoded from secret and local plan binaries) are deleted in an `always()` cleanup step.
+
 ## Rollback (Manual-First)
 
 1. Checkout the exact prior `infra_commit_sha`.
