@@ -1,6 +1,11 @@
 terraform {
   required_version = ">= 1.6.0"
 
+  backend "gcs" {
+    bucket = "quaero-terraform-state"
+    prefix = "prod"
+  }
+
   required_providers {
     google = {
       source  = "hashicorp/google"
@@ -14,4 +19,3 @@ provider "google" {
   region  = var.region
   zone    = var.zone
 }
-
