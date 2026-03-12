@@ -634,13 +634,14 @@ base64 -w 0 infra/terraform/envs/prod.tfvars | gh secret set TFVARS_PROD_B64
 Dispatch inputs:
 
 - `action`: `plan` | `apply` | `destroy`
-- `target_ref`: git ref (must be `main` for `apply`/`destroy`)
+- `target_ref`: git ref input (must be `main`)
 - `tf_dir`: defaults to `infra/terraform`
 - `tfvars_path`: defaults to `envs/prod.tfvars`
 - `destroy_confirm`: must equal `DESTROY_PROD` for destroy
 
 Safety gates:
 
+- `plan` fails unless dispatched from protected `main` and `target_ref=main`
 - `apply`/`destroy` fail unless dispatched from protected `main` and `target_ref=main`
 - `apply`/`destroy` require `infra-prod` environment approval
 - `destroy` fails unless `destroy_confirm=DESTROY_PROD`

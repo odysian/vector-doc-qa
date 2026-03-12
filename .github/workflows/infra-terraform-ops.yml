@@ -13,7 +13,7 @@ on:
           - apply
           - destroy
       target_ref:
-        description: "Git ref to run from (plan only supports non-main refs)"
+        description: "Git ref input (must be main for this workflow)"
         required: true
         default: main
         type: string
@@ -48,10 +48,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout target ref
+      - name: Enforce protected main for plan
+        run: |
+          set -euo pipefail
+          [ "${GITHUB_REF}" = "refs/heads/main" ] || { echo "Plan must be dispatched from main. Current ref: ${GITHUB_REF}"; exit 1; }
+          [ "${{ inputs.target_ref }}" = "main" ] || { echo "Plan requires target_ref=main."; exit 1; }
+
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.target_ref }}
+          ref: main
 
       - name: Validate required workflow config
         run: |

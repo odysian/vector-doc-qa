@@ -93,7 +93,7 @@ base64 -w 0 envs/prod.tfvars | gh secret set TFVARS_PROD_B64
 
 Dispatch usage:
 
-- `plan`: choose any `target_ref` and run a non-mutating plan.
+- `plan`: must be dispatched from `main` with `target_ref=main`.
 - `apply`: must be dispatched from `main` with `target_ref=main`; workflow plans to `tfplan.binary` then applies that plan.
 - `destroy`: same `main` restrictions as apply, plus `destroy_confirm` must equal `DESTROY_PROD`; workflow plans to `tfplan.destroy.binary` then applies that plan.
 
