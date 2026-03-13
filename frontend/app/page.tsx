@@ -50,7 +50,8 @@ export default function Home() {
               Quaero
             </h1>
             <p className="max-w-xl mx-auto text-2xl leading-tight text-zinc-100 sm:text-3xl lg:mx-0">
-              Ask better questions across your PDFs and get grounded answers with citations.
+              Ask questions across your PDFs and get grounded answers with
+              citations.
             </p>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center lg:justify-start">
@@ -77,15 +78,21 @@ export default function Home() {
             <ol className="space-y-4 text-sm text-zinc-300">
               <li>
                 <p className="text-zinc-100">1. Upload PDFs</p>
-                <p className="text-zinc-400">Ingest files once, then query them anytime.</p>
+                <p className="text-zinc-400">
+                  Ingest files once, then query them anytime.
+                </p>
               </li>
               <li>
                 <p className="text-zinc-100">2. Ask in plain language</p>
-                <p className="text-zinc-400">Use natural prompts instead of manual searching.</p>
+                <p className="text-zinc-400">
+                  Use natural prompts instead of manual searching.
+                </p>
               </li>
               <li>
                 <p className="text-zinc-100">3. Validate with citations</p>
-                <p className="text-zinc-400">Jump straight to supporting excerpts.</p>
+                <p className="text-zinc-400">
+                  Jump straight to supporting excerpts.
+                </p>
               </li>
             </ol>
             <ul className="space-y-2 border-t border-zinc-800 pt-4 text-sm text-zinc-300">
