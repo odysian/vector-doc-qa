@@ -67,25 +67,20 @@ export default function LoginPage() {
     <div className="min-h-screen bg-zinc-950 p-4 sm:p-6">
       <div className="absolute inset-0 quaero-gradient-overlay" aria-hidden />
 
-      <main className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-5xl items-center py-8 sm:py-12">
+      <main className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-5xl items-start py-6 sm:py-8">
         <section className="grid w-full gap-8 lg:grid-cols-[1fr_0.95fr] lg:gap-10">
-          <div className="space-y-5 self-center">
-            <p className="text-label-accent">Welcome Back</p>
+          <div className="space-y-5 self-start pt-1">
             <h1 className="font-cormorant text-5xl font-bold italic text-lapis-300 sm:text-6xl">
               Quaero
             </h1>
             <p className="max-w-md text-2xl leading-tight text-zinc-100">
               Continue where you left off with your document workspace.
             </p>
-            <p className="max-w-md text-sm text-zinc-400">
-              Sign in to access your saved documents, chats, and citations.
-            </p>
           </div>
 
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-8">
             <div className="mb-6">
               <p className="text-zinc-100 text-xl font-semibold">Sign In</p>
-              <p className="mt-2 text-sm text-zinc-400">Use your existing credentials to continue.</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">

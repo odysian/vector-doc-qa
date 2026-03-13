@@ -43,18 +43,14 @@ export default function Home() {
     <div className="min-h-screen bg-zinc-950 p-4 sm:p-6">
       <div className="absolute inset-0 quaero-gradient-overlay" aria-hidden />
 
-      <main className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-6xl items-center py-8 sm:py-12">
+      <main className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-6xl items-start py-6 sm:py-8">
         <section className="grid w-full gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:gap-10">
-          <div className="space-y-6">
-            <p className="text-label-accent">Document Q&amp;A Workspace</p>
+          <div className="space-y-6 self-start pt-1">
             <h1 className="font-cormorant text-5xl font-bold italic text-lapis-300 sm:text-6xl lg:text-7xl">
               Quaero
             </h1>
             <p className="max-w-xl text-2xl leading-tight text-zinc-100 sm:text-3xl">
               Ask better questions across your PDFs and get grounded answers with citations.
-            </p>
-            <p className="max-w-xl text-base text-zinc-400">
-              Upload documents, retrieve precise context, and move from scattered files to verifiable answers in one place.
             </p>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -74,12 +70,6 @@ export default function Home() {
               </Link>
             </div>
             {error && <p className="text-sm text-red-400">{error}</p>}
-
-            <ul className="grid gap-2 text-sm text-zinc-300 sm:grid-cols-3">
-              <li className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2">Cited answers only</li>
-              <li className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2">Your documents stay scoped</li>
-              <li className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2">Fast retrieval + chat workflow</li>
-            </ul>
           </div>
 
           <div className="space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/70 p-6 sm:p-8">
@@ -98,6 +88,11 @@ export default function Home() {
                 <p className="text-zinc-400">Jump straight to supporting excerpts.</p>
               </li>
             </ol>
+            <ul className="space-y-2 border-t border-zinc-800 pt-4 text-sm text-zinc-300">
+              <li>Cited answers only</li>
+              <li>Your documents stay scoped</li>
+              <li>Fast retrieval + chat workflow</li>
+            </ul>
           </div>
         </section>
       </main>
