@@ -498,7 +498,7 @@ export function ChatWindow({
             <button
               type="button"
               onClick={stopActiveStream}
-              className="ui-btn ui-btn-neutral ui-btn-md shrink-0 min-h-[44px] px-4"
+              className="ui-btn ui-btn-neutral ui-btn-md shrink-0 self-stretch px-4"
             >
               Stop
             </button>
@@ -506,7 +506,7 @@ export function ChatWindow({
             <button
               type="submit"
               disabled={!input.trim() || isStreaming}
-              className="ui-btn ui-btn-primary ui-btn-md shrink-0 min-h-[44px] px-4"
+              className="ui-btn ui-btn-primary ui-btn-md shrink-0 self-stretch px-4"
             >
               Send
             </button>
