@@ -16,18 +16,25 @@ import { workspaceService } from "@/lib/services/workspaceService";
  * Boundaries: reads/writes through document/workspace/auth services only.
  * Side effects: network fetch/upload/process/delete calls, polling, and responsive layout observation.
  */
-const SPLIT_LAYOUT_MIN_WIDTH = 1120;
-const SPLIT_LAYOUT_RESTORE_WIDTH = 1240;
+const COMPACT_LAYOUT_MIN_WIDTH = 1024;
+const DESKTOP_LAYOUT_MIN_WIDTH = 1150;
 const POLL_INITIAL_DELAY_MS = 3000;
 const POLL_MAX_DELAY_MS = 10000;
 
-const getInitialUseTabLayout = (): boolean => {
-  if (typeof window === "undefined") return true;
-  return window.innerWidth < SPLIT_LAYOUT_MIN_WIDTH;
-};
-
 export type MobileTab = "pdf" | "chat";
 export type DashboardMode = "documents" | "workspaces";
+export type LayoutMode = "mobile" | "compact" | "desktop";
+
+const getLayoutModeFromWidth = (width: number): LayoutMode => {
+  if (width >= DESKTOP_LAYOUT_MIN_WIDTH) return "desktop";
+  if (width >= COMPACT_LAYOUT_MIN_WIDTH) return "compact";
+  return "mobile";
+};
+
+const getInitialLayoutMode = (): LayoutMode => {
+  if (typeof window === "undefined") return "mobile";
+  return getLayoutModeFromWidth(window.innerWidth);
+};
 
 interface CitationTarget {
   page: number;
@@ -55,9 +62,8 @@ export interface UseDashboardStateResult {
   highlightPage: number | null;
   highlightSnippet: string | null;
   mobileTab: MobileTab;
-  useTabLayout: boolean;
+  layoutMode: LayoutMode;
   desktopSidebarCollapsed: boolean;
-  workspaceElement: HTMLDivElement | null;
   isDemoUser: boolean;
   hasActiveDocuments: boolean;
   clearError: () => void;
@@ -79,7 +85,6 @@ export interface UseDashboardStateResult {
   handleViewerDocumentSwitch: (documentId: number) => void;
   handleBackToWorkspaces: () => void;
   setSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setWorkspaceElement: React.Dispatch<React.SetStateAction<HTMLDivElement | null>>;
   setMobileTab: React.Dispatch<React.SetStateAction<MobileTab>>;
   setDesktopSidebarCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
 }
@@ -105,9 +110,8 @@ export function useDashboardState({
   const [highlightPage, setHighlightPage] = useState<number | null>(null);
   const [highlightSnippet, setHighlightSnippet] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
-  const [useTabLayout, setUseTabLayout] = useState(getInitialUseTabLayout);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(getInitialLayoutMode);
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
-  const [workspaceElement, setWorkspaceElement] = useState<HTMLDivElement | null>(null);
   const [isDemoUser, setIsDemoUser] = useState(false);
   const documentsRef = useRef<Document[]>([]);
 
@@ -300,39 +304,38 @@ export function useDashboardState({
   }, [hasActiveDocuments, loading, handleSessionExpired, isSessionExpired]);
 
   useEffect(() => {
-    if (!workspaceElement) return;
+    if (typeof window === "undefined") return;
+    if (typeof window.matchMedia !== "function") return;
 
-    let frameId: number | null = null;
+    const desktopMediaQuery = window.matchMedia(`(min-width: ${DESKTOP_LAYOUT_MIN_WIDTH}px)`);
+    const compactMediaQuery = window.matchMedia(`(min-width: ${COMPACT_LAYOUT_MIN_WIDTH}px)`);
 
-    const updateLayoutMode = (width: number) => {
-      setUseTabLayout((current) => {
-        if (current) {
-          return width < SPLIT_LAYOUT_RESTORE_WIDTH;
-        }
-        return width < SPLIT_LAYOUT_MIN_WIDTH;
-      });
+    const updateLayoutMode = () => {
+      if (desktopMediaQuery.matches) {
+        setLayoutMode("desktop");
+        return;
+      }
+      if (compactMediaQuery.matches) {
+        setLayoutMode("compact");
+        return;
+      }
+      setLayoutMode("mobile");
     };
 
-    updateLayoutMode(Math.floor(workspaceElement.clientWidth));
+    updateLayoutMode();
 
-    const observer = new ResizeObserver((entries) => {
-      const [entry] = entries;
-      if (!entry) return;
+    const handleChange = () => {
+      updateLayoutMode();
+    };
 
-      if (frameId !== null) window.cancelAnimationFrame(frameId);
-      // Batch resize-driven state updates onto the next frame to avoid layout thrash.
-      frameId = window.requestAnimationFrame(() => {
-        updateLayoutMode(Math.floor(entry.contentRect.width));
-      });
-    });
-
-    observer.observe(workspaceElement);
+    desktopMediaQuery.addEventListener("change", handleChange);
+    compactMediaQuery.addEventListener("change", handleChange);
 
     return () => {
-      if (frameId !== null) window.cancelAnimationFrame(frameId);
-      observer.disconnect();
+      desktopMediaQuery.removeEventListener("change", handleChange);
+      compactMediaQuery.removeEventListener("change", handleChange);
     };
-  }, [workspaceElement]);
+  }, []);
 
   const handleUpload = async (file: File) => {
     setError("");
@@ -608,9 +611,8 @@ export function useDashboardState({
     highlightPage,
     highlightSnippet,
     mobileTab,
-    useTabLayout,
+    layoutMode,
     desktopSidebarCollapsed,
-    workspaceElement,
     isDemoUser,
     hasActiveDocuments,
     clearError,
@@ -632,7 +634,6 @@ export function useDashboardState({
     handleViewerDocumentSwitch,
     handleBackToWorkspaces,
     setSidebarOpen,
-    setWorkspaceElement,
     setMobileTab,
     setDesktopSidebarCollapsed,
   };
