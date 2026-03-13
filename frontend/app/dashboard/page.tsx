@@ -150,14 +150,14 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={() => setDashboardMode("documents")}
-            className={`ui-segmented-option ${dashboardMode === "documents" ? "ui-segmented-option-active" : ""}`}
+            className={`ui-segmented-option ui-segmented-option-sm ${dashboardMode === "documents" ? "ui-segmented-option-active" : ""}`}
           >
             Documents
           </button>
           <button
             type="button"
             onClick={() => setDashboardMode("workspaces")}
-            className={`ui-segmented-option ${dashboardMode === "workspaces" ? "ui-segmented-option-active" : ""}`}
+            className={`ui-segmented-option ui-segmented-option-sm ${dashboardMode === "workspaces" ? "ui-segmented-option-active" : ""}`}
           >
             Workspaces
           </button>
@@ -378,14 +378,14 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => setMobileTab("pdf")}
-                    className={`ui-segmented-option flex-1 text-sm ${mobileTab === "pdf" ? "ui-segmented-option-active" : ""}`}
+                    className={`ui-segmented-option ui-segmented-option-md flex-1 ${mobileTab === "pdf" ? "ui-segmented-option-active" : ""}`}
                   >
                     PDF
                   </button>
                   <button
                     type="button"
                     onClick={() => setMobileTab("chat")}
-                    className={`ui-segmented-option flex-1 text-sm ${mobileTab === "chat" ? "ui-segmented-option-active" : ""}`}
+                    className={`ui-segmented-option ui-segmented-option-md flex-1 ${mobileTab === "chat" ? "ui-segmented-option-active" : ""}`}
                   >
                     Chat
                   </button>
@@ -488,8 +488,11 @@ export default function DashboardPage() {
               </p>
               <button
                 type="button"
-                onClick={() => setSidebarOpen(true)}
-                className="mt-6 xl:hidden ui-btn ui-btn-primary ui-btn-md"
+                onClick={() => {
+                  setSidebarOpen(true);
+                  setDesktopSidebarCollapsed(false);
+                }}
+                className="mt-6 ui-btn ui-btn-primary ui-btn-md"
               >
                 Open documents
               </button>

@@ -48,7 +48,7 @@ export function DeleteWorkspaceModal({
             type="button"
             onClick={onConfirm}
             disabled={deleting}
-            className="ui-btn ui-btn-danger ui-btn-md disabled:cursor-wait"
+            className="ui-btn ui-btn-danger ui-btn-md ui-btn-busy"
           >
             {deleting ? "Deleting..." : "Delete"}
           </button>
