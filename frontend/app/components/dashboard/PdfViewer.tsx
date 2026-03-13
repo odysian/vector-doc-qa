@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Document as ReactPdfDocument, Page, pdfjs } from "react-pdf";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
 import { api, ApiError, SessionExpiredError } from "@/lib/api";
 import { findCitationSpanMatch, normalizeCitationText } from "./pdfCitationMatch";
 
@@ -24,6 +25,9 @@ interface PdfViewerProps {
 
 const MAX_RENDERED_PAGE_WIDTH = 840;
 const PAGE_WIDTH_STEP = 8;
+const MIN_ZOOM_PERCENT = 70;
+const MAX_ZOOM_PERCENT = 180;
+const ZOOM_STEP_PERCENT = 10;
 const TEXT_HIGHLIGHT_DURATION_MS = 3000;
 const PAGE_HIGHLIGHT_START_DELAY_MS = 300;
 const PAGE_HIGHLIGHT_DURATION_MS = 2500;
@@ -50,18 +54,28 @@ export function PdfViewer({
   const [loadingFile, setLoadingFile] = useState(true);
   const [loadingPages, setLoadingPages] = useState(true);
   const [error, setError] = useState<string>("");
-  const [pageWidth, setPageWidth] = useState(720);
+  const [basePageWidth, setBasePageWidth] = useState(720);
+  const [zoomPercent, setZoomPercent] = useState(100);
   const [activeHighlightPage, setActiveHighlightPage] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pagesContainerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const highlightedTextSpansRef = useRef<HTMLElement[]>([]);
   const textHighlightTimerRef = useRef<number | null>(null);
+  const currentPageRef = useRef(1);
+  const observerFrameRef = useRef<number | null>(null);
+  const visiblePageRatiosRef = useRef<Map<number, number>>(new Map());
 
   const pdfFile = useMemo(() => {
     if (!pdfData) return null;
     return { data: pdfData };
   }, [pdfData]);
+
+  const pageWidth = useMemo(
+    () => Math.round((basePageWidth * zoomPercent) / 100),
+    [basePageWidth, zoomPercent]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -72,6 +86,7 @@ export function PdfViewer({
       setError("");
       setPdfData(null);
       setNumPages(0);
+      setCurrentPage(1);
       pageRefs.current.clear();
 
       try {
@@ -117,7 +132,7 @@ export function PdfViewer({
       // Snap to a small width grid to avoid noisy resize loops and repaint flashes.
       const boundedWidth = Math.min(Math.max(containerWidth - 2, 260), MAX_RENDERED_PAGE_WIDTH);
       const nextWidth = Math.round(boundedWidth / PAGE_WIDTH_STEP) * PAGE_WIDTH_STEP;
-      setPageWidth((current) =>
+      setBasePageWidth((current) =>
         Math.abs(current - nextWidth) >= PAGE_WIDTH_STEP ? nextWidth : current
       );
     };
@@ -151,6 +166,16 @@ export function PdfViewer({
       textHighlightTimerRef.current = null;
     }
   }, []);
+
+  const jumpToPage = useCallback((rawPage: number, behavior: ScrollBehavior = "smooth") => {
+    const targetPage = Math.max(1, Math.min(rawPage, numPages || 1));
+    setCurrentPage(targetPage);
+
+    const target = pageRefs.current.get(targetPage);
+    if (!target) return;
+
+    target.scrollIntoView({ behavior, block: "center" });
+  }, [numPages]);
 
   const tryHighlightSnippet = useCallback(
     (targetPage: number, snippet: string): boolean => {
@@ -254,6 +279,73 @@ export function PdfViewer({
   }, [clearTextHighlight]);
 
   useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer || numPages < 1) return;
+    if (typeof window === "undefined" || !("IntersectionObserver" in window)) return;
+
+    const visiblePageRatios = visiblePageRatiosRef.current;
+    visiblePageRatios.clear();
+
+    const updateMostVisiblePage = () => {
+      observerFrameRef.current = null;
+      let bestPage = currentPageRef.current;
+      let bestRatio = 0;
+
+      visiblePageRatios.forEach((ratio, pageNumber) => {
+        if (ratio > bestRatio) {
+          bestRatio = ratio;
+          bestPage = pageNumber;
+        }
+      });
+
+      if (bestRatio > 0 && bestPage !== currentPageRef.current) {
+        currentPageRef.current = bestPage;
+        setCurrentPage(bestPage);
+      }
+    };
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const pageNumber = Number.parseInt(
+            (entry.target as HTMLElement).dataset.pageNumber ?? "",
+            10
+          );
+          if (Number.isNaN(pageNumber)) return;
+          visiblePageRatios.set(pageNumber, entry.isIntersecting ? entry.intersectionRatio : 0);
+        });
+
+        if (observerFrameRef.current !== null) {
+          window.cancelAnimationFrame(observerFrameRef.current);
+        }
+        observerFrameRef.current = window.requestAnimationFrame(updateMostVisiblePage);
+      },
+      {
+        root: scrollContainer,
+        threshold: [0, 0.15, 0.35, 0.55, 0.75, 0.95],
+      }
+    );
+
+    for (let pageNumber = 1; pageNumber <= numPages; pageNumber += 1) {
+      const pageElement = pageRefs.current.get(pageNumber);
+      if (pageElement) observer.observe(pageElement);
+    }
+
+    return () => {
+      observer.disconnect();
+      visiblePageRatios.clear();
+      if (observerFrameRef.current !== null) {
+        window.cancelAnimationFrame(observerFrameRef.current);
+        observerFrameRef.current = null;
+      }
+    };
+  }, [numPages]);
+
+  useEffect(() => {
     if (!highlightPage || !numPages) return;
 
     const targetPage = Math.max(1, Math.min(highlightPage, numPages));
@@ -277,7 +369,7 @@ export function PdfViewer({
         return;
       }
 
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      jumpToPage(targetPage, "smooth");
       clearTextHighlight();
       // Start page-level fallback highlight after smooth-scroll has begun.
       setActiveHighlightPage((current) => (current === targetPage ? null : current));
@@ -313,10 +405,12 @@ export function PdfViewer({
       if (highlightStartTimer !== null) window.clearTimeout(highlightStartTimer);
       if (highlightTimer !== null) window.clearTimeout(highlightTimer);
     };
-  }, [highlightPage, highlightSnippet, numPages, clearTextHighlight, tryHighlightSnippet]);
+  }, [highlightPage, highlightSnippet, numPages, clearTextHighlight, jumpToPage, tryHighlightSnippet]);
 
   const onDocumentLoadSuccess = ({ numPages: loadedPages }: { numPages: number }) => {
     setNumPages(loadedPages);
+    const nextPage = loadedPages > 0 ? 1 : 0;
+    setCurrentPage(nextPage);
     setLoadingPages(false);
   };
 
@@ -325,10 +419,85 @@ export function PdfViewer({
     setLoadingPages(false);
   };
 
+  const handleZoomIn = () => {
+    setZoomPercent((current) => Math.min(current + ZOOM_STEP_PERCENT, MAX_ZOOM_PERCENT));
+  };
+
+  const handleZoomOut = () => {
+    setZoomPercent((current) => Math.max(current - ZOOM_STEP_PERCENT, MIN_ZOOM_PERCENT));
+  };
+
+  const handleFitWidth = () => {
+    setZoomPercent(100);
+  };
+
+  const canZoomOut = zoomPercent > MIN_ZOOM_PERCENT;
+  const canZoomIn = zoomPercent < MAX_ZOOM_PERCENT;
+  const isFitWidth = zoomPercent === 100;
+
   return (
-    <div className="flex h-full min-h-0 w-full flex-1 flex-col rounded-lg border border-zinc-800 bg-zinc-900 shadow-xl overflow-hidden">
-      <div className="shrink-0 border-b border-zinc-800 px-4 py-3">
+    <div className="ui-panel flex h-full min-h-0 w-full flex-1 flex-col shadow-xl overflow-hidden">
+      <div className="shrink-0 border-b border-zinc-800 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-sm font-medium text-zinc-200">PDF Viewer</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center rounded-md border border-zinc-700 bg-zinc-950/70">
+            <button
+              type="button"
+              onClick={handleZoomOut}
+              disabled={!canZoomOut}
+              className="ui-btn ui-btn-ghost ui-btn-sm"
+              aria-label="Zoom out"
+              title="Zoom out"
+            >
+              <ZoomOut className="h-4 w-4" />
+            </button>
+            <span className="min-w-14 px-2 text-center text-xs text-zinc-300">{zoomPercent}%</span>
+            <button
+              type="button"
+              onClick={handleZoomIn}
+              disabled={!canZoomIn}
+              className="ui-btn ui-btn-ghost ui-btn-sm"
+              aria-label="Zoom in"
+              title="Zoom in"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={handleFitWidth}
+            disabled={isFitWidth}
+            className="ui-btn ui-btn-neutral ui-btn-sm"
+            title="Reset to fit width"
+          >
+            Fit width
+          </button>
+          <div className="inline-flex items-center rounded-md border border-zinc-700 bg-zinc-950/70">
+            <button
+              type="button"
+              onClick={() => jumpToPage((currentPage || 1) - 1, "smooth")}
+              disabled={numPages < 1 || (currentPage || 1) <= 1}
+              className="ui-btn ui-btn-ghost ui-btn-sm"
+              aria-label="Previous page"
+              title="Previous page"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="min-w-16 px-1.5 text-center text-xs text-zinc-300">
+              {currentPage || 1} / {numPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => jumpToPage((currentPage || 1) + 1, "smooth")}
+              disabled={numPages < 1 || (currentPage || 1) >= numPages}
+              className="ui-btn ui-btn-ghost ui-btn-sm"
+              aria-label="Next page"
+              title="Next page"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
 
       <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto p-3">
@@ -371,6 +540,7 @@ export function PdfViewer({
                 return (
                   <div
                     key={pageNumber}
+                    data-page-number={pageNumber}
                     ref={(node) => {
                       if (node) pageRefs.current.set(pageNumber, node);
                       else pageRefs.current.delete(pageNumber);

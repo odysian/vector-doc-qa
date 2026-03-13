@@ -5,7 +5,7 @@
 
 "use client";
 
-import { SyntheticEvent, useEffect, useRef, useState } from "react";
+import { KeyboardEvent, SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Settings2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { Document } from "@/lib/api";
@@ -64,14 +64,25 @@ export function ChatWindow({
   });
 
   /** Toggle whether the whole "Sources" block for a message is open or collapsed. */
-  const toggleSources = (messageIndex: number) => {
+  const toggleSources = useCallback((messageIndex: number) => {
     setExpandedSourceIndices((prev) => {
       const next = new Set(prev);
-      if (next.has(messageIndex)) next.delete(messageIndex);
-      else next.add(messageIndex);
+      const expanding = !next.has(messageIndex);
+      if (expanding) next.add(messageIndex);
+      else next.delete(messageIndex);
+
+      // After expanding, scroll the sources container into view
+      if (expanding) {
+        requestAnimationFrame(() => {
+          const container = scrollRef.current?.querySelector(`[data-sources="${messageIndex}"]`);
+          if (container && typeof container.scrollIntoView === "function") {
+            container.scrollIntoView({ behavior: "smooth", block: "end" });
+          }
+        });
+      }
       return next;
     });
-  };
+  }, []);
 
   /**
    * Toggle whether one source card shows full text or just the preview.
@@ -102,12 +113,25 @@ export function ChatWindow({
     }
   }, [messages]);
 
-  const handleSubmit = (e: SyntheticEvent) => {
-    e.preventDefault();
+  const submitCurrentInput = () => {
     const trimmed = input.trim();
-    if (!trimmed) return;
+    if (!trimmed || isStreaming) return;
     setInput("");
     void submitQuery(trimmed);
+  };
+
+  const handleSubmit = (e: SyntheticEvent) => {
+    e.preventDefault();
+    submitCurrentInput();
+  };
+
+  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter") return;
+    if (event.nativeEvent.isComposing) return;
+    if (event.shiftKey) return;
+
+    event.preventDefault();
+    submitCurrentInput();
   };
 
   const handleRetry = (query: string) => {
@@ -137,7 +161,7 @@ export function ChatWindow({
             type="button"
             onClick={onBack}
             title={isWorkspaceMode ? "Back to Workspaces" : "Back to Documents"}
-            className="text-zinc-400 hover:text-white transition-colors cursor-pointer p-1 -m-1 rounded focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-900 shrink-0"
+            className="ui-btn ui-btn-ghost ui-btn-sm shrink-0"
             aria-label={isWorkspaceMode ? "Back to Workspaces" : "Back to Documents"}
           >
             <ArrowLeft size={24} strokeWidth={2} />
@@ -158,10 +182,8 @@ export function ChatWindow({
           type="button"
           onClick={toggleDebugMode}
           aria-pressed={debugMode}
-          className={`ml-3 shrink-0 inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-900 ${
-            debugMode
-              ? "border-lapis-500/60 bg-lapis-500/10 text-lapis-300"
-              : "border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500"
+          className={`ui-btn ui-btn-sm ml-3 shrink-0 ${
+            debugMode ? "ui-btn-secondary" : "ui-btn-ghost"
           }`}
         >
           <Settings2 size={14} aria-hidden />
@@ -172,7 +194,7 @@ export function ChatWindow({
       {/* Messages Area */}
       <div
         ref={scrollRef}
-        className="messages-scroll min-h-0 flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth"
+        className="messages-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3 space-y-4 scroll-smooth"
       >
         {loadingHistory && (
           <div className="h-full flex items-center justify-center">
@@ -242,11 +264,11 @@ export function ChatWindow({
             key={i}
             className={`flex flex-col ${
               msg.role === "user" ? "items-end" : "items-start"
-            } ${i < messages.length - 1 ? "pb-6 mb-6 border-b border-zinc-800/60" : ""}`}
+            }`}
           >
             {/* Message Bubble */}
             <div
-              className={`max-w-[85%] rounded-2xl p-4 shadow-sm ${
+              className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-sm ${
                 msg.role === "user"
                   ? "bg-lapis-600 text-white rounded-tr-none"
                   : "bg-zinc-800 text-zinc-100 rounded-tl-none border border-zinc-700"
@@ -320,7 +342,7 @@ export function ChatWindow({
                 type="button"
                 onClick={() => handleRetry(msg.retry_query!)}
                 disabled={isStreaming}
-                className="mt-2 ml-2 text-link-sm text-lapis-300 hover:text-lapis-200 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                className="ui-btn ui-btn-ghost ui-btn-sm mt-2 ml-2"
               >
                 Retry
               </button>
@@ -332,7 +354,7 @@ export function ChatWindow({
                 <button
                   type="button"
                   onClick={() => toggleSources(i)}
-                  className="flex items-center gap-2 text-label-accent hover:text-lapis-300 transition-colors cursor-pointer"
+                  className="ui-btn ui-btn-ghost ui-btn-sm"
                 >
                   <svg
                     className={`w-3 h-3 shrink-0 transition-transform ${expandedSourceIndices.has(i) ? "rotate-90" : ""}`}
@@ -351,11 +373,11 @@ export function ChatWindow({
                   <span>Sources ({msg.sources.length})</span>
                 </button>
                 {expandedSourceIndices.has(i) && (
-                  <div className="mt-2 grid gap-2">
+                  <div data-sources={i} className="mt-2 grid gap-1.5 max-h-[40vh] overflow-y-auto">
                     {msg.sources.map((source, idx) => {
                       const cardKey = `${i}-${idx}`;
                       const isExpanded = expandedSourceCards.has(cardKey);
-                      const previewLength = 250;
+                      const previewLength = 150;
                       const preview = source.content.substring(0, previewLength).trim();
                       const remainder = source.content.substring(previewLength).trim();
                       const hasPageStart = source.page_start !== null && source.page_start !== undefined;
@@ -396,7 +418,7 @@ export function ChatWindow({
                           role={canJumpToPage ? "button" : undefined}
                           tabIndex={canJumpToPage ? 0 : undefined}
                           aria-disabled={isDisabledWorkspaceSource || undefined}
-                          className={`bg-zinc-950/50 border border-zinc-800/50 p-3 rounded-lg transition-colors ${
+                          className={`bg-zinc-950/50 border border-zinc-800/50 px-2.5 py-2 rounded-lg transition-colors ${
                             canJumpToPage
                               ? "cursor-pointer hover:border-lapis-500/60 hover:bg-zinc-900/70"
                               : isDisabledWorkspaceSource
@@ -404,26 +426,23 @@ export function ChatWindow({
                                 : "hover:border-lapis-500/30"
                           }`}
                         >
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="badge-sm bg-lapis-600 text-white px-2 py-0.5 rounded">
+                          <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                            <span className="badge-sm bg-lapis-600 text-white px-1.5 py-0.5 rounded">
                               {idx + 1}
                             </span>
                             {source.document_filename && (
-                              <span className="text-meta-bright">
+                              <span className="text-meta-bright font-medium truncate max-w-full">
                                 {source.document_filename}
                               </span>
                             )}
-                            {debugMode && (
-                              <span className="text-meta-bright">
-                                Similarity: {(source.similarity * 100).toFixed(1)}%
+                            {pageLabel && (
+                              <span className="text-meta rounded border border-zinc-700/80 px-1.5 py-0.5">
+                                {pageLabel}
                               </span>
                             )}
-                            <span className="text-meta-bright">
-                              Excerpt {source.chunk_index}
-                            </span>
-                            {pageLabel && (
-                              <span className="text-meta-bright">
-                                {pageLabel}
+                            {debugMode && (
+                              <span className="text-meta rounded border border-zinc-700/80 px-1.5 py-0.5">
+                                {(source.similarity * 100).toFixed(1)}%
                               </span>
                             )}
                           </div>
@@ -442,7 +461,7 @@ export function ChatWindow({
                                 event.stopPropagation();
                                 toggleSourceCard(i, idx);
                               }}
-                              className="mt-2 text-link-sm hover:text-lapis-300 transition-colors cursor-pointer"
+                              className="ui-btn ui-btn-ghost ui-btn-sm mt-2"
                             >
                               {isExpanded ? "Show less ▲" : "Show full context ▼"}
                             </button>
@@ -460,24 +479,26 @@ export function ChatWindow({
       </div>
 
       {/* Input Area */}
-      <div className="shrink-0 p-4 border-t border-zinc-800 bg-zinc-900">
-        <form onSubmit={handleSubmit} className="flex gap-3">
-          <input
-            type="text"
+      <div className="shrink-0 px-3 py-3 border-t border-zinc-800 bg-zinc-900">
+        <form onSubmit={handleSubmit} className="flex items-end gap-2">
+          <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleComposerKeyDown}
+            rows={2}
             placeholder={
               isWorkspaceMode
                 ? "Ask a question across this workspace..."
                 : "Ask a question about this document..."
             }
-            className="ui-input flex-1"
+            className="ui-input flex-1 resize-none min-h-[44px] max-h-36 leading-relaxed"
+            title="Enter to send, Shift+Enter for newline"
           />
           {isStreaming && canStopStream ? (
             <button
               type="button"
               onClick={stopActiveStream}
-              className="ui-btn ui-btn-neutral ui-btn-md"
+              className="ui-btn ui-btn-neutral ui-btn-md shrink-0 self-stretch px-4"
             >
               Stop
             </button>
@@ -485,7 +506,7 @@ export function ChatWindow({
             <button
               type="submit"
               disabled={!input.trim() || isStreaming}
-              className="ui-btn ui-btn-primary ui-btn-md"
+              className="ui-btn ui-btn-primary ui-btn-md shrink-0 self-stretch px-4"
             >
               Send
             </button>

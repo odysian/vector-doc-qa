@@ -135,7 +135,7 @@ export default function DashboardPage() {
       <button
         type="button"
         onClick={clearError}
-        className="p-0.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+        className="ui-btn ui-btn-ghost ui-btn-sm"
         aria-label="Dismiss error"
       >
         <X className="w-4 h-4" />
@@ -165,7 +165,7 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={() => setSidebarOpen(false)}
-          className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 xl:hidden cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+          className="ui-btn ui-btn-ghost ui-btn-sm xl:hidden"
           aria-label="Close sidebar"
         >
           <X className="w-5 h-5" />
@@ -245,7 +245,7 @@ export default function DashboardPage() {
             <button
               type="button"
               onClick={() => setSidebarOpen((o) => !o)}
-              className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 xl:hidden cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+              className="ui-btn ui-btn-ghost ui-btn-sm xl:hidden"
               aria-label="Toggle sidebar"
             >
               <PanelLeft className="w-5 h-5" />
@@ -253,7 +253,7 @@ export default function DashboardPage() {
             <button
               type="button"
               onClick={() => setDesktopSidebarCollapsed((collapsed) => !collapsed)}
-              className="hidden xl:inline-flex p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+              className="ui-btn ui-btn-ghost ui-btn-sm hidden xl:inline-flex"
               aria-label={desktopSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               title={desktopSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >

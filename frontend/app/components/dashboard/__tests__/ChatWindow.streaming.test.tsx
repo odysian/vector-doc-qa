@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ChatWindow } from "@/app/components/dashboard/ChatWindow";
 import { chatService } from "@/lib/services/chatService";
 import type { Document, PipelineMeta, QueryResponse } from "@/lib/api";
@@ -95,6 +95,33 @@ describe("ChatWindow streaming lifecycle", () => {
 
     fireEvent.change(input, { target: { value: "Question after done" } });
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+  });
+
+  it("submits on Enter, keeps Shift+Enter as newline path, and ignores IME enter", async () => {
+    queryDocumentStreamMock.mockResolvedValue(undefined);
+
+    render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.queryByText("Loading conversation...")).not.toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText("Ask a question about this document...");
+    fireEvent.change(input, { target: { value: "Line one" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1));
+    expect(queryDocumentStreamMock.mock.calls[0]?.[1]).toBe("Line one");
+
+    fireEvent.change(input, { target: { value: "Line one\nLine two" } });
+    const shiftEnterEvent = createEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    fireEvent(input, shiftEnterEvent);
+    expect(shiftEnterEvent.defaultPrevented).toBe(false);
+    expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(input, { target: { value: "Composing text" } });
+    const imeEnterEvent = createEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent(input, imeEnterEvent);
+    expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1);
   });
 
   it("appends streaming errors without duplicating assistant bubbles", async () => {
@@ -432,6 +459,63 @@ describe("ChatWindow streaming lifecycle", () => {
     expect(onCitationClick).not.toHaveBeenCalled();
   });
 
+  it("auto-scrolls expanded sources into view and caps source list height", async () => {
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollIntoViewSpy = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoViewSpy,
+    });
+
+    try {
+      getMessagesMock.mockResolvedValueOnce({
+        messages: [
+          {
+            id: 14,
+            document_id: documentFixture.id,
+            user_id: documentFixture.user_id,
+            role: "assistant",
+            content: "Source-heavy answer.",
+            sources: [
+              {
+                chunk_id: 60,
+                content:
+                  "This source is long enough to ensure it renders inside the expanded source list container.",
+                similarity: 0.88,
+                chunk_index: 3,
+                page_start: 5,
+                page_end: 5,
+                document_id: 7,
+                document_filename: "guide.pdf",
+              },
+            ],
+            created_at: "2026-03-02T12:05:00Z",
+          },
+        ],
+        total: 1,
+      });
+
+      const { container } = render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
+      await screen.findByText("Source-heavy answer.");
+
+      fireEvent.click(screen.getByRole("button", { name: "Sources (1)" }));
+
+      const sourcesContainer = container.querySelector("[data-sources='0']");
+      expect(sourcesContainer).not.toBeNull();
+      expect(sourcesContainer?.className).toContain("max-h-[40vh]");
+      expect(sourcesContainer?.className).toContain("overflow-y-auto");
+
+      await waitFor(() => {
+        expect(scrollIntoViewSpy).toHaveBeenCalled();
+      });
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+        configurable: true,
+        value: originalScrollIntoView,
+      });
+    }
+  });
+
   it("toggles debug mode and shows pipeline metadata/similarity from history", async () => {
     localStorage.removeItem("quaero_debug_mode");
     getMessagesMock.mockResolvedValueOnce({
@@ -472,7 +556,7 @@ describe("ChatWindow streaming lifecycle", () => {
     await screen.findByText("Debuggable answer.");
 
     fireEvent.click(screen.getByRole("button", { name: "Sources (1)" }));
-    expect(screen.queryByText(/Similarity:/)).not.toBeInTheDocument();
+    expect(screen.queryByText("91.0%")).not.toBeInTheDocument();
     expect(screen.queryByText(/confidence/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Debug off" }));
@@ -480,7 +564,7 @@ describe("ChatWindow streaming lifecycle", () => {
     expect(screen.getByRole("button", { name: "Debug on" })).toBeInTheDocument();
     expect(localStorage.getItem("quaero_debug_mode")).toBe("true");
     expect(screen.getByText(/confidence/)).toBeInTheDocument();
-    expect(screen.getByText("Similarity: 91.0%")).toBeInTheDocument();
+    expect(screen.getByText("91.0%")).toBeInTheDocument();
   });
 
   it("submits workspace queries through non-streaming workspace endpoint", async () => {

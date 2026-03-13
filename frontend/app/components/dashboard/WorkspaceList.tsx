@@ -94,7 +94,7 @@ export function WorkspaceList({
               key={workspace.id}
               type="button"
               onClick={() => onWorkspaceClick(workspace)}
-              className="w-full rounded-lg border border-zinc-800 bg-zinc-800/30 p-3 text-left hover:border-lapis-500/40 hover:bg-zinc-800/50 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+              className="ui-btn ui-btn-neutral ui-btn-md ui-btn-block flex-col items-start gap-1"
             >
               <p className="text-sm font-medium text-zinc-100 truncate">{workspace.name}</p>
               <p className="text-xs text-zinc-400 mt-1">

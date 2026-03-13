@@ -133,7 +133,7 @@ export function DocumentList({
                     onClick={(e) => handleProcess(e, doc)}
                     disabled={isProcessing || processingId !== null}
                     title={actionLabel}
-                    className="p-1.5 rounded text-lapis-400 hover:bg-lapis-500/20 hover:text-lapis-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-800"
+                    className="ui-btn ui-btn-secondary ui-btn-sm"
                     aria-label={actionLabel}
                   >
                     {isProcessing ? (
@@ -148,7 +148,7 @@ export function DocumentList({
                     type="button"
                     onClick={(e) => handleDelete(e, doc)}
                     title="Delete"
-                    className="p-1.5 rounded text-zinc-400 hover:bg-red-500/20 hover:text-red-400 transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-800"
+                    className="ui-btn ui-btn-danger-outline ui-btn-sm"
                     aria-label="Delete"
                   >
                     <Trash2 className="w-4 h-4" />

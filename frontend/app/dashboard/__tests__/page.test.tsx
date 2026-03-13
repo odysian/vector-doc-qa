@@ -649,4 +649,42 @@ describe("DashboardPage layout contracts", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open documents" }));
     expect(screen.getByRole("complementary").className).toContain("xl:w-72");
   });
+
+  it("keeps mobile backdrop visibility controlled by hidden/block utilities", async () => {
+    const doc = makeDocument();
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [doc],
+    });
+
+    render(<DashboardPage />);
+    await screen.findByText("alpha.pdf");
+
+    const getBackdrop = () => {
+      const backdrop = screen
+        .getAllByRole("button", { name: "Close sidebar" })
+        .find((button) => button.className.includes("fixed inset-0"));
+      expect(backdrop).toBeDefined();
+      return backdrop as HTMLButtonElement;
+    };
+
+    expect(getBackdrop().classList.contains("xl:hidden")).toBe(true);
+    expect(getBackdrop().classList.contains("hidden")).toBe(true);
+    expect(getBackdrop().classList.contains("block")).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle sidebar" }));
+
+    await waitFor(() => {
+      expect(getBackdrop().className).toContain("block");
+    });
+    expect(getBackdrop().classList.contains("xl:hidden")).toBe(true);
+    expect(getBackdrop().classList.contains("hidden")).toBe(false);
+
+    fireEvent.click(getBackdrop());
+
+    await waitFor(() => {
+      expect(getBackdrop().classList.contains("hidden")).toBe(true);
+    });
+    expect(getBackdrop().classList.contains("block")).toBe(false);
+  });
 });
