@@ -71,10 +71,10 @@ export default function LoginPage() {
         </div>
 
         {/* Form Card */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-8">
+        <div className="ui-panel p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="bg-red-900/20 border border-red-900/50 text-red-400 p-3 rounded text-sm">
+              <div className="ui-alert-error text-sm">
                 {error}
               </div>
             )}
@@ -92,7 +92,7 @@ export default function LoginPage() {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-3 bg-zinc-950 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-lapis-500/50 focus:border-lapis-500 transition-all"
+                className="ui-input"
                 placeholder="Enter your username"
               />
             </div>
@@ -110,7 +110,7 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-zinc-950 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-lapis-500/50 focus:border-lapis-500 transition-all"
+                className="ui-input"
                 placeholder="Enter your password"
               />
             </div>
@@ -118,7 +118,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-lapis-600 hover:bg-lapis-500 disabled:bg-lapis-800 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors shadow-lg shadow-lapis-900/20 cursor-pointer"
+              className="ui-btn ui-btn-primary ui-btn-md ui-btn-block"
             >
               {loading ? "Accessing..." : "Sign In"}
             </button>
@@ -127,7 +127,7 @@ export default function LoginPage() {
               type="button"
               onClick={handleTryDemo}
               disabled={loading}
-              className="w-full py-3 border border-lapis-500/40 text-lapis-300 hover:bg-lapis-500/10 disabled:opacity-60 disabled:cursor-not-allowed font-medium rounded-lg transition-colors cursor-pointer"
+              className="ui-btn ui-btn-secondary ui-btn-md ui-btn-block"
             >
               Try Demo
             </button>

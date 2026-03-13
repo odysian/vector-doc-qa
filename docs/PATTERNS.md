@@ -318,11 +318,12 @@ export default function UploadZone({ onUpload, disabled }: UploadZoneProps) {
 
 ### Styling
 
-- Tailwind CSS utility classes for all styling
-- Custom theme tokens in `globals.css` (lapis color palette)
-- Semantic CSS classes for typography (`.text-meta`, `.text-section`, `.text-error`, etc.)
-- No inline `style` objects
-- Dark theme by default (zinc backgrounds, light text)
+- Tailwind CSS utilities remain the default for layout/spacing and one-off composition.
+- Shared visual primitives live in `frontend/app/globals.css` with `.ui-*` classes for repeated controls (`.ui-btn*`, `.ui-input*`, `.ui-panel`, `.ui-segmented*`, `.ui-alert-error`).
+- Use `.ui-*` primitives across landing/auth/dashboard before introducing new control variants; compose with Tailwind utilities for layout only.
+- Keep semantic typography helpers in `globals.css` (`.text-meta`, `.text-section`, `.text-error`, etc.).
+- No inline `style` objects.
+- Dark theme by default (zinc backgrounds, light text).
 
 ### Path Aliases
 

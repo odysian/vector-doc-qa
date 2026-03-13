@@ -31,7 +31,7 @@ export function WorkspaceSidebar({
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900 rounded"
+            className="ui-btn ui-btn-ghost ui-btn-sm"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             Back
@@ -40,7 +40,7 @@ export function WorkspaceSidebar({
             type="button"
             onClick={onDeleteWorkspace}
             disabled={disabled}
-            className="inline-flex items-center gap-1 rounded-md border border-red-900/60 px-2 py-1 text-xs text-red-300 hover:bg-red-500/10 hover:text-red-200 disabled:cursor-not-allowed disabled:border-zinc-700 disabled:text-zinc-500 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+            className="ui-btn ui-btn-danger-outline ui-btn-sm"
           >
             <Trash2 className="h-3.5 w-3.5" />
             Delete workspace
@@ -89,7 +89,7 @@ export function WorkspaceSidebar({
           type="button"
           onClick={onAddDocuments}
           disabled={disabled}
-          className="w-full inline-flex items-center justify-center gap-1 rounded-lg bg-lapis-600 px-3 py-2 text-sm font-medium text-white hover:bg-lapis-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+          className="ui-btn ui-btn-primary ui-btn-md ui-btn-block"
         >
           <Plus className="h-4 w-4" />
           Add document

@@ -632,4 +632,21 @@ describe("DashboardPage layout contracts", () => {
     expect(chatSection!.className).toContain("w-full");
     expect(chatSection!.className).toContain("max-w-5xl");
   });
+
+  it("empty-state open-documents button expands collapsed desktop sidebar", async () => {
+    const doc = makeDocument();
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [doc],
+    });
+
+    render(<DashboardPage />);
+    await screen.findByText("alpha.pdf");
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+    expect(screen.getByRole("complementary").className).toContain("xl:w-0");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open documents" }));
+    expect(screen.getByRole("complementary").className).toContain("xl:w-72");
+  });
 });

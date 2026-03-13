@@ -63,7 +63,7 @@ export function DocumentPicker({
         className="absolute inset-0 bg-black/60 cursor-default"
         aria-label="Close add documents dialog"
       />
-      <div className="relative max-w-lg w-full rounded-xl border border-zinc-700 bg-zinc-900 shadow-xl">
+      <div className="relative max-w-lg w-full ui-panel shadow-xl">
         <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
           <div>
             <h2 id="add-documents-title" className="text-base font-semibold text-zinc-100">
@@ -76,7 +76,7 @@ export function DocumentPicker({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+            className="ui-btn ui-btn-ghost ui-btn-sm"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -119,7 +119,7 @@ export function DocumentPicker({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+            className="ui-btn ui-btn-ghost ui-btn-md"
           >
             Cancel
           </button>
@@ -129,7 +129,7 @@ export function DocumentPicker({
               void handleAdd();
             }}
             disabled={selectedIds.length === 0 || submitting}
-            className="rounded-lg bg-lapis-600 px-3 py-2 text-sm font-medium text-white hover:bg-lapis-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+            className="ui-btn ui-btn-primary ui-btn-md"
           >
             {submitting ? "Adding..." : "Add selected"}
           </button>
