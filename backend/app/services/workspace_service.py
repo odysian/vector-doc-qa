@@ -1,3 +1,10 @@
+"""
+Workspace command/query orchestration for workspace CRUD, membership, and chat.
+
+Boundaries: repositories handle persistence primitives; this module coordinates
+validation, transactions, and LLM/embedding integration for workspace flows.
+"""
+
 from datetime import datetime, timezone
 import time
 from typing import Any
@@ -221,6 +228,7 @@ async def create_workspace_command(
     current_user: User,
     body: WorkspaceCreate,
 ) -> WorkspaceResponse:
+    """Create a workspace owned by the current user."""
     if current_user.is_demo:
         raise HTTPException(status_code=403, detail="Demo account cannot create workspaces")
 
@@ -240,6 +248,7 @@ async def list_workspaces_command(
     db: AsyncSession,
     current_user: User,
 ) -> WorkspaceListResponse:
+    """List the current user's workspaces with document counts."""
     workspaces_with_counts = await list_workspaces_for_user_with_counts(
         db=db,
         user_id=current_user.id,
@@ -258,6 +267,7 @@ async def get_workspace_command(
     workspace_id: int,
     current_user: User,
 ) -> WorkspaceDetailResponse:
+    """Return workspace details and attached documents for the current user."""
     workspace = await _get_workspace_for_user_or_404(
         db=db,
         workspace_id=workspace_id,
@@ -273,6 +283,7 @@ async def update_workspace_command(
     current_user: User,
     body: WorkspaceUpdate,
 ) -> WorkspaceResponse:
+    """Rename a workspace and return updated metadata."""
     if current_user.is_demo:
         raise HTTPException(status_code=403, detail="Demo account cannot modify workspaces")
 
@@ -296,6 +307,7 @@ async def delete_workspace_command(
     workspace_id: int,
     current_user: User,
 ) -> dict[str, str]:
+    """Delete a workspace owned by the current user."""
     if current_user.is_demo:
         raise HTTPException(status_code=403, detail="Demo account cannot modify workspaces")
 
@@ -316,6 +328,7 @@ async def add_workspace_documents_command(
     current_user: User,
     body: WorkspaceAddDocuments,
 ) -> WorkspaceDetailResponse:
+    """Attach completed documents to a workspace with capacity enforcement."""
     if current_user.is_demo:
         raise HTTPException(status_code=403, detail="Demo account cannot modify workspaces")
 
@@ -379,6 +392,7 @@ async def remove_workspace_document_command(
     document_id: int,
     current_user: User,
 ) -> WorkspaceDetailResponse:
+    """Detach one document from a workspace and return updated workspace detail."""
     if current_user.is_demo:
         raise HTTPException(status_code=403, detail="Demo account cannot modify workspaces")
 
@@ -409,6 +423,7 @@ async def query_workspace_command(
     history_window_turns: int,
     similarity_threshold: float,
 ) -> WorkspaceQueryResponse:
+    """Run a workspace RAG query and persist both user/assistant messages."""
     logger.info(
         "Workspace query request for workspace_id=%s, user_id=%s, query_chars=%s",
         workspace_id,
@@ -547,6 +562,7 @@ async def list_workspace_messages_command(
     workspace_id: int,
     current_user: User,
 ) -> MessageListResponse:
+    """List chat history for a workspace visible to the current user."""
     await _get_workspace_for_user_or_404(
         db=db,
         workspace_id=workspace_id,

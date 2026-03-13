@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * PDF viewer orchestration for document rendering and citation-focused navigation.
+ * Dependencies: react-pdf for rendering and API file fetch for binary payloads.
+ * Side effects: async file loading, resize observation, and transient page/text highlighting.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Document as ReactPdfDocument, Page, pdfjs } from "react-pdf";
 import { api, ApiError, SessionExpiredError } from "@/lib/api";

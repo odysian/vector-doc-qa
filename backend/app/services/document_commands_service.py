@@ -1,3 +1,10 @@
+"""
+Document command orchestration for upload, retrieval, queueing, and deletion.
+
+Boundaries: repositories handle DB primitives, storage service handles file I/O,
+and queue service handles async processing dispatch.
+"""
+
 from urllib.parse import quote
 
 from fastapi import HTTPException, UploadFile
@@ -50,6 +57,7 @@ async def upload_document_command(
     current_user: User,
     file: UploadFile,
 ) -> UploadResponse:
+    """Upload a document, persist metadata, and enqueue processing."""
     if current_user.is_demo:
         raise HTTPException(
             status_code=403,
@@ -118,6 +126,7 @@ async def list_documents_command(
     db: AsyncSession,
     user_id: int,
 ) -> DocumentListResponse:
+    """List all documents owned by the user."""
     documents = await list_documents_for_user(db=db, user_id=user_id)
     return DocumentListResponse(
         documents=[DocumentResponse.model_validate(d) for d in documents],
@@ -131,6 +140,7 @@ async def get_document_command(
     document_id: int,
     user_id: int,
 ) -> Document:
+    """Fetch one document owned by the user or raise 404."""
     return await _get_document_for_user_or_404(
         db=db,
         document_id=document_id,
@@ -144,6 +154,7 @@ async def get_document_file_command(
     document_id: int,
     user_id: int,
 ) -> Response:
+    """Return the stored PDF bytes for an owned document."""
     document = await _get_document_for_user_or_404(
         db=db,
         document_id=document_id,
@@ -180,6 +191,7 @@ async def get_document_status_command(
     document_id: int,
     user_id: int,
 ) -> DocumentStatusResponse:
+    """Return processing status metadata for an owned document."""
     document = await _get_document_for_user_or_404(
         db=db,
         document_id=document_id,
@@ -199,6 +211,7 @@ async def delete_document_command(
     document_id: int,
     current_user: User,
 ) -> dict[str, str]:
+    """Delete an owned document and its stored file."""
     if current_user.is_demo:
         raise HTTPException(
             status_code=403,
@@ -226,6 +239,7 @@ async def process_document_command(
     document_id: int,
     user_id: int,
 ) -> dict[str, str | int]:
+    """Queue document processing, resetting failed jobs before re-enqueue."""
     logger.info("Queue processing request for document_id=%s", document_id)
     document = await _get_document_for_user_or_404(
         db=db,

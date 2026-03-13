@@ -1,3 +1,10 @@
+"""
+Startup demo-account seeding and reconciliation service.
+
+Loads fixture documents, ensures backing files exist, and reconciles the demo
+user's DB rows so demo environments stay deterministic across restarts.
+"""
+
 from __future__ import annotations
 
 import base64

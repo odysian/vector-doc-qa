@@ -1,3 +1,10 @@
+"""
+Anthropic integration service for synchronous and streaming answer generation.
+
+Centralizes prompt construction, provider call logging, and per-request token
+usage capture exposed through ContextVar consumers.
+"""
+
 from collections.abc import AsyncGenerator
 from contextvars import ContextVar
 from dataclasses import dataclass

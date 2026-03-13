@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# End-to-end smoke runner for demo auth, document query, streaming, and file fetch flows.
+# Boundaries: talks only to public HTTP endpoints and validates cookie/CSRF + SSE contracts.
+# Side effects: remote API calls and temporary local artifact files under a transient directory.
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -295,6 +299,7 @@ if [[ -n "$document_id" ]]; then
   done_events="$(grep -c '^event: done$' "$stream_body" || true)"
   error_events="$(grep -c '^event: error$' "$stream_body" || true)"
 
+  # Require the full stream contract: sources + token + meta + done, with no error event.
   if [[ "$stream_status" == "200" ]] && [[ "$stream_content_type" == text/event-stream* ]] \
     && [[ "$sources_events" -gt 0 ]] && [[ "$token_events" -gt 0 ]] \
     && [[ "$meta_events" -gt 0 ]] && [[ "$done_events" -gt 0 ]] && [[ "$error_events" -eq 0 ]]; then
