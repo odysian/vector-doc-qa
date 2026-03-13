@@ -101,4 +101,31 @@ describe("LoginPage form behavior", () => {
     expect(screen.getByLabelText("Username")).toHaveValue("demo");
     expect(screen.getByLabelText("Password")).toHaveValue("demo");
   });
+
+  it("keeps centered layout and width-capped auth card classes", () => {
+    const { container } = render(<LoginPage />);
+
+    const main = container.querySelector("main");
+    expect(main).not.toBeNull();
+    expect(main!).toHaveClass("items-center");
+
+    const heroTitle = screen.getByRole("heading", { name: "Quaero" });
+    const heroColumn = heroTitle.parentElement;
+    expect(heroColumn).not.toBeNull();
+    expect(heroColumn!).toHaveClass(
+      "max-w-md",
+      "mx-auto",
+      "text-center",
+      "lg:max-w-none",
+      "lg:mx-0",
+      "lg:text-left"
+    );
+
+    const signInButton = screen.getByRole("button", { name: "Sign In" });
+    const form = signInButton.closest("form");
+    expect(form).not.toBeNull();
+    const card = form!.parentElement;
+    expect(card).not.toBeNull();
+    expect(card!).toHaveClass("max-w-md", "mx-auto", "lg:max-w-none", "lg:mx-0");
+  });
 });

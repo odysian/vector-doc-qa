@@ -56,4 +56,26 @@ describe("Home page Try Demo behavior", () => {
       expect(pushMock).toHaveBeenCalledWith("/dashboard");
     });
   });
+
+  it("keeps centered hero/layout presentation classes", () => {
+    const { container } = render(<Home />);
+
+    const main = container.querySelector("main");
+    const section = container.querySelector("main section");
+
+    expect(main).not.toBeNull();
+    expect(main!).toHaveClass("items-center");
+    expect(section).not.toBeNull();
+    expect(section!).toHaveClass("items-center");
+
+    const heroTitle = screen.getByRole("heading", { name: "Quaero" });
+    const heroColumn = heroTitle.parentElement;
+    expect(heroColumn).not.toBeNull();
+    expect(heroColumn!).toHaveClass("max-w-xl", "text-center", "lg:text-left");
+
+    const howItWorksLabel = screen.getByText("How It Works");
+    const howItWorksCard = howItWorksLabel.closest("div");
+    expect(howItWorksCard).not.toBeNull();
+    expect(howItWorksCard!).toHaveClass("max-w-md", "mx-auto", "lg:max-w-none", "lg:mx-0");
+  });
 });

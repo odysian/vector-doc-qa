@@ -95,4 +95,31 @@ describe("RegisterPage form behavior", () => {
     expect(await screen.findByText("Username already exists")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Register" })).toBeEnabled();
   });
+
+  it("keeps centered layout and width-capped auth card classes", () => {
+    const { container } = render(<RegisterPage />);
+
+    const main = container.querySelector("main");
+    expect(main).not.toBeNull();
+    expect(main!).toHaveClass("items-center");
+
+    const heroTitle = screen.getByRole("heading", { name: "Quaero" });
+    const heroColumn = heroTitle.parentElement;
+    expect(heroColumn).not.toBeNull();
+    expect(heroColumn!).toHaveClass(
+      "max-w-md",
+      "mx-auto",
+      "text-center",
+      "lg:max-w-none",
+      "lg:mx-0",
+      "lg:text-left"
+    );
+
+    const registerButton = screen.getByRole("button", { name: "Register" });
+    const form = registerButton.closest("form");
+    expect(form).not.toBeNull();
+    const card = form!.parentElement;
+    expect(card).not.toBeNull();
+    expect(card!).toHaveClass("max-w-md", "mx-auto", "lg:max-w-none", "lg:mx-0");
+  });
 });
