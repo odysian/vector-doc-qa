@@ -20,6 +20,10 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const inputClass =
+    "w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lapis-400/50";
+  const primaryButtonClass =
+    "inline-flex w-full items-center justify-center rounded-md border border-lapis-500 bg-lapis-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-lapis-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lapis-400/50 disabled:cursor-not-allowed disabled:opacity-60";
 
   const handleSubmit = async (e: SyntheticEvent) => {
     e.preventDefault();
@@ -51,14 +55,11 @@ export default function RegisterPage() {
               Create an account and start asking better questions across your PDFs.
             </p>
             <p className="max-w-md text-sm text-zinc-400">
-              Registration keeps auth flow unchanged while giving you a personal document and citation workspace.
+              Create credentials once and continue directly to your dashboard.
             </p>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-300">
-              Existing user? <span className="text-zinc-100">Sign In</span> is the primary return path.
-            </div>
           </div>
 
-          <div className="ui-panel p-8">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-8">
             <div className="mb-6">
               <p className="text-zinc-100 text-xl font-semibold">Register</p>
               <p className="mt-2 text-sm text-zinc-400">Set up credentials and continue to your dashboard.</p>
@@ -86,7 +87,7 @@ export default function RegisterPage() {
                   maxLength={50}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="ui-input"
+                  className={inputClass}
                   placeholder="Choose a username"
                 />
               </div>
@@ -104,7 +105,7 @@ export default function RegisterPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="ui-input"
+                  className={inputClass}
                   placeholder="your@email.com"
                 />
               </div>
@@ -124,7 +125,7 @@ export default function RegisterPage() {
                   maxLength={100}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="ui-input"
+                  className={inputClass}
                   placeholder="At least 8 characters"
                 />
               </div>
@@ -132,7 +133,7 @@ export default function RegisterPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="ui-btn ui-btn-primary ui-btn-md ui-btn-block"
+                className={primaryButtonClass}
               >
                 {loading ? "Creating account..." : "Register"}
               </button>

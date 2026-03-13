@@ -18,6 +18,12 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const inputClass =
+    "w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lapis-400/50";
+  const primaryButtonClass =
+    "inline-flex w-full items-center justify-center rounded-md border border-lapis-500 bg-lapis-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-lapis-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lapis-400/50 disabled:cursor-not-allowed disabled:opacity-60";
+  const secondaryButtonClass =
+    "inline-flex w-full items-center justify-center rounded-md border border-lapis-500/40 px-4 py-2.5 text-sm font-medium text-lapis-200 transition hover:bg-lapis-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lapis-400/50 disabled:cursor-not-allowed disabled:opacity-60";
 
   const submitLogin = async (nextUsername: string, nextPassword: string) => {
     setError("");
@@ -72,14 +78,11 @@ export default function LoginPage() {
               Continue where you left off with your document workspace.
             </p>
             <p className="max-w-md text-sm text-zinc-400">
-              Sign in to access uploads, chats, and citations from your last session.
+              Sign in to access your saved documents, chats, and citations.
             </p>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-300">
-              Primary path: <span className="text-zinc-100">Sign In</span>. Need quick access? Use <span className="text-zinc-100">Try Demo</span>.
-            </div>
           </div>
 
-          <div className="ui-panel p-8">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-8">
             <div className="mb-6">
               <p className="text-zinc-100 text-xl font-semibold">Sign In</p>
               <p className="mt-2 text-sm text-zinc-400">Use your existing credentials to continue.</p>
@@ -105,7 +108,7 @@ export default function LoginPage() {
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="ui-input"
+                  className={inputClass}
                   placeholder="Enter your username"
                 />
               </div>
@@ -123,7 +126,7 @@ export default function LoginPage() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="ui-input"
+                  className={inputClass}
                   placeholder="Enter your password"
                 />
               </div>
@@ -131,7 +134,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="ui-btn ui-btn-primary ui-btn-md ui-btn-block"
+                className={primaryButtonClass}
               >
                 {loading ? "Accessing..." : "Sign In"}
               </button>
@@ -140,7 +143,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={handleTryDemo}
                 disabled={loading}
-                className="ui-btn ui-btn-secondary ui-btn-md ui-btn-block"
+                className={secondaryButtonClass}
               >
                 Try Demo
               </button>

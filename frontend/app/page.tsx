@@ -13,6 +13,12 @@ export default function Home() {
   const router = useRouter();
   const [loadingDemo, setLoadingDemo] = useState(false);
   const [error, setError] = useState("");
+  const primaryActionClass =
+    "inline-flex items-center justify-center rounded-md border border-lapis-500 bg-lapis-600 px-8 py-3 text-base font-medium text-white transition hover:bg-lapis-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lapis-400/50";
+  const secondaryActionClass =
+    "inline-flex items-center justify-center rounded-md border border-lapis-500/40 px-8 py-3 text-base font-medium text-lapis-200 transition hover:bg-lapis-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lapis-400/50 disabled:cursor-not-allowed disabled:opacity-60";
+  const neutralActionClass =
+    "inline-flex items-center justify-center rounded-md border border-zinc-700 bg-zinc-800 px-8 py-3 text-base font-medium text-zinc-100 transition hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lapis-400/50";
 
   useEffect(() => {
     if (authService.hasActiveSession()) {
@@ -52,31 +58,31 @@ export default function Home() {
             </p>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-              <Link href="/login" className="ui-btn ui-btn-primary ui-btn-lg">
+              <Link href="/login" className={primaryActionClass}>
                 Sign In
               </Link>
               <button
                 type="button"
                 onClick={handleTryDemo}
                 disabled={loadingDemo}
-                className="ui-btn ui-btn-secondary ui-btn-lg"
+                className={secondaryActionClass}
               >
                 {loadingDemo ? "Accessing..." : "Try Demo"}
               </button>
-              <Link href="/register" className="ui-btn ui-btn-neutral ui-btn-lg">
+              <Link href="/register" className={neutralActionClass}>
                 Register
               </Link>
             </div>
             {error && <p className="text-sm text-red-400">{error}</p>}
 
             <ul className="grid gap-2 text-sm text-zinc-300 sm:grid-cols-3">
-              <li className="ui-panel px-3 py-2">Cited answers only</li>
-              <li className="ui-panel px-3 py-2">Your documents stay scoped</li>
-              <li className="ui-panel px-3 py-2">Fast retrieval + chat workflow</li>
+              <li className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2">Cited answers only</li>
+              <li className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2">Your documents stay scoped</li>
+              <li className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2">Fast retrieval + chat workflow</li>
             </ul>
           </div>
 
-          <div className="ui-panel space-y-5 p-6 sm:p-8">
+          <div className="space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/70 p-6 sm:p-8">
             <p className="text-label-accent">How It Works</p>
             <ol className="space-y-4 text-sm text-zinc-300">
               <li>
@@ -92,16 +98,6 @@ export default function Home() {
                 <p className="text-zinc-400">Jump straight to supporting excerpts.</p>
               </li>
             </ol>
-
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-4 text-sm">
-              <p className="mb-2 text-zinc-100">Preview</p>
-              <p className="text-zinc-400">
-                &quot;What are the termination clauses in our vendor agreement?&quot;
-              </p>
-              <p className="mt-3 rounded-md border border-lapis-900/60 bg-lapis-950/30 px-3 py-2 text-zinc-200">
-                Clauses 4.2 and 9.1 allow termination for breach with 30-day cure period.
-              </p>
-            </div>
           </div>
         </section>
       </main>
