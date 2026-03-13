@@ -1,3 +1,5 @@
+# Terraform input contract for backend infrastructure and cutover automation.
+# Includes determinism/security guards for SSH ingress, pinned agent versions, and OIDC identity settings.
 variable "project_id" {
   description = "GCP project ID."
   type        = string
@@ -134,6 +136,7 @@ variable "ops_agent_version" {
   type        = string
 
   validation {
+    # Reject mutable "latest" values so repeated cutovers resolve the same package payload.
     condition = (
       length(trimspace(var.ops_agent_version)) > 0
       && lower(trimspace(var.ops_agent_version)) != "latest"

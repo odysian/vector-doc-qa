@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Cutover control script for Terraform-based backend VM rollouts.
+# Boundaries: reads tfvars, executes terraform/gcloud/curl checks, and emits evidence artifacts.
+# Safety contract: enforce deterministic pins before cutover and health/SLO gates after cutover.
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
@@ -93,6 +97,8 @@ assert_numeric() {
   [[ "$value" =~ ^[0-9]+([.][0-9]+)?$ ]] || die "$label must be numeric, got: $value"
 }
 
+# Runs pre-cutover guardrails and generates plan/evidence artifacts.
+# Side effects: may snapshot the current boot disk and may rewrite vm_image in tfvars when pinning.
 prepare_cutover() {
   require_cmd git
   require_cmd terraform
@@ -162,6 +168,7 @@ prepare_cutover() {
   [[ -n "$vm_image" ]] || die "vm_image must be set in tfvars for deterministic cutover"
   [[ -n "$reconcile_release_id" ]] || die "reconcile_release_id must be set in tfvars"
 
+  # Mutable image families break rollback determinism, so require an exact self-link input.
   [[ "$vm_image" == *"/global/images/"* ]] || die "vm_image must be an exact image self-link under /global/images/"
   if [[ "$vm_image" == *"/global/images/family/"* ]]; then
     local family_name family_project resolved_image
@@ -179,6 +186,7 @@ prepare_cutover() {
 
     if [[ -n "$resolved_image" ]]; then
       if is_true "$pin_image_family"; then
+        # Update tfvars in-place so plan inputs and recorded evidence share the same immutable image pin.
         perl -0pi -e 's|^vm_image\s*=\s*"[^"]*"|vm_image       = "'"$resolved_image"'"|m' "$tfvars_path"
         vm_image="$resolved_image"
         echo "Pinned vm_image in tfvars to exact image self-link: $vm_image"
@@ -213,6 +221,7 @@ prepare_cutover() {
   terraform -chdir="$tf_dir" show -json "$plan_binary" > "$plan_json_output"
 
   local reconcile_sha256 reconcile_sha256_source
+  # Prefer the reconcile hash from planned instance metadata; fall back to local script hash when absent.
   reconcile_sha256="$(
     jq -r '
       def all_resources(mod):
@@ -278,6 +287,7 @@ Prepare complete.
 EOF
 }
 
+# Verifies Ops Agent remains stable for a full 10-minute observation window.
 run_ops_agent_gate() {
   local project_id="$1"
   local zone="$2"
@@ -299,6 +309,7 @@ sudo systemctl status google-cloud-ops-agent --no-pager'
     --command "$remote_cmd"
 }
 
+# Runs post-cutover health checks, optional Ops Agent stability gate, and bootstrap-time SLO enforcement.
 postcheck_cutover() {
   require_cmd curl
   require_cmd awk
@@ -365,6 +376,7 @@ postcheck_cutover() {
     assert_numeric "$post_min" "post-min"
 
     local strict_target_min
+    # Target requires post-cutover bootstrap <= min(60% of baseline, 6 minutes).
     strict_target_min="$(
       awk -v b="$baseline_min" 'BEGIN { t=b*0.6; if (t < 6) printf "%.2f", t; else printf "6.00" }'
     )"

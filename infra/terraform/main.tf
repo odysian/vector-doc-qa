@@ -1,3 +1,6 @@
+# Production backend infra composition for Quaero.
+# Boundaries: provisions network/storage/VM/IAM and renders startup + Ops Agent config templates.
+# Contract: required storage/logging/monitoring scopes are always enforced for the VM service account.
 locals {
   vm_service_account_id = replace("${var.vm_name}-sa", "_", "-")
   ssh_keys_metadata     = join("\n", [for key in var.ssh_public_keys : "${var.ssh_user}:${key}"])
@@ -6,6 +9,7 @@ locals {
     "https://www.googleapis.com/auth/logging.write",
     "https://www.googleapis.com/auth/monitoring.write",
   ]
+  # Keep minimum runtime scopes even when callers pass a custom scope list.
   vm_service_account_scopes = distinct(concat(var.vm_service_account_scopes, local.vm_required_scopes))
   ops_agent_config = templatefile("${path.module}/scripts/ops-agent-config.yaml.tftpl", {
     ops_agent_collect_docker_logs  = var.ops_agent_collect_docker_logs
@@ -88,6 +92,7 @@ resource "google_compute_firewall" "allow_ssh" {
 
   lifecycle {
     precondition {
+      # World-open SSH stays blocked unless an explicit temporary override is provided.
       condition = (
         var.allow_insecure_ssh_from_anywhere
         || !contains(var.ssh_source_ranges, "0.0.0.0/0")
@@ -121,6 +126,7 @@ resource "google_compute_instance" "backend" {
     }
   }
 
+  # Restrict SSH keys to the Terraform-managed list instead of project-wide metadata keys.
   metadata = {
     "ssh-keys"               = local.ssh_keys_metadata
     "block-project-ssh-keys" = "true"
