@@ -56,4 +56,16 @@ describe("Home page Try Demo behavior", () => {
       expect(pushMock).toHaveBeenCalledWith("/dashboard");
     });
   });
+
+  it("keeps centered hero/layout presentation classes", () => {
+    const { container } = render(<Home />);
+
+    const main = container.querySelector("main");
+    const section = container.querySelector("main section");
+
+    expect(main).not.toBeNull();
+    expect(main!).toHaveClass("items-center");
+    expect(section).not.toBeNull();
+    expect(section!).toHaveClass("items-center");
+  });
 });

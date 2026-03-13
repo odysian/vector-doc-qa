@@ -43,9 +43,9 @@ export default function Home() {
     <div className="min-h-screen bg-zinc-950 p-4 sm:p-6">
       <div className="absolute inset-0 quaero-gradient-overlay" aria-hidden />
 
-      <main className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-6xl items-start py-6 sm:py-8">
-        <section className="grid w-full gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:gap-10">
-          <div className="space-y-6 self-start pt-1">
+      <main className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-6xl items-center py-6 sm:py-8">
+        <section className="grid w-full items-center gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:gap-10">
+          <div className="space-y-6">
             <h1 className="font-cormorant text-5xl font-bold italic text-lapis-300 sm:text-6xl lg:text-7xl">
               Quaero
             </h1>

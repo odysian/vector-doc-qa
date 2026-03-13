@@ -44,9 +44,9 @@ export default function RegisterPage() {
     <div className="min-h-screen bg-zinc-950 p-4 sm:p-6">
       <div className="absolute inset-0 quaero-gradient-overlay" aria-hidden />
 
-      <main className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-5xl items-start py-6 sm:py-8">
-        <section className="grid w-full gap-8 lg:grid-cols-[1fr_0.95fr] lg:gap-10">
-          <div className="space-y-5 self-start pt-1">
+      <main className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-5xl items-center py-6 sm:py-8">
+        <section className="grid w-full items-center gap-8 lg:grid-cols-[1fr_0.95fr] lg:gap-10">
+          <div className="space-y-5">
             <h1 className="font-cormorant text-5xl font-bold italic text-lapis-300 sm:text-6xl">
               Quaero
             </h1>
@@ -55,7 +55,7 @@ export default function RegisterPage() {
             </p>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-8">
+          <div className="w-full max-w-md mx-auto rounded-xl border border-zinc-800 bg-zinc-900/70 p-8 lg:max-w-none lg:mx-0">
             <div className="mb-6">
               <p className="text-zinc-100 text-xl font-semibold">Register</p>
             </div>
