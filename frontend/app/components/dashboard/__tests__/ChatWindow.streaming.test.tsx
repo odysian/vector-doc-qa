@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ChatWindow } from "@/app/components/dashboard/ChatWindow";
 import { chatService } from "@/lib/services/chatService";
 import type { Document, PipelineMeta, QueryResponse } from "@/lib/api";
@@ -97,7 +97,7 @@ describe("ChatWindow streaming lifecycle", () => {
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
   });
 
-  it("uses multiline composer with Cmd/Ctrl+Enter submit behavior", async () => {
+  it("submits on Enter, keeps Shift+Enter as newline path, and ignores IME enter", async () => {
     queryDocumentStreamMock.mockResolvedValue(undefined);
 
     render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
@@ -108,14 +108,20 @@ describe("ChatWindow streaming lifecycle", () => {
     const input = screen.getByPlaceholderText("Ask a question about this document...");
     fireEvent.change(input, { target: { value: "Line one" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(queryDocumentStreamMock).not.toHaveBeenCalled();
-
-    fireEvent.change(input, { target: { value: "Line one\nLine two" } });
-    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
 
     await waitFor(() => expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1));
-    expect(queryDocumentStreamMock.mock.calls[0]?.[1]).toBe("Line one\nLine two");
-    expect(screen.getByText("Enter adds a new line. Cmd/Ctrl + Enter sends.")).toBeInTheDocument();
+    expect(queryDocumentStreamMock.mock.calls[0]?.[1]).toBe("Line one");
+
+    fireEvent.change(input, { target: { value: "Line one\nLine two" } });
+    const shiftEnterEvent = createEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    fireEvent(input, shiftEnterEvent);
+    expect(shiftEnterEvent.defaultPrevented).toBe(false);
+    expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(input, { target: { value: "Composing text" } });
+    const imeEnterEvent = createEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent(input, imeEnterEvent);
+    expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1);
   });
 
   it("appends streaming errors without duplicating assistant bubbles", async () => {

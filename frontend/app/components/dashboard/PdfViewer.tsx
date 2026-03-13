@@ -64,6 +64,9 @@ export function PdfViewer({
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const highlightedTextSpansRef = useRef<HTMLElement[]>([]);
   const textHighlightTimerRef = useRef<number | null>(null);
+  const currentPageRef = useRef(1);
+  const observerFrameRef = useRef<number | null>(null);
+  const visiblePageRatiosRef = useRef<Map<number, number>>(new Map());
 
   const pdfFile = useMemo(() => {
     if (!pdfData) return null;
@@ -168,12 +171,13 @@ export function PdfViewer({
 
   const jumpToPage = useCallback((rawPage: number, behavior: ScrollBehavior = "smooth") => {
     const targetPage = Math.max(1, Math.min(rawPage, numPages || 1));
+    setCurrentPage(targetPage);
+    setPageInputValue(String(targetPage));
+
     const target = pageRefs.current.get(targetPage);
     if (!target) return;
 
     target.scrollIntoView({ behavior, block: "center" });
-    setCurrentPage(targetPage);
-    setPageInputValue(String(targetPage));
   }, [numPages]);
 
   const tryHighlightSnippet = useCallback(
@@ -278,41 +282,72 @@ export function PdfViewer({
   }, [clearTextHighlight]);
 
   useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
+  useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
     if (!scrollContainer || numPages < 1) return;
+    if (typeof window === "undefined" || !("IntersectionObserver" in window)) return;
 
-    const updateCurrentPageFromScroll = () => {
-      const viewportCenter = scrollContainer.scrollTop + scrollContainer.clientHeight / 2;
-      let nearestPage = currentPage;
-      const currentWrapper = pageRefs.current.get(currentPage);
-      let nearestDistance = currentWrapper && currentWrapper.offsetHeight > 0
-        ? Math.abs((currentWrapper.offsetTop + currentWrapper.offsetHeight / 2) - viewportCenter)
-        : Number.POSITIVE_INFINITY;
+    const visiblePageRatios = visiblePageRatiosRef.current;
+    visiblePageRatios.clear();
 
-      for (let page = 1; page <= numPages; page += 1) {
-        const pageWrapper = pageRefs.current.get(page);
-        if (!pageWrapper || pageWrapper.offsetHeight <= 0) continue;
+    const updateMostVisiblePage = () => {
+      observerFrameRef.current = null;
+      let bestPage = currentPageRef.current;
+      let bestRatio = 0;
 
-        const pageCenter = pageWrapper.offsetTop + pageWrapper.offsetHeight / 2;
-        const distance = Math.abs(pageCenter - viewportCenter);
-        if (distance < nearestDistance) {
-          nearestDistance = distance;
-          nearestPage = page;
+      visiblePageRatios.forEach((ratio, pageNumber) => {
+        if (ratio > bestRatio) {
+          bestRatio = ratio;
+          bestPage = pageNumber;
         }
-      }
+      });
 
-      if (nearestPage !== currentPage) {
-        setCurrentPage(nearestPage);
-        setPageInputValue(String(nearestPage));
+      if (bestRatio > 0 && bestPage !== currentPageRef.current) {
+        currentPageRef.current = bestPage;
+        setCurrentPage(bestPage);
+        setPageInputValue(String(bestPage));
       }
     };
 
-    updateCurrentPageFromScroll();
-    scrollContainer.addEventListener("scroll", updateCurrentPageFromScroll, { passive: true });
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const pageNumber = Number.parseInt(
+            (entry.target as HTMLElement).dataset.pageNumber ?? "",
+            10
+          );
+          if (Number.isNaN(pageNumber)) return;
+          visiblePageRatios.set(pageNumber, entry.isIntersecting ? entry.intersectionRatio : 0);
+        });
+
+        if (observerFrameRef.current !== null) {
+          window.cancelAnimationFrame(observerFrameRef.current);
+        }
+        observerFrameRef.current = window.requestAnimationFrame(updateMostVisiblePage);
+      },
+      {
+        root: scrollContainer,
+        threshold: [0, 0.15, 0.35, 0.55, 0.75, 0.95],
+      }
+    );
+
+    for (let pageNumber = 1; pageNumber <= numPages; pageNumber += 1) {
+      const pageElement = pageRefs.current.get(pageNumber);
+      if (pageElement) observer.observe(pageElement);
+    }
+
     return () => {
-      scrollContainer.removeEventListener("scroll", updateCurrentPageFromScroll);
+      observer.disconnect();
+      visiblePageRatios.clear();
+      if (observerFrameRef.current !== null) {
+        window.cancelAnimationFrame(observerFrameRef.current);
+        observerFrameRef.current = null;
+      }
     };
-  }, [currentPage, numPages]);
+  }, [numPages]);
 
   useEffect(() => {
     if (!highlightPage || !numPages) return;
@@ -517,6 +552,7 @@ export function PdfViewer({
                 return (
                   <div
                     key={pageNumber}
+                    data-page-number={pageNumber}
                     ref={(node) => {
                       if (node) pageRefs.current.set(pageNumber, node);
                       else pageRefs.current.delete(pageNumber);

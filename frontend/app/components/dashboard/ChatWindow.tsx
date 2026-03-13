@@ -102,24 +102,25 @@ export function ChatWindow({
     }
   }, [messages]);
 
-  const handleSubmit = (e: SyntheticEvent) => {
-    e.preventDefault();
+  const submitCurrentInput = () => {
     const trimmed = input.trim();
-    if (!trimmed) return;
+    if (!trimmed || isStreaming) return;
     setInput("");
     void submitQuery(trimmed);
+  };
+
+  const handleSubmit = (e: SyntheticEvent) => {
+    e.preventDefault();
+    submitCurrentInput();
   };
 
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== "Enter") return;
     if (event.nativeEvent.isComposing) return;
-    if (!event.metaKey && !event.ctrlKey) return;
+    if (event.shiftKey) return;
 
     event.preventDefault();
-    const trimmed = input.trim();
-    if (!trimmed || isStreaming) return;
-    setInput("");
-    void submitQuery(trimmed);
+    submitCurrentInput();
   };
 
   const handleRetry = (query: string) => {
@@ -473,39 +474,37 @@ export function ChatWindow({
 
       {/* Input Area */}
       <div className="shrink-0 p-4 border-t border-zinc-800 bg-zinc-900">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+        <form onSubmit={handleSubmit} className="flex items-end gap-3">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleComposerKeyDown}
-            rows={3}
+            rows={2}
             placeholder={
               isWorkspaceMode
                 ? "Ask a question across this workspace..."
                 : "Ask a question about this document..."
             }
-            className="ui-input w-full resize-y min-h-[92px] max-h-56 leading-relaxed"
+            className="ui-input flex-1 resize-none min-h-[44px] max-h-36 leading-relaxed"
+            title="Enter to send, Shift+Enter for newline"
           />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-meta">Enter adds a new line. Cmd/Ctrl + Enter sends.</p>
-            {isStreaming && canStopStream ? (
-              <button
-                type="button"
-                onClick={stopActiveStream}
-                className="ui-btn ui-btn-neutral ui-btn-md"
-              >
-                Stop
-              </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={!input.trim() || isStreaming}
-                className="ui-btn ui-btn-primary ui-btn-md"
-              >
-                Send
-              </button>
-            )}
-          </div>
+          {isStreaming && canStopStream ? (
+            <button
+              type="button"
+              onClick={stopActiveStream}
+              className="ui-btn ui-btn-neutral ui-btn-md shrink-0"
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!input.trim() || isStreaming}
+              className="ui-btn ui-btn-primary ui-btn-md shrink-0"
+            >
+              Send
+            </button>
+          )}
         </form>
       </div>
     </div>
