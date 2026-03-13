@@ -11,6 +11,11 @@ import { authService } from "@/lib/services/authService";
 import { documentService } from "@/lib/services/documentService";
 import { workspaceService } from "@/lib/services/workspaceService";
 
+/**
+ * Dashboard UI state orchestration for documents/workspaces.
+ * Boundaries: reads/writes through document/workspace/auth services only.
+ * Side effects: network fetch/upload/process/delete calls, polling, and responsive layout observation.
+ */
 const SPLIT_LAYOUT_MIN_WIDTH = 1120;
 const SPLIT_LAYOUT_RESTORE_WIDTH = 1240;
 const POLL_INITIAL_DELAY_MS = 3000;
@@ -79,6 +84,9 @@ export interface UseDashboardStateResult {
   setDesktopSidebarCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
+/**
+ * Loads dashboard data and coordinates document/workspace actions with session-aware error handling.
+ */
 export function useDashboardState({
   onSessionExpired,
 }: UseDashboardStateOptions): UseDashboardStateResult {
@@ -171,6 +179,7 @@ export function useDashboardState({
     void loadInitialData();
 
     return () => {
+      // Prevent state updates from late async results after unmount.
       cancelled = true;
     };
   }, [handleApiError, handleSessionExpired]);
@@ -217,6 +226,7 @@ export function useDashboardState({
       if (activeDocuments.length === 0 || cancelled) return;
 
       const targetIds = activeDocuments.map((doc) => doc.id);
+      // Keep polling resilient to partial failures by handling each status request independently.
       const results = await Promise.allSettled(
         targetIds.map((id) => documentService.getDocumentStatus(id))
       );
@@ -271,6 +281,7 @@ export function useDashboardState({
         );
       }
 
+      // Back off aggressively only when everything failed; otherwise keep moderate cadence.
       if (hadPollFailures && statusById.size === 0) {
         delayMs = Math.min(delayMs * 2, POLL_MAX_DELAY_MS);
       } else {
@@ -309,6 +320,7 @@ export function useDashboardState({
       if (!entry) return;
 
       if (frameId !== null) window.cancelAnimationFrame(frameId);
+      // Batch resize-driven state updates onto the next frame to avoid layout thrash.
       frameId = window.requestAnimationFrame(() => {
         updateLayoutMode(Math.floor(entry.contentRect.width));
       });
@@ -374,6 +386,7 @@ export function useDashboardState({
     setHighlightSnippet(nextSnippet);
     setHighlightPage((current) => {
       if (current === page) {
+        // Force re-highlight when user clicks the same citation twice.
         setHighlightSnippet(null);
         window.setTimeout(() => {
           setHighlightSnippet(nextSnippet);

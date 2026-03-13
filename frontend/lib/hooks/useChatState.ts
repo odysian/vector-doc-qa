@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, SessionExpiredError, type Document, type PipelineMeta, type QueryResponse } from "@/lib/api";
 import { chatService } from "@/lib/services/chatService";
 
+/**
+ * Chat state orchestration for document and workspace contexts.
+ * Boundaries: delegates network I/O to chatService and exposes UI-safe streaming state.
+ * Side effects: starts/aborts stream requests, loads history, and mutates shared hook state.
+ */
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
@@ -41,6 +46,9 @@ const isAbortError = (err: unknown): boolean => {
   );
 };
 
+/**
+ * Manages chat history and query execution, including stream cancellation and session-expiry handoff.
+ */
 export function useChatState({
   document,
   workspaceId,
@@ -50,6 +58,7 @@ export function useChatState({
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [requestInFlight, setRequestInFlight] = useState(false);
   const activeStreamAbortRef = useRef<AbortController | null>(null);
+  // Ref guard avoids duplicate submissions during the same render cycle.
   const streamInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
   const canStopStream = !!document && messages.some((message) => message.role === "assistant" && message.streaming);
@@ -119,6 +128,7 @@ export function useChatState({
 
     if (document) {
       const streamController = new AbortController();
+      // Ensure only one live document stream at a time.
       activeStreamAbortRef.current?.abort();
       activeStreamAbortRef.current = streamController;
 
@@ -130,6 +140,7 @@ export function useChatState({
 
       const callbacks: QueryStreamCallbacks = {
         onSources: (sources) => {
+          // Ignore stream events from stale or cancelled requests.
           if (!isMountedRef.current || streamController.signal.aborted) return;
           updateStreamingAssistant((message) => ({
             ...message,
@@ -203,6 +214,7 @@ export function useChatState({
 
         appendStreamError(errorMessage, trimmed);
       } finally {
+        // Avoid clearing a newer controller if another stream started meanwhile.
         if (activeStreamAbortRef.current === streamController) {
           activeStreamAbortRef.current = null;
         }
@@ -269,6 +281,7 @@ export function useChatState({
         return;
       }
 
+      // Context switches invalidate active streams to prevent cross-context updates.
       activeStreamAbortRef.current?.abort();
       streamInFlightRef.current = false;
       setRequestInFlight(false);
