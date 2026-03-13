@@ -65,16 +65,16 @@ export function WorkspaceSidebar({
               <button
                 type="button"
                 onClick={() => onDocumentClick(doc)}
-                className="flex-1 min-w-0 text-left text-sm text-zinc-200 hover:text-zinc-100 truncate cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900 rounded"
+                className="ui-btn ui-btn-ghost ui-btn-sm flex-1 min-w-0 justify-start"
                 title={doc.filename}
               >
-                {doc.filename}
+                <span className="truncate">{doc.filename}</span>
               </button>
               <button
                 type="button"
                 onClick={() => onRemoveDocument(doc.id)}
                 disabled={disabled}
-                className="opacity-0 group-hover:opacity-100 rounded p-1 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900 transition-opacity"
+                className="ui-btn ui-btn-ghost ui-btn-sm opacity-0 group-hover:opacity-100 transition-opacity"
                 aria-label={`Remove ${doc.filename}`}
               >
                 <X className="h-4 w-4" />

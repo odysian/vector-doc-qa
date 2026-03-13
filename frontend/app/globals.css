@@ -39,9 +39,11 @@ body {
   font-family: var(--font-sans);
 }
 
-/* Shared visual system primitives for scoped landing/auth/dashboard controls. */
+/* Shared visual system primitives for scoped landing/auth/dashboard controls.
+   Placed in @layer components so Tailwind utilities can override them. */
+@layer components {
 .ui-panel {
-  border: 1px solid rgb(39 39 42);
+  border: 1px solid rgb(63 63 70);
   border-radius: 0.75rem;
   background: rgb(24 24 27);
 }
@@ -145,8 +147,8 @@ body {
 
 .ui-btn-primary:disabled {
   box-shadow: none;
-  background: rgb(63 63 70);
-  color: rgb(113 113 122);
+  background: rgb(57 91 234 / 0.25);
+  color: rgb(161 161 170);
 }
 
 .ui-btn-secondary {
@@ -159,7 +161,7 @@ body {
 }
 
 .ui-btn-neutral {
-  border-color: rgb(63 63 70);
+  border-color: rgb(82 82 91);
   background: rgb(39 39 42);
   color: rgb(228 228 231);
 }
@@ -394,3 +396,4 @@ body {
   box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.95);
   border-radius: 2px;
 }
+} /* end @layer components */

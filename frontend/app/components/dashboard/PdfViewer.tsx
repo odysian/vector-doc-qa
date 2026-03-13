@@ -5,9 +5,9 @@
  * Dependencies: react-pdf for rendering and API file fetch for binary payloads.
  * Side effects: async file loading, resize observation, and transient page/text highlighting.
  */
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Document as ReactPdfDocument, Page, pdfjs } from "react-pdf";
-import { Scan, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
 import { api, ApiError, SessionExpiredError } from "@/lib/api";
 import { findCitationSpanMatch, normalizeCitationText } from "./pdfCitationMatch";
 
@@ -58,7 +58,6 @@ export function PdfViewer({
   const [zoomPercent, setZoomPercent] = useState(100);
   const [activeHighlightPage, setActiveHighlightPage] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageInputValue, setPageInputValue] = useState("1");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pagesContainerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -88,7 +87,6 @@ export function PdfViewer({
       setPdfData(null);
       setNumPages(0);
       setCurrentPage(1);
-      setPageInputValue("1");
       pageRefs.current.clear();
 
       try {
@@ -172,7 +170,6 @@ export function PdfViewer({
   const jumpToPage = useCallback((rawPage: number, behavior: ScrollBehavior = "smooth") => {
     const targetPage = Math.max(1, Math.min(rawPage, numPages || 1));
     setCurrentPage(targetPage);
-    setPageInputValue(String(targetPage));
 
     const target = pageRefs.current.get(targetPage);
     if (!target) return;
@@ -308,7 +305,6 @@ export function PdfViewer({
       if (bestRatio > 0 && bestPage !== currentPageRef.current) {
         currentPageRef.current = bestPage;
         setCurrentPage(bestPage);
-        setPageInputValue(String(bestPage));
       }
     };
 
@@ -415,7 +411,6 @@ export function PdfViewer({
     setNumPages(loadedPages);
     const nextPage = loadedPages > 0 ? 1 : 0;
     setCurrentPage(nextPage);
-    setPageInputValue(String(nextPage || 1));
     setLoadingPages(false);
   };
 
@@ -436,22 +431,12 @@ export function PdfViewer({
     setZoomPercent(100);
   };
 
-  const handlePageJumpSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const parsed = Number.parseInt(pageInputValue, 10);
-    if (Number.isNaN(parsed)) {
-      setPageInputValue(String(currentPage || 1));
-      return;
-    }
-    jumpToPage(parsed, "smooth");
-  };
-
   const canZoomOut = zoomPercent > MIN_ZOOM_PERCENT;
   const canZoomIn = zoomPercent < MAX_ZOOM_PERCENT;
   const isFitWidth = zoomPercent === 100;
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-1 flex-col rounded-lg border border-zinc-800 bg-zinc-900 shadow-xl overflow-hidden">
+    <div className="ui-panel flex h-full min-h-0 w-full flex-1 flex-col shadow-xl overflow-hidden">
       <div className="shrink-0 border-b border-zinc-800 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-sm font-medium text-zinc-200">PDF Viewer</h3>
         <div className="flex flex-wrap items-center gap-2">
@@ -460,7 +445,7 @@ export function PdfViewer({
               type="button"
               onClick={handleZoomOut}
               disabled={!canZoomOut}
-              className="p-1.5 text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/80 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="ui-btn ui-btn-ghost ui-btn-sm"
               aria-label="Zoom out"
               title="Zoom out"
             >
@@ -471,7 +456,7 @@ export function PdfViewer({
               type="button"
               onClick={handleZoomIn}
               disabled={!canZoomIn}
-              className="p-1.5 text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/80 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="ui-btn ui-btn-ghost ui-btn-sm"
               aria-label="Zoom in"
               title="Zoom in"
             >
@@ -482,33 +467,36 @@ export function PdfViewer({
             type="button"
             onClick={handleFitWidth}
             disabled={isFitWidth}
-            className="ui-btn ui-btn-neutral ui-btn-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            className="ui-btn ui-btn-neutral ui-btn-sm"
             title="Reset to fit width"
           >
-            <Scan className="h-3.5 w-3.5" aria-hidden />
             Fit width
           </button>
-          <form onSubmit={handlePageJumpSubmit} className="inline-flex items-center gap-1.5">
-            <span className="text-xs text-zinc-400">Page</span>
-            <input
-              type="number"
-              min={numPages > 0 ? 1 : 0}
-              max={numPages || undefined}
-              value={pageInputValue}
-              onChange={(event) => setPageInputValue(event.target.value)}
-              className="ui-input h-8 w-14 px-2 py-1 text-sm"
-              aria-label="Jump to page"
-              disabled={numPages < 1}
-            />
-            <span className="text-xs text-zinc-400">of {numPages}</span>
+          <div className="inline-flex items-center rounded-md border border-zinc-700 bg-zinc-950/70">
             <button
-              type="submit"
-              className="ui-btn ui-btn-neutral ui-btn-sm"
-              disabled={numPages < 1}
+              type="button"
+              onClick={() => jumpToPage((currentPage || 1) - 1, "smooth")}
+              disabled={numPages < 1 || (currentPage || 1) <= 1}
+              className="ui-btn ui-btn-ghost ui-btn-sm"
+              aria-label="Previous page"
+              title="Previous page"
             >
-              Go
+              <ChevronLeft className="h-4 w-4" />
             </button>
-          </form>
+            <span className="min-w-16 px-1.5 text-center text-xs text-zinc-300">
+              {currentPage || 1} / {numPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => jumpToPage((currentPage || 1) + 1, "smooth")}
+              disabled={numPages < 1 || (currentPage || 1) >= numPages}
+              className="ui-btn ui-btn-ghost ui-btn-sm"
+              aria-label="Next page"
+              title="Next page"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 
