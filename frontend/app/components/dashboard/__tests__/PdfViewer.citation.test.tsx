@@ -119,20 +119,18 @@ describe("PdfViewer citation highlight behavior", () => {
     });
   });
 
-  it("jumps to a selected page from the page input", async () => {
+  it("navigates to next page via arrow button", async () => {
     mockPdfState.numPages = 3;
 
     render(<PdfViewer documentId={8} />);
     await waitFor(() => {
-      expect(screen.getByText("Page 3")).toBeInTheDocument();
+      expect(screen.getByText("1 / 3")).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByLabelText("Jump to page"), { target: { value: "3" } });
-    fireEvent.click(screen.getByRole("button", { name: "Go" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
 
     await waitFor(() => {
       expect(scrollIntoViewSpy).toHaveBeenCalled();
-      expect(screen.getByText("of 3")).toBeInTheDocument();
     });
   });
 
