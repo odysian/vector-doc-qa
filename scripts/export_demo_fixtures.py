@@ -20,7 +20,6 @@ from sqlalchemy import select  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 from sqlalchemy.orm import selectinload  # noqa: E402
 
-LEGACY_OUTPUT_PATH = Path(__file__).resolve().parent / "fixtures" / "demo_seed_data.json"
 BACKEND_OUTPUT_PATH = (
     Path(__file__).resolve().parents[1]
     / "backend"
@@ -95,12 +94,10 @@ async def _run(user_id: int, *, include_file_bytes: bool) -> None:
         include_file_bytes=include_file_bytes,
     )
     serialized_payload = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    for output_path in (BACKEND_OUTPUT_PATH, LEGACY_OUTPUT_PATH):
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(serialized_payload, encoding="utf-8")
+    BACKEND_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    BACKEND_OUTPUT_PATH.write_text(serialized_payload, encoding="utf-8")
 
     print(f"Wrote {len(documents)} document(s) to {BACKEND_OUTPUT_PATH}")
-    print(f"Mirrored fixture to {LEGACY_OUTPUT_PATH}")
     if include_file_bytes:
         print(f"Embedded file bytes for {len(documents) - missing_files} document(s)")
     if missing_files > 0:
