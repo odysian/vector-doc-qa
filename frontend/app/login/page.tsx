@@ -58,94 +58,108 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-950 p-4">
+    <div className="min-h-screen bg-zinc-950 p-4 sm:p-6">
       <div className="absolute inset-0 quaero-gradient-overlay" aria-hidden />
 
-      <div className="relative w-full max-w-md">
-        {/* Header */}
-        <div className="text-center mb-6">
-          <h1 className="text-6xl font-bold font-cormorant italic text-lapis-400 mb-2">
-            Quaero
-          </h1>
-          <p className="text-zinc-400 text-sm mt-3">Document Intelligence</p>
-        </div>
-
-        {/* Form Card */}
-        <div className="ui-panel p-8">
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {error && (
-              <div className="ui-alert-error text-sm">
-                {error}
-              </div>
-            )}
-
-            <div>
-              <label
-                htmlFor="username"
-                className="block text-sm font-medium text-zinc-300 mb-2"
-              >
-                Username
-              </label>
-              <input
-                id="username"
-                type="text"
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="ui-input"
-                placeholder="Enter your username"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-zinc-300 mb-2"
-              >
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="ui-input"
-                placeholder="Enter your password"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="ui-btn ui-btn-primary ui-btn-md ui-btn-block"
-            >
-              {loading ? "Accessing..." : "Sign In"}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleTryDemo}
-              disabled={loading}
-              className="ui-btn ui-btn-secondary ui-btn-md ui-btn-block"
-            >
-              Try Demo
-            </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <p className="text-zinc-400 text-sm">
-              Don&apos;t have access?{" "}
-              <Link
-                href="/register"
-                className="text-lapis-400 hover:text-lapis-300 transition-colors cursor-pointer"
-              >
-                Register
-              </Link>
+      <main className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-5xl items-center py-8 sm:py-12">
+        <section className="grid w-full gap-8 lg:grid-cols-[1fr_0.95fr] lg:gap-10">
+          <div className="space-y-5 self-center">
+            <p className="text-label-accent">Welcome Back</p>
+            <h1 className="font-cormorant text-5xl font-bold italic text-lapis-300 sm:text-6xl">
+              Quaero
+            </h1>
+            <p className="max-w-md text-2xl leading-tight text-zinc-100">
+              Continue where you left off with your document workspace.
             </p>
+            <p className="max-w-md text-sm text-zinc-400">
+              Sign in to access uploads, chats, and citations from your last session.
+            </p>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-300">
+              Primary path: <span className="text-zinc-100">Sign In</span>. Need quick access? Use <span className="text-zinc-100">Try Demo</span>.
+            </div>
           </div>
-        </div>
-      </div>
+
+          <div className="ui-panel p-8">
+            <div className="mb-6">
+              <p className="text-zinc-100 text-xl font-semibold">Sign In</p>
+              <p className="mt-2 text-sm text-zinc-400">Use your existing credentials to continue.</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {error && (
+                <div className="ui-alert-error text-sm">
+                  {error}
+                </div>
+              )}
+
+              <div>
+                <label
+                  htmlFor="username"
+                  className="block text-sm font-medium text-zinc-300 mb-2"
+                >
+                  Username
+                </label>
+                <input
+                  id="username"
+                  type="text"
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="ui-input"
+                  placeholder="Enter your username"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-zinc-300 mb-2"
+                >
+                  Password
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="ui-input"
+                  placeholder="Enter your password"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="ui-btn ui-btn-primary ui-btn-md ui-btn-block"
+              >
+                {loading ? "Accessing..." : "Sign In"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleTryDemo}
+                disabled={loading}
+                className="ui-btn ui-btn-secondary ui-btn-md ui-btn-block"
+              >
+                Try Demo
+              </button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <p className="text-zinc-400 text-sm">
+                Don&apos;t have access?{" "}
+                <Link
+                  href="/register"
+                  className="text-lapis-400 hover:text-lapis-300 transition-colors cursor-pointer"
+                >
+                  Register
+                </Link>
+              </p>
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
   );
 }
