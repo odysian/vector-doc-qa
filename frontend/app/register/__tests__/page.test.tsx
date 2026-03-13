@@ -103,6 +103,18 @@ describe("RegisterPage form behavior", () => {
     expect(main).not.toBeNull();
     expect(main!).toHaveClass("items-center");
 
+    const heroTitle = screen.getByRole("heading", { name: "Quaero" });
+    const heroColumn = heroTitle.parentElement;
+    expect(heroColumn).not.toBeNull();
+    expect(heroColumn!).toHaveClass(
+      "max-w-md",
+      "mx-auto",
+      "text-center",
+      "lg:max-w-none",
+      "lg:mx-0",
+      "lg:text-left"
+    );
+
     const registerButton = screen.getByRole("button", { name: "Register" });
     const form = registerButton.closest("form");
     expect(form).not.toBeNull();
