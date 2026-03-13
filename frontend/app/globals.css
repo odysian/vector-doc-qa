@@ -23,6 +23,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --ui-focus-ring: rgb(84 123 243 / 0.45);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -36,6 +37,214 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+/* Shared visual system primitives for scoped landing/auth/dashboard controls. */
+.ui-panel {
+  border: 1px solid rgb(39 39 42);
+  border-radius: 0.75rem;
+  background: rgb(24 24 27);
+}
+
+.ui-input {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(63 63 70);
+  background: rgb(9 9 11);
+  color: rgb(244 244 245);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.ui-input::placeholder {
+  color: rgb(113 113 122);
+}
+
+.ui-input:focus-visible {
+  outline: none;
+  border-color: rgb(84 123 243);
+  box-shadow: 0 0 0 2px rgb(84 123 243 / 0.2);
+}
+
+.ui-input:disabled {
+  cursor: not-allowed;
+  border-color: rgb(63 63 70);
+  color: rgb(113 113 122);
+  background: rgb(39 39 42 / 0.6);
+}
+
+.ui-input-sm {
+  padding: 0.5rem 0.75rem;
+}
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.ui-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ui-focus-ring);
+}
+
+.ui-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ui-btn-sm {
+  padding: 0.375rem 0.625rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.ui-btn-md {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.ui-btn-lg {
+  padding: 0.75rem 2rem;
+  font-size: 1rem;
+  line-height: 1.5rem;
+}
+
+.ui-btn-block {
+  width: 100%;
+}
+
+.ui-btn-primary {
+  background: rgb(57 91 234);
+  color: rgb(255 255 255);
+  box-shadow: 0 8px 24px rgb(26 34 86 / 0.25);
+}
+
+.ui-btn-primary:hover:not(:disabled) {
+  background: rgb(84 123 243);
+}
+
+.ui-btn-primary:disabled {
+  box-shadow: none;
+  background: rgb(63 63 70);
+  color: rgb(113 113 122);
+}
+
+.ui-btn-secondary {
+  border-color: rgb(84 123 243 / 0.4);
+  color: rgb(163 192 252);
+}
+
+.ui-btn-secondary:hover:not(:disabled) {
+  background: rgb(84 123 243 / 0.1);
+}
+
+.ui-btn-neutral {
+  border-color: rgb(63 63 70);
+  background: rgb(39 39 42);
+  color: rgb(228 228 231);
+}
+
+.ui-btn-neutral:hover:not(:disabled) {
+  background: rgb(63 63 70);
+}
+
+.ui-btn-ghost {
+  color: rgb(161 161 170);
+}
+
+.ui-btn-ghost:hover:not(:disabled) {
+  color: rgb(228 228 231);
+  background: rgb(39 39 42 / 0.8);
+}
+
+.ui-btn-danger {
+  background: rgb(220 38 38);
+  color: rgb(255 255 255);
+}
+
+.ui-btn-danger:hover:not(:disabled) {
+  background: rgb(239 68 68);
+}
+
+.ui-btn-danger-outline {
+  border-color: rgb(127 29 29 / 0.6);
+  color: rgb(252 165 165);
+}
+
+.ui-btn-danger-outline:hover:not(:disabled) {
+  background: rgb(239 68 68 / 0.1);
+  color: rgb(254 202 202);
+}
+
+.ui-btn-danger-outline:disabled {
+  border-color: rgb(63 63 70);
+  color: rgb(113 113 122);
+}
+
+.ui-alert-error {
+  border: 1px solid rgb(127 29 29 / 0.5);
+  background: rgb(127 29 29 / 0.2);
+  color: rgb(248 113 113);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.ui-segmented {
+  display: inline-flex;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(39 39 42);
+  background: rgb(24 24 27);
+  padding: 0.25rem;
+}
+
+.ui-segmented-option {
+  border: 0;
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  background: transparent;
+  color: rgb(212 212 216);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.ui-segmented-option:hover:not(:disabled) {
+  background: rgb(39 39 42);
+}
+
+.ui-segmented-option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ui-focus-ring);
+}
+
+.ui-segmented-option:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ui-segmented-option-active {
+  background: rgb(57 91 234);
+  color: rgb(255 255 255);
 }
 
 /* Typography scale: semantic tokens for consistent readability */

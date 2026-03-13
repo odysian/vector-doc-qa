@@ -51,7 +51,7 @@ export default function Home() {
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link
             href="/login"
-            className="inline-flex items-center justify-center py-3 px-8 bg-lapis-600 hover:bg-lapis-500 text-white font-medium rounded-lg transition-colors shadow-lg shadow-lapis-900/20 focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-950 cursor-pointer"
+            className="ui-btn ui-btn-primary ui-btn-lg"
           >
             Sign In
           </Link>
@@ -59,13 +59,13 @@ export default function Home() {
             type="button"
             onClick={handleTryDemo}
             disabled={loadingDemo}
-            className="inline-flex items-center justify-center py-3 px-8 border border-lapis-500/40 text-lapis-300 hover:bg-lapis-500/10 font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-950 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            className="ui-btn ui-btn-secondary ui-btn-lg"
           >
             {loadingDemo ? "Accessing..." : "Try Demo"}
           </button>
           <Link
             href="/register"
-            className="inline-flex items-center justify-center py-3 px-8 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-lg border border-zinc-700 transition-colors focus:outline-none focus:ring-2 focus:ring-lapis-500 focus:ring-offset-2 focus:ring-offset-zinc-950 cursor-pointer"
+            className="ui-btn ui-btn-neutral ui-btn-lg"
           >
             Register
           </Link>

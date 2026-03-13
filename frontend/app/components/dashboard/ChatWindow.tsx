@@ -129,7 +129,7 @@ export function ChatWindow({
   };
 
   return (
-    <div className="flex flex-col w-full h-full min-h-0 max-h-full bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shadow-xl">
+    <div className="ui-panel flex flex-col w-full h-full min-h-0 max-h-full overflow-hidden shadow-xl">
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50 backdrop-blur">
         <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -227,7 +227,7 @@ export function ChatWindow({
                     void submitQuery(prompt);
                   }}
                   disabled={isStreaming}
-                  className="px-3 py-2 rounded-lg bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700 text-zinc-300 text-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+                  className="ui-btn ui-btn-neutral ui-btn-md"
                 >
                   {prompt}
                 </button>
@@ -471,13 +471,13 @@ export function ChatWindow({
                 ? "Ask a question across this workspace..."
                 : "Ask a question about this document..."
             }
-            className="flex-1 bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-lapis-500/20 focus:border-lapis-500 transition-all placeholder-zinc-600"
+            className="ui-input flex-1"
           />
           {isStreaming && canStopStream ? (
             <button
               type="button"
               onClick={stopActiveStream}
-              className="bg-zinc-700 hover:bg-zinc-600 text-white px-6 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+              className="ui-btn ui-btn-neutral ui-btn-md"
             >
               Stop
             </button>
@@ -485,7 +485,7 @@ export function ChatWindow({
             <button
               type="submit"
               disabled={!input.trim() || isStreaming}
-              className="bg-lapis-600 hover:bg-lapis-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white px-6 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-lapis-900/20 flex items-center cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+              className="ui-btn ui-btn-primary ui-btn-md"
             >
               Send
             </button>

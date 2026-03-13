@@ -43,7 +43,7 @@ export function WorkspaceList({
           type="button"
           onClick={() => setIsCreating((current) => !current)}
           disabled={disabled}
-          className="inline-flex items-center gap-1 rounded-md border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-300 hover:text-zinc-100 hover:border-zinc-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+          className="ui-btn ui-btn-neutral ui-btn-sm"
         >
           <Plus className="h-3.5 w-3.5" />
           Create
@@ -51,14 +51,14 @@ export function WorkspaceList({
       </div>
 
       {isCreating && (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-800/40 p-2.5 space-y-2">
+        <div className="ui-panel p-2.5 space-y-2">
           <input
             type="text"
             value={name}
             onChange={(event) => setName(event.target.value)}
             maxLength={100}
             placeholder="Workspace name"
-            className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-lapis-500/20 focus:border-lapis-500"
+            className="ui-input ui-input-sm"
           />
           <div className="flex justify-end gap-2">
             <button
@@ -67,7 +67,7 @@ export function WorkspaceList({
                 setIsCreating(false);
                 setName("");
               }}
-              className="rounded-md px-2.5 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+              className="ui-btn ui-btn-ghost ui-btn-sm"
             >
               Cancel
             </button>
@@ -77,7 +77,7 @@ export function WorkspaceList({
                 void handleCreate();
               }}
               disabled={!name.trim() || creating}
-              className="rounded-md bg-lapis-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-lapis-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+              className="ui-btn ui-btn-primary ui-btn-sm"
             >
               {creating ? "Creating..." : "Create"}
             </button>

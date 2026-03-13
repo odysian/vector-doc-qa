@@ -25,7 +25,7 @@ export function DeleteWorkspaceModal({
         className="absolute inset-0 bg-black/60 cursor-default disabled:cursor-wait"
         aria-label="Cancel"
       />
-      <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl max-w-md w-full p-6">
+      <div className="relative ui-panel max-w-md w-full p-6 shadow-xl">
         <h2
           id="delete-workspace-dialog-title"
           className="text-lg font-semibold text-zinc-100 mb-2"
@@ -40,7 +40,7 @@ export function DeleteWorkspaceModal({
             type="button"
             onClick={onCancel}
             disabled={deleting}
-            className="px-4 py-2 rounded-lg text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="ui-btn ui-btn-ghost ui-btn-md"
           >
             Cancel
           </button>
@@ -48,7 +48,7 @@ export function DeleteWorkspaceModal({
             type="button"
             onClick={onConfirm}
             disabled={deleting}
-            className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors cursor-pointer disabled:opacity-70 disabled:cursor-wait"
+            className="ui-btn ui-btn-danger ui-btn-md disabled:cursor-wait"
           >
             {deleting ? "Deleting..." : "Delete"}
           </button>

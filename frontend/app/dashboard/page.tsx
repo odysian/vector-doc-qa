@@ -130,7 +130,7 @@ export default function DashboardPage() {
   const showPdfPane = !useTabLayout || mobileTab === "pdf";
   const showChatPane = !useTabLayout || mobileTab === "chat";
   const errorBanner = error ? (
-    <div className="bg-red-900/20 border border-red-900/50 text-error p-3 rounded-lg text-body-sm flex items-start gap-2">
+    <div className="ui-alert-error text-body-sm flex items-start gap-2">
       <p className="flex-1 min-w-0">{error}</p>
       <button
         type="button"
@@ -146,26 +146,18 @@ export default function DashboardPage() {
   const sidebarContent = (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between p-3 border-b border-zinc-800 xl:border-b-0">
-        <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-900 p-1">
+        <div className="ui-segmented">
           <button
             type="button"
             onClick={() => setDashboardMode("documents")}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900 ${
-              dashboardMode === "documents"
-                ? "bg-lapis-600 text-white"
-                : "text-zinc-300 hover:bg-zinc-800"
-            }`}
+            className={`ui-segmented-option ${dashboardMode === "documents" ? "ui-segmented-option-active" : ""}`}
           >
             Documents
           </button>
           <button
             type="button"
             onClick={() => setDashboardMode("workspaces")}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900 ${
-              dashboardMode === "workspaces"
-                ? "bg-lapis-600 text-white"
-                : "text-zinc-300 hover:bg-zinc-800"
-            }`}
+            className={`ui-segmented-option ${dashboardMode === "workspaces" ? "ui-segmented-option-active" : ""}`}
           >
             Workspaces
           </button>
@@ -276,7 +268,7 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={handleLogout}
-            className="text-sm text-zinc-400 hover:text-zinc-300 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 rounded"
+            className="ui-btn ui-btn-ghost ui-btn-sm"
           >
             Logout
           </button>
@@ -374,7 +366,7 @@ export default function DashboardPage() {
                 type="button"
                 onClick={() => setDocumentPickerOpen(true)}
                 disabled={isDemoUser}
-                className="px-4 py-2 rounded-lg bg-lapis-600 hover:bg-lapis-500 text-white text-sm font-medium disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+                className="ui-btn ui-btn-primary ui-btn-md"
               >
                 Add documents
               </button>
@@ -382,26 +374,18 @@ export default function DashboardPage() {
           ) : (dashboardMode === "documents" && selectedDocument) || (dashboardMode === "workspaces" && selectedWorkspace && viewerDocument) ? (
             <div ref={setWorkspaceElement} className="flex-1 min-h-0 flex flex-col">
               {useTabLayout && (
-                <div className="mb-3 inline-flex w-full max-w-md self-center rounded-lg border border-zinc-800 bg-zinc-900 p-1">
+                <div className="mb-3 ui-segmented w-full max-w-md self-center">
                   <button
                     type="button"
                     onClick={() => setMobileTab("pdf")}
-                    className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 ${
-                      mobileTab === "pdf"
-                        ? "bg-lapis-600 text-white"
-                        : "text-zinc-300 hover:bg-zinc-800"
-                    }`}
+                    className={`ui-segmented-option flex-1 text-sm ${mobileTab === "pdf" ? "ui-segmented-option-active" : ""}`}
                   >
                     PDF
                   </button>
                   <button
                     type="button"
                     onClick={() => setMobileTab("chat")}
-                    className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 ${
-                      mobileTab === "chat"
-                        ? "bg-lapis-600 text-white"
-                        : "text-zinc-300 hover:bg-zinc-800"
-                    }`}
+                    className={`ui-segmented-option flex-1 text-sm ${mobileTab === "chat" ? "ui-segmented-option-active" : ""}`}
                   >
                     Chat
                   </button>
@@ -505,7 +489,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => setSidebarOpen(true)}
-                className="mt-6 xl:hidden px-4 py-2 rounded-lg bg-lapis-600 hover:bg-lapis-500 text-white text-sm font-medium cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+                className="mt-6 xl:hidden ui-btn ui-btn-primary ui-btn-md"
               >
                 Open documents
               </button>
