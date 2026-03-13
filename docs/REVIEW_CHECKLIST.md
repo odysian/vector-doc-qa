@@ -46,7 +46,10 @@ Post-implementation verification checklist. Run through after every feature befo
 - [ ] Backend layering is preserved (`api -> services -> repositories`, `services -> integration services`) with no cross-layer shortcuts
 - [ ] Public services are not pass-through-only wrappers; they add orchestration/validation/policy value
 - [ ] Document pipeline parity holds: endpoint orchestration in command service / query service, `document_service.py` remains worker-focused
-- [ ] Comments follow the structured lightweight comment policy (non-obvious context only)
+- [ ] Changed complex files meet module context requirements from `docs/CODE_COMMENTING_CONTRACT.md`
+- [ ] Touched public/exported side-effecting behavior has concise docstrings/JSDoc
+- [ ] Non-obvious transaction/concurrency/retry/protocol logic has rationale comments where needed
+- [ ] No stale or obvious narration comments were introduced
 
 ## Database
 

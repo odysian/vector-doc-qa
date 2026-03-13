@@ -27,6 +27,7 @@ What changed and why?
 ## Docs and Decisions
 
 - [ ] Docs updated as needed
+- [ ] Commenting contract checks passed for changed files (`docs/CODE_COMMENTING_CONTRACT.md`)
 - [ ] ADR created/linked if decision has lasting architecture/security/perf impact
 
 ## Risks / Rollback

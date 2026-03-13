@@ -1,3 +1,10 @@
+"""Document query command orchestration.
+
+Coordinates synchronous and streaming query flows for processed documents.
+Owns validation, retrieval/LLM pipeline timing, message persistence, and SSE
+event semantics used by query endpoints.
+"""
+
 import json
 import time
 from collections.abc import AsyncGenerator
@@ -207,6 +214,7 @@ async def search_document_command(
     current_user: User,
     search: SearchRequest,
 ) -> SearchResponse:
+    """Run semantic search against a user's processed document."""
     await _validate_document_for_query(
         document_id=document_id,
         current_user=current_user,
@@ -249,6 +257,7 @@ async def query_document_command(
     history_window_turns: int,
     similarity_threshold: float,
 ) -> QueryResponse:
+    """Execute the synchronous query pipeline and persist a complete chat turn."""
     query_start = time.perf_counter()
     logger.info(
         f"Query request for document_id={document_id}, user_id={current_user.id}, query_chars={len(body.query)}"
@@ -278,6 +287,8 @@ async def query_document_command(
             window_turns=history_window_turns,
         )
 
+        # Keep user/assistant persistence in one transaction so failures do not leave
+        # a dangling user-only turn in history.
         user_message = await create_message(
             db=db,
             document_id=document_id,
@@ -331,6 +342,7 @@ async def query_document_command(
                 pipeline_meta=pipeline_meta,
             ),
         )
+        # Commit only after both turns exist to preserve turn-pair integrity.
         await db.commit()
 
         logger.info(
@@ -414,6 +426,7 @@ async def query_document_stream_events_command(
     history_window_turns: int,
     similarity_threshold: float,
 ) -> AsyncGenerator[ServerSentEvent, None]:
+    """Stream query tokens over SSE and persist the final assistant response."""
     query_start = time.perf_counter()
     embedding_tokens: int | None = None
     logger.info(
@@ -533,7 +546,10 @@ async def query_document_stream_events_command(
         content: str,
         sources_payload: dict | None,
     ) -> int | None:
+        """Persist assistant output in an isolated write session."""
         try:
+            # Streaming can outlive request-scoped session state; use a dedicated
+            # session for terminal assistant writes.
             async with AsyncSessionLocal() as write_db:
                 assistant_message = await create_message(
                     db=write_db,
@@ -561,6 +577,8 @@ async def query_document_stream_events_command(
         llm_start = time.perf_counter()
 
         try:
+            # SSE contract: send sources before token events so clients can attach
+            # citations while tokens arrive.
             yield ServerSentEvent(event="sources", raw_data=json.dumps(sources_dict))
             async for token in generate_answer_stream(
                 query=body.query,
@@ -589,6 +607,8 @@ async def query_document_stream_events_command(
                 type(exc).__name__,
                 exc_info=True,
             )
+            # If partial output exists, persist it as the assistant turn instead of
+            # dropping the completion from chat history.
             partial_answer = "".join(answer_tokens).strip()
             assistant_content = (
                 partial_answer
@@ -675,6 +695,7 @@ async def get_document_messages_command(
     document_id: int,
     current_user: User,
 ) -> MessageListResponse:
+    """Return chat history for a document after enforcing ownership checks."""
     document = await get_document_for_user(
         db=db,
         document_id=document_id,

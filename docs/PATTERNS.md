@@ -120,6 +120,16 @@ Use comments sparingly and only where they add non-obvious context:
 
 Do not add comments that only repeat what the next line already says.
 
+### Code Documentation Contract
+
+Use `docs/CODE_COMMENTING_CONTRACT.md` as the canonical standard.
+
+Default baseline:
+
+- complex touched files (`>300` LOC or non-obvious orchestration) include a short module context header
+- touched public/exported side-effecting behavior has concise docstrings/JSDoc
+- non-obvious transaction/concurrency/retry/protocol logic includes inline rationale comments
+
 ### Background Job Queueing
 
 HTTP routes should enqueue background work via a service helper, not import ARQ pool logic directly.
