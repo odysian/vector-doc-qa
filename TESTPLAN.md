@@ -204,6 +204,7 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 - ChatWindow `Retry` re-submits the same query after a stopped/failed assistant response and completes on `done`
 - Debug mode toggle persists in localStorage (`quaero_debug_mode`) and gates retrieval metadata visibility
 - When debug mode is on, assistant messages render pipeline metadata and citations render per-source similarity scores
+- Expanding an assistant `Sources` block auto-scrolls that block into view and renders source cards in a capped, internally scrollable container (`max-h-[40vh]` + `overflow-y-auto`)
 
 ### Error Cases
 
@@ -250,6 +251,7 @@ Test case definitions for Quaero. Tests are defined here before implementation. 
 - Login form disables submit while request is in flight and re-enables after completion
 - Login `Try Demo` shortcut submits `demo` credentials and redirects to `/dashboard` on success
 - Register form disables submit while request is in flight and re-enables after completion
+- Mobile sidebar backdrop keeps utility-driven visibility classes (`hidden`/`block` with `xl:hidden`) so overlay visibility tracks drawer state
 
 ### Error Cases
 
