@@ -1,10 +1,12 @@
 # ADR-008: VM Golden-Image Cutover and Tuple Rollback
 
 **Date:** 2026-03-12
-**Status:** Accepted
+**Status:** Superseded (2026-03-12 incident rollback to pre-golden baseline)
 **Branch:** task-186-golden-image-production-cutover-validation-gates-and-rollback-runbook
 
 ---
+
+This ADR is retained for historical context only. The golden-image pipeline and reconcile-tuple rollout model described here are no longer active in production.
 
 ## Context
 

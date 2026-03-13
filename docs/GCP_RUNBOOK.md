@@ -459,87 +459,17 @@ Run after each production deploy once traffic is live:
 
 ---
 
-## 10. Golden Image Cutover + Rollback Evidence (Task #186)
+## 10. Infrastructure Rollout + Rollback (Current Baseline)
 
-Use this section for the production cutover from stock image path to golden image path.
-Decision record: `docs/adr/008-vm-golden-image-cutover-and-tuple-rollback.md`.
-This section is an execution log template. Do not close Task #186 until placeholder fields are replaced with concrete values/links.
+This section defines the active production process after retiring golden-image and reconcile-tuple flows.
 
-Release tuple mapping:
+### 10.1 Manual-first Terraform rollout (default)
 
-- `image_version` -> Terraform variable `vm_image`
-- `reconcile_release_id` -> Terraform variable `reconcile_release_id`
-- Determinism pins (required for reproducible rollback):
-  - `infra_commit_sha` -> exact repo commit used for Terraform apply
-  - `reconcile_sha256` -> expected metadata hash from Terraform plan at that commit
+Use terminal-driven Terraform as the primary control plane.
 
-### 10.0 Manual-first execution path (default)
-
-Use terminal-driven Terraform as the default control plane for production rollout.
-
-1. Gather pre-cutover records (section 10.1) and confirm target tuple/pins.
-2. Checkout the exact `infra_commit_sha` for the target tuple.
-3. Run plan/apply manually (section 10.2).
-4. Run required post-cutover health gates (section 10.3).
-5. For rollback, use the same tuple/pin discipline described in section 10.5.
-
-High-overhead workflow-based cutover automation is retired from active process in this repo.
-For optional web-based Terraform operations, use the minimal manual-dispatch workflow documented in section 10.6.
-
-### 10.1 Pre-cutover record (required)
-
-Record these before any production apply:
-
-- UTC window: `<required>`
-- Named owner signoff: `<required>`
-- Baseline bootstrap time (minutes): `<required>`
-- Previous rollback tuple (`vm_image`, `reconcile_release_id`): `<required>`
-- Previous determinism pins (`infra_commit_sha`, `reconcile_sha256`): `<required>`
-- Target rollout tuple (`vm_image`, `reconcile_release_id`): `<required>`
-- Target determinism pins (`infra_commit_sha`, `reconcile_sha256`): `<required>`
-- Pre-cutover snapshot/checkpoint ID: `<required>`
-- Non-prod rollback rehearsal evidence link: `<required>`
-
-Production pin rules:
-
-- `vm_image` must be an exact image self-link (not an image family reference).
-- Terraform apply must run from the exact `infra_commit_sha` recorded for that tuple.
-- `reconcile_sha256` from Terraform plan must match the recorded value before apply.
-
-Capture a checkpoint snapshot:
-
-```bash
-VM_DISK="$(gcloud compute instances describe quaero-backend --zone us-east1-b --format='value(disks[0].source.basename())')"
-SNAPSHOT_ID="quaero-backend-pre-cutover-$(date -u +%Y%m%d-%H%M%S)"
-gcloud compute disks snapshot "$VM_DISK" --zone us-east1-b --snapshot-names "$SNAPSHOT_ID"
-echo "checkpoint snapshot: $SNAPSHOT_ID"
-```
-
-### 10.2 Cutover apply (default manual path)
-
-Optional helper wrapper from repo root (legacy helper, not required):
-
-```bash
-make infra-cutover-prepare CUTOVER_TFVARS=envs/prod.tfvars
-```
-
-If `vm_image` is still a family reference and you want the helper to pin it automatically:
-
-```bash
-make infra-cutover-prepare CUTOVER_TFVARS=envs/prod.tfvars CUTOVER_PIN_FAMILY=true
-```
-
-1. Checkout the exact infra commit for the target tuple:
-
-```bash
-git checkout <infra_commit_sha>
-```
-
-2. Set rollout tuple in `infra/terraform/envs/prod.tfvars`:
-   - `vm_image` -> exact promoted image self-link (for example `projects/<project>/global/images/<image-name>`)
-   - `reconcile_release_id` -> approved reconcile artifact release
-3. Confirm planned metadata hash matches recorded `reconcile_sha256`.
-4. Run Terraform plan/apply in approved window:
+1. Checkout the target infra commit.
+2. Set `vm_image` in `infra/terraform/envs/prod.tfvars` to an exact image self-link.
+3. Run Terraform plan/apply:
 
 ```bash
 cd infra/terraform
@@ -547,13 +477,7 @@ terraform plan -var-file=envs/prod.tfvars
 terraform apply -var-file=envs/prod.tfvars
 ```
 
-### 10.3 Post-cutover health gates (required)
-
-Optional automation wrapper from repo root:
-
-```bash
-make infra-cutover-postcheck CUTOVER_TFVARS=envs/prod.tfvars
-```
+### 10.2 Required post-apply health gates
 
 `/health` must pass 15 consecutive checks at 10-second interval:
 
@@ -565,7 +489,7 @@ for i in $(seq 1 15); do
 done
 ```
 
-Ops Agent must stay healthy for 10 minutes with no restart loop:
+Ops Agent should be active and stable:
 
 ```bash
 sudo systemctl is-active --quiet google-cloud-ops-agent
@@ -573,56 +497,28 @@ before="$(sudo systemctl show google-cloud-ops-agent -p NRestarts --value)"
 sleep 600
 after="$(sudo systemctl show google-cloud-ops-agent -p NRestarts --value)"
 test "$before" = "$after"
-sudo systemctl status google-cloud-ops-agent --no-pager
 ```
 
-### 10.4 Bootstrap target calculation (required)
+### 10.3 Rollback
 
-Compute stricter threshold from issue contract (`<= 6 minutes` or `>= 40%` improvement, whichever is stricter):
+If rollback is required:
 
-```bash
-BASELINE_MIN="<baseline-minutes>"
-POST_MIN="<post-cutover-minutes>"
-STRICT_TARGET_MIN="$(awk -v b="$BASELINE_MIN" 'BEGIN { t=b*0.6; if (t < 6) printf "%.2f", t; else printf "6.00" }')"
-awk -v post="$POST_MIN" -v target="$STRICT_TARGET_MIN" 'BEGIN { if (post <= target) { print "target_met=true"; exit 0 } print "target_met=false"; exit 1 }'
-```
+1. Checkout the previous known-good infra commit.
+2. Re-pin previous `vm_image` in `envs/prod.tfvars`.
+3. Run Terraform plan/apply in a controlled window.
+4. Re-run the health gates from section 10.2.
 
-Record:
+### 10.4 Manual-dispatch Terraform ops workflow (optional)
 
-- Post-cutover bootstrap time (minutes):
-- Strict target threshold (minutes):
-- Improvement vs baseline (%):
-- Target met: yes/no
-
-### 10.5 Rollback drill (required)
-
-In non-prod, rehearse rollback with the previous known-good tuple before relying on production rollback:
-
-1. Checkout the exact `infra_commit_sha` for the previous known-good tuple.
-2. Re-pin previous known-good tuple in `envs/prod.tfvars` (`vm_image` exact self-link + `reconcile_release_id`).
-3. Run `terraform plan` and verify planned `reconcile_sha256` matches the recorded value.
-4. Run apply and confirm health gates.
-5. Document the tuple, determinism pins, and evidence link in this runbook.
-
-If production rollback is required:
-
-1. Checkout the exact `infra_commit_sha` for the previous known-good tuple.
-2. Re-pin previous tuple in `envs/prod.tfvars` (`vm_image` exact self-link + `reconcile_release_id`).
-3. Run `terraform plan` and confirm `reconcile_sha256` matches the recorded value.
-4. Apply Terraform in controlled window.
-5. Re-run the same health gates from section 10.3.
-
-### 10.6 Manual-dispatch Terraform ops workflow (optional)
-
-Use `.github/workflows/infra-terraform-ops.yml` for web-triggered Terraform operations (`plan`, `apply`, `destroy`) when terminal access is not preferred.
+Use `.github/workflows/infra-terraform-ops.yml` for web-triggered `plan`, `apply`, and `destroy`.
 
 Required setup:
 
 - Repository secret: `TFVARS_PROD_B64` (base64-encoded full `infra/terraform/envs/prod.tfvars` payload)
-- Repository variables for OIDC auth:
+- Repository variables:
   - `GCP_PROJECT_ID`
-  - `GCP_TERRAFORM_WIF_PROVIDER` (or fallback `GCP_GOLDEN_IMAGE_WIF_PROVIDER`)
-  - `GCP_TERRAFORM_SERVICE_ACCOUNT` (or fallback `GCP_GOLDEN_IMAGE_SERVICE_ACCOUNT`)
+  - `GCP_TERRAFORM_WIF_PROVIDER`
+  - `GCP_TERRAFORM_SERVICE_ACCOUNT`
 - GitHub environment: `infra-prod` with required reviewers (mutating runs only)
 
 Set/update tfvars secret:
@@ -634,18 +530,17 @@ base64 -w 0 infra/terraform/envs/prod.tfvars | gh secret set TFVARS_PROD_B64
 Dispatch inputs:
 
 - `action`: `plan` | `apply` | `destroy`
-- `target_ref`: git ref input (must be `main`)
-- `tf_dir`: input is allowlisted to `infra/terraform`
-- `tfvars_path`: input is allowlisted to `envs/prod.tfvars`
+- `target_ref`: must be `main`
+- `tf_dir`: allowlisted to `infra/terraform`
+- `tfvars_path`: allowlisted to `envs/prod.tfvars`
 - `destroy_confirm`: must equal `DESTROY_PROD` for destroy
 
 Safety gates:
 
-- `plan` fails unless dispatched from protected `main` and `target_ref=main`
-- `apply`/`destroy` fail unless dispatched from protected `main` and `target_ref=main`
+- `plan` fails unless dispatched from protected `main` with `target_ref=main`
+- `apply`/`destroy` fail unless dispatched from protected `main` with `target_ref=main`
 - `apply`/`destroy` require `infra-prod` environment approval
 - `destroy` fails unless `destroy_confirm=DESTROY_PROD`
-- decoded tfvars and local plan binaries are removed in an `always()` cleanup step
 
 ## 11. Change Log
 
