@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useEffect, type ReactNode } from "react";
 import { PdfViewer } from "@/app/components/dashboard/PdfViewer";
@@ -34,10 +34,10 @@ vi.mock("react-pdf", () => {
       }, [onLoadSuccess]);
       return <div data-testid="mock-react-pdf-document">{children}</div>;
     },
-    Page: ({ pageNumber }: { pageNumber: number }) => {
+    Page: ({ pageNumber, width }: { pageNumber: number; width?: number }) => {
       const spans = mockPdfState.spansByPage.get(pageNumber) ?? [];
       return (
-        <div data-testid={`mock-page-${pageNumber}`}>
+        <div data-testid={`mock-page-${pageNumber}`} data-width={width ?? 0}>
           <div className="react-pdf__Page__textContent">
             {spans.map((text, index) => (
               <span key={`${pageNumber}-${index}`}>{text}</span>
@@ -95,6 +95,45 @@ describe("PdfViewer citation highlight behavior", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("supports zoom in/out and fit-width reset controls", async () => {
+    const { getByTestId } = render(<PdfViewer documentId={7} />);
+
+    await waitFor(() => {
+      expect(getDocumentFileMock).toHaveBeenCalledWith(7);
+      expect(screen.getByText("Page 1")).toBeInTheDocument();
+    });
+
+    const page = getByTestId("mock-page-1");
+    const initialWidth = Number(page.getAttribute("data-width"));
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+
+    await waitFor(() => {
+      expect(Number(page.getAttribute("data-width"))).toBeGreaterThan(initialWidth);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Fit width" }));
+    await waitFor(() => {
+      expect(Number(page.getAttribute("data-width"))).toBe(initialWidth);
+    });
+  });
+
+  it("jumps to a selected page from the page input", async () => {
+    mockPdfState.numPages = 3;
+
+    render(<PdfViewer documentId={8} />);
+    await waitFor(() => {
+      expect(screen.getByText("Page 3")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Jump to page"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Go" }));
+
+    await waitFor(() => {
+      expect(scrollIntoViewSpy).toHaveBeenCalled();
+      expect(screen.getByText("of 3")).toBeInTheDocument();
+    });
   });
 
   it("applies transient text highlight when snippet matching succeeds", async () => {

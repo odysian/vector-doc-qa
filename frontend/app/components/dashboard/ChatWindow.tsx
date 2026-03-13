@@ -5,7 +5,7 @@
 
 "use client";
 
-import { SyntheticEvent, useEffect, useRef, useState } from "react";
+import { KeyboardEvent, SyntheticEvent, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Settings2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { Document } from "@/lib/api";
@@ -106,6 +106,18 @@ export function ChatWindow({
     e.preventDefault();
     const trimmed = input.trim();
     if (!trimmed) return;
+    setInput("");
+    void submitQuery(trimmed);
+  };
+
+  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter") return;
+    if (event.nativeEvent.isComposing) return;
+    if (!event.metaKey && !event.ctrlKey) return;
+
+    event.preventDefault();
+    const trimmed = input.trim();
+    if (!trimmed || isStreaming) return;
     setInput("");
     void submitQuery(trimmed);
   };
@@ -404,26 +416,26 @@ export function ChatWindow({
                                 : "hover:border-lapis-500/30"
                           }`}
                         >
-                          <div className="flex items-center gap-2 mb-2">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
                             <span className="badge-sm bg-lapis-600 text-white px-2 py-0.5 rounded">
                               {idx + 1}
                             </span>
                             {source.document_filename && (
-                              <span className="text-meta-bright">
+                              <span className="text-meta-bright font-medium truncate max-w-full">
                                 {source.document_filename}
                               </span>
                             )}
-                            {debugMode && (
-                              <span className="text-meta-bright">
-                                Similarity: {(source.similarity * 100).toFixed(1)}%
-                              </span>
-                            )}
-                            <span className="text-meta-bright">
+                            <span className="text-meta-bright rounded border border-zinc-700/80 px-1.5 py-0.5">
                               Excerpt {source.chunk_index}
                             </span>
                             {pageLabel && (
-                              <span className="text-meta-bright">
+                              <span className="text-meta-bright rounded border border-zinc-700/80 px-1.5 py-0.5">
                                 {pageLabel}
+                              </span>
+                            )}
+                            {debugMode && (
+                              <span className="text-meta-bright rounded border border-zinc-700/80 px-1.5 py-0.5">
+                                Similarity: {(source.similarity * 100).toFixed(1)}%
                               </span>
                             )}
                           </div>
@@ -461,35 +473,39 @@ export function ChatWindow({
 
       {/* Input Area */}
       <div className="shrink-0 p-4 border-t border-zinc-800 bg-zinc-900">
-        <form onSubmit={handleSubmit} className="flex gap-3">
-          <input
-            type="text"
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+          <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleComposerKeyDown}
+            rows={3}
             placeholder={
               isWorkspaceMode
                 ? "Ask a question across this workspace..."
                 : "Ask a question about this document..."
             }
-            className="ui-input flex-1"
+            className="ui-input w-full resize-y min-h-[92px] max-h-56 leading-relaxed"
           />
-          {isStreaming && canStopStream ? (
-            <button
-              type="button"
-              onClick={stopActiveStream}
-              className="ui-btn ui-btn-neutral ui-btn-md"
-            >
-              Stop
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={!input.trim() || isStreaming}
-              className="ui-btn ui-btn-primary ui-btn-md"
-            >
-              Send
-            </button>
-          )}
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-meta">Enter adds a new line. Cmd/Ctrl + Enter sends.</p>
+            {isStreaming && canStopStream ? (
+              <button
+                type="button"
+                onClick={stopActiveStream}
+                className="ui-btn ui-btn-neutral ui-btn-md"
+              >
+                Stop
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!input.trim() || isStreaming}
+                className="ui-btn ui-btn-primary ui-btn-md"
+              >
+                Send
+              </button>
+            )}
+          </div>
         </form>
       </div>
     </div>

@@ -97,6 +97,27 @@ describe("ChatWindow streaming lifecycle", () => {
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
   });
 
+  it("uses multiline composer with Cmd/Ctrl+Enter submit behavior", async () => {
+    queryDocumentStreamMock.mockResolvedValue(undefined);
+
+    render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.queryByText("Loading conversation...")).not.toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText("Ask a question about this document...");
+    fireEvent.change(input, { target: { value: "Line one" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(queryDocumentStreamMock).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: "Line one\nLine two" } });
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+
+    await waitFor(() => expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1));
+    expect(queryDocumentStreamMock.mock.calls[0]?.[1]).toBe("Line one\nLine two");
+    expect(screen.getByText("Enter adds a new line. Cmd/Ctrl + Enter sends.")).toBeInTheDocument();
+  });
+
   it("appends streaming errors without duplicating assistant bubbles", async () => {
     queryDocumentStreamMock.mockImplementation(async (_documentId, _query, callbacks) => {
       await Promise.resolve();

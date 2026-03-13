@@ -5,8 +5,9 @@
  * Dependencies: react-pdf for rendering and API file fetch for binary payloads.
  * Side effects: async file loading, resize observation, and transient page/text highlighting.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Document as ReactPdfDocument, Page, pdfjs } from "react-pdf";
+import { Scan, ZoomIn, ZoomOut } from "lucide-react";
 import { api, ApiError, SessionExpiredError } from "@/lib/api";
 import { findCitationSpanMatch, normalizeCitationText } from "./pdfCitationMatch";
 
@@ -24,6 +25,9 @@ interface PdfViewerProps {
 
 const MAX_RENDERED_PAGE_WIDTH = 840;
 const PAGE_WIDTH_STEP = 8;
+const MIN_ZOOM_PERCENT = 70;
+const MAX_ZOOM_PERCENT = 180;
+const ZOOM_STEP_PERCENT = 10;
 const TEXT_HIGHLIGHT_DURATION_MS = 3000;
 const PAGE_HIGHLIGHT_START_DELAY_MS = 300;
 const PAGE_HIGHLIGHT_DURATION_MS = 2500;
@@ -50,8 +54,11 @@ export function PdfViewer({
   const [loadingFile, setLoadingFile] = useState(true);
   const [loadingPages, setLoadingPages] = useState(true);
   const [error, setError] = useState<string>("");
-  const [pageWidth, setPageWidth] = useState(720);
+  const [basePageWidth, setBasePageWidth] = useState(720);
+  const [zoomPercent, setZoomPercent] = useState(100);
   const [activeHighlightPage, setActiveHighlightPage] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageInputValue, setPageInputValue] = useState("1");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pagesContainerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -63,6 +70,11 @@ export function PdfViewer({
     return { data: pdfData };
   }, [pdfData]);
 
+  const pageWidth = useMemo(
+    () => Math.round((basePageWidth * zoomPercent) / 100),
+    [basePageWidth, zoomPercent]
+  );
+
   useEffect(() => {
     let cancelled = false;
 
@@ -72,6 +84,8 @@ export function PdfViewer({
       setError("");
       setPdfData(null);
       setNumPages(0);
+      setCurrentPage(1);
+      setPageInputValue("1");
       pageRefs.current.clear();
 
       try {
@@ -117,7 +131,7 @@ export function PdfViewer({
       // Snap to a small width grid to avoid noisy resize loops and repaint flashes.
       const boundedWidth = Math.min(Math.max(containerWidth - 2, 260), MAX_RENDERED_PAGE_WIDTH);
       const nextWidth = Math.round(boundedWidth / PAGE_WIDTH_STEP) * PAGE_WIDTH_STEP;
-      setPageWidth((current) =>
+      setBasePageWidth((current) =>
         Math.abs(current - nextWidth) >= PAGE_WIDTH_STEP ? nextWidth : current
       );
     };
@@ -151,6 +165,16 @@ export function PdfViewer({
       textHighlightTimerRef.current = null;
     }
   }, []);
+
+  const jumpToPage = useCallback((rawPage: number, behavior: ScrollBehavior = "smooth") => {
+    const targetPage = Math.max(1, Math.min(rawPage, numPages || 1));
+    const target = pageRefs.current.get(targetPage);
+    if (!target) return;
+
+    target.scrollIntoView({ behavior, block: "center" });
+    setCurrentPage(targetPage);
+    setPageInputValue(String(targetPage));
+  }, [numPages]);
 
   const tryHighlightSnippet = useCallback(
     (targetPage: number, snippet: string): boolean => {
@@ -254,6 +278,43 @@ export function PdfViewer({
   }, [clearTextHighlight]);
 
   useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer || numPages < 1) return;
+
+    const updateCurrentPageFromScroll = () => {
+      const viewportCenter = scrollContainer.scrollTop + scrollContainer.clientHeight / 2;
+      let nearestPage = currentPage;
+      const currentWrapper = pageRefs.current.get(currentPage);
+      let nearestDistance = currentWrapper && currentWrapper.offsetHeight > 0
+        ? Math.abs((currentWrapper.offsetTop + currentWrapper.offsetHeight / 2) - viewportCenter)
+        : Number.POSITIVE_INFINITY;
+
+      for (let page = 1; page <= numPages; page += 1) {
+        const pageWrapper = pageRefs.current.get(page);
+        if (!pageWrapper || pageWrapper.offsetHeight <= 0) continue;
+
+        const pageCenter = pageWrapper.offsetTop + pageWrapper.offsetHeight / 2;
+        const distance = Math.abs(pageCenter - viewportCenter);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestPage = page;
+        }
+      }
+
+      if (nearestPage !== currentPage) {
+        setCurrentPage(nearestPage);
+        setPageInputValue(String(nearestPage));
+      }
+    };
+
+    updateCurrentPageFromScroll();
+    scrollContainer.addEventListener("scroll", updateCurrentPageFromScroll, { passive: true });
+    return () => {
+      scrollContainer.removeEventListener("scroll", updateCurrentPageFromScroll);
+    };
+  }, [currentPage, numPages]);
+
+  useEffect(() => {
     if (!highlightPage || !numPages) return;
 
     const targetPage = Math.max(1, Math.min(highlightPage, numPages));
@@ -277,7 +338,7 @@ export function PdfViewer({
         return;
       }
 
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      jumpToPage(targetPage, "smooth");
       clearTextHighlight();
       // Start page-level fallback highlight after smooth-scroll has begun.
       setActiveHighlightPage((current) => (current === targetPage ? null : current));
@@ -313,10 +374,13 @@ export function PdfViewer({
       if (highlightStartTimer !== null) window.clearTimeout(highlightStartTimer);
       if (highlightTimer !== null) window.clearTimeout(highlightTimer);
     };
-  }, [highlightPage, highlightSnippet, numPages, clearTextHighlight, tryHighlightSnippet]);
+  }, [highlightPage, highlightSnippet, numPages, clearTextHighlight, jumpToPage, tryHighlightSnippet]);
 
   const onDocumentLoadSuccess = ({ numPages: loadedPages }: { numPages: number }) => {
     setNumPages(loadedPages);
+    const nextPage = loadedPages > 0 ? 1 : 0;
+    setCurrentPage(nextPage);
+    setPageInputValue(String(nextPage || 1));
     setLoadingPages(false);
   };
 
@@ -325,10 +389,92 @@ export function PdfViewer({
     setLoadingPages(false);
   };
 
+  const handleZoomIn = () => {
+    setZoomPercent((current) => Math.min(current + ZOOM_STEP_PERCENT, MAX_ZOOM_PERCENT));
+  };
+
+  const handleZoomOut = () => {
+    setZoomPercent((current) => Math.max(current - ZOOM_STEP_PERCENT, MIN_ZOOM_PERCENT));
+  };
+
+  const handleFitWidth = () => {
+    setZoomPercent(100);
+  };
+
+  const handlePageJumpSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const parsed = Number.parseInt(pageInputValue, 10);
+    if (Number.isNaN(parsed)) {
+      setPageInputValue(String(currentPage || 1));
+      return;
+    }
+    jumpToPage(parsed, "smooth");
+  };
+
+  const canZoomOut = zoomPercent > MIN_ZOOM_PERCENT;
+  const canZoomIn = zoomPercent < MAX_ZOOM_PERCENT;
+  const isFitWidth = zoomPercent === 100;
+
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col rounded-lg border border-zinc-800 bg-zinc-900 shadow-xl overflow-hidden">
-      <div className="shrink-0 border-b border-zinc-800 px-4 py-3">
+      <div className="shrink-0 border-b border-zinc-800 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-sm font-medium text-zinc-200">PDF Viewer</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center rounded-md border border-zinc-700 bg-zinc-950/70">
+            <button
+              type="button"
+              onClick={handleZoomOut}
+              disabled={!canZoomOut}
+              className="p-1.5 text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/80 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              aria-label="Zoom out"
+              title="Zoom out"
+            >
+              <ZoomOut className="h-4 w-4" />
+            </button>
+            <span className="min-w-14 px-2 text-center text-xs text-zinc-300">{zoomPercent}%</span>
+            <button
+              type="button"
+              onClick={handleZoomIn}
+              disabled={!canZoomIn}
+              className="p-1.5 text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/80 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              aria-label="Zoom in"
+              title="Zoom in"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={handleFitWidth}
+            disabled={isFitWidth}
+            className="ui-btn ui-btn-neutral ui-btn-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Reset to fit width"
+          >
+            <Scan className="h-3.5 w-3.5" aria-hidden />
+            Fit width
+          </button>
+          <form onSubmit={handlePageJumpSubmit} className="inline-flex items-center gap-1.5">
+            <span className="text-xs text-zinc-400">Page</span>
+            <input
+              type="number"
+              min={numPages > 0 ? 1 : 0}
+              max={numPages || undefined}
+              value={pageInputValue}
+              onChange={(event) => setPageInputValue(event.target.value)}
+              className="ui-input h-8 w-14 px-2 py-1 text-sm"
+              aria-label="Jump to page"
+              disabled={numPages < 1}
+            />
+            <span className="text-xs text-zinc-400">of {numPages}</span>
+            <button
+              type="submit"
+              className="ui-btn ui-btn-neutral ui-btn-sm"
+              disabled={numPages < 1}
+            >
+              Go
+            </button>
+          </form>
+        </div>
       </div>
 
       <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto p-3">
