@@ -2,7 +2,7 @@
 
 This document defines the complete development workflow for all projects. Any agent working on this codebase must read and follow this document. It covers project setup, architecture design, test-driven development, implementation, code review, and documentation maintenance.
 
-The developer (Chris) is a backend/full-stack developer building production applications. The workflow is designed for AI-assisted development where the developer architects and reviews, and agents implement and verify. Every feature follows the same loop: **Design → Test → Implement → Review → Document.**
+The developer (Chris) is a backend/full-stack developer building production applications. The workflow is designed for AI-assisted development where the developer architects and reviews, and agents implement and verify. Every feature follows the same loop: **Design → Test → Implement → Review → Learning Handoff → Document.**
 
 Workflow template baseline in this repository: `agentic-workflow-template v0.2.0` (adopted 2026-03-06).
 
@@ -452,6 +452,7 @@ After implementation and PR creation, run one focused reviewer follow-up pass:
 - Reviewer scope: major correctness bugs, regressions, and missing tests/docs.
 - Reviewer output: `APPROVED` or `ACTIONABLE`.
 - If `ACTIONABLE`, patch findings and rerun only relevant verification.
+- If `APPROVED`, generate the required learning handoff before claiming completion.
 - Default to one review pass; run a second pass only when explicitly requested.
 
 Default reviewer constraints:
@@ -481,6 +482,20 @@ Required output:
 2. Findings (if ACTIONABLE): severity, file/path:line, issue, required fix
 3. Residual risk/testing gaps (max 3 bullets)
 ```
+
+### Required Learning Handoff (After APPROVED)
+
+After explicit reviewer verdict `APPROVED` is relayed back to the implementation agent:
+
+- Write one learning handoff for the completed unit (`Task` completion and `Spec` closure) at `docs/learning/YYYY-MM-DD-feature-slug-learning.md`.
+- Copy the static header from `KICKOFF.md` (`TUTORING SESSION CONTEXT`) verbatim at the top; do not edit header text.
+- Fill required sections below the header in plain English:
+  - `What Was Built` (2-3 sentences)
+  - `Top 3 Decisions and Why`
+  - `Non-Obvious Patterns Used`
+  - `Tradeoffs Evaluated`
+  - `What I'm Uncertain About` (coin-flip decisions, what would change with more context, unhandled edge cases and why)
+  - `Relevant Code Pointers` using `filename > line number` format
 
 ### Code Organization
 
@@ -639,7 +654,8 @@ This is harness engineering. Over time, the AGENTS.md becomes increasingly speci
 | Feature implemented                 | PATTERNS.md (if new convention), related Task/Spec issue status |
 | Agent made a mistake                | AGENTS.md (new rule), README.md (Review Log)       |
 | Code review completed               | REVIEW_CHECKLIST.md (if new check type discovered) |
-| Session completed                   | Task issue moved/closed with PR link               |
+| Reviewer verdict APPROVED relayed   | docs/learning/YYYY-MM-DD-feature-slug-learning.md (required handoff) |
+| Session completed                   | Task issue moved/closed with PR link + learning handoff path |
 | Schema changed                      | ARCHITECTURE.md (database section)                 |
 | New endpoint added                  | ARCHITECTURE.md (API contracts section)            |
 | Implementation diverged from design | ARCHITECTURE.md (update to match reality)          |

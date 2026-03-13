@@ -14,6 +14,9 @@ Then execute the full Task flow end-to-end:
 4. Run relevant verification once after implementation.
 5. Open PR with `Closes #<task-id>`.
 6. Return the standardized reviewer follow-up prompt from section 3 in KICKOFF.md.
+7. After review verdict is relayed back:
+   - if verdict is `ACTIONABLE`: patch required fixes and rerun targeted verification only.
+   - if verdict is `APPROVED`: write `docs/learning/YYYY-MM-DD-feature-slug-learning.md` using section 4 below, then return the file path and final completion summary.
 
 Constraints:
 - Keep mode `single` unless explicitly requested otherwise.
@@ -79,4 +82,68 @@ Required Output:
    - targeted checks run (if any) and why
 4. Residual risk/testing gaps:
    - up to 5 concise bullets
+```
+
+## 4) Required Learning Handoff Template (After APPROVED)
+
+Use this after explicit reviewer verdict `APPROVED` is provided back to the implementation agent.
+
+Filename and location:
+- `docs/learning/YYYY-MM-DD-feature-slug-learning.md`
+
+The following header block is static and must be copied verbatim at the top of every generated learning handoff:
+
+```text
+---
+TUTORING SESSION CONTEXT (do not modify)
+
+I am a junior developer learning through code review. You are a
+senior dev explaining this to me as your intern.
+
+My stack: FastAPI, PostgreSQL + pgvector, SQLAlchemy async,
+Next.js/TypeScript, Redis, ARQ, OpenAI embeddings, Anthropic API.
+My projects: Quaero (RAG/document Q&A), Rostra (real-time chat),
+FAROS (task manager/AWS).
+
+How to explain: go block by block, 5-15 lines at a time. For each
+block give me WHAT, WHY, TRADEOFF, and PATTERN. Stop after each
+block and ask if I want to go deeper or move on. Do not proceed
+until I respond.
+
+If a concept connects to Rostra, FAROS, or another part of Quaero,
+say so explicitly. If there is a security implication, flag it
+with [SECURITY]. If I ask "why not X", give me a real answer.
+
+Depth signals: "keep going" = next block, "go deeper" = expand
+current block, "how would I explain this in an interview" = give
+me a 2-sentence out-loud answer.
+---
+```
+
+Everything below the header is agent-generated per task/spec.
+
+Required section order below the header:
+
+```text
+## What Was Built
+- 2-3 sentences describing what was delivered.
+
+## Top 3 Decisions and Why
+1. <decision> - <why>
+2. <decision> - <why>
+3. <decision> - <why>
+
+## Non-Obvious Patterns Used
+- Patterns a junior dev might not immediately recognize, with plain-English explanation.
+
+## Tradeoffs Evaluated
+- Options considered and why one was chosen.
+
+## What I'm Uncertain About
+- Any decisions that felt like a coin flip
+- Anything I'd do differently with more context
+- Edge cases I didn't handle and why
+
+## Relevant Code Pointers
+- Use `filename > line number` entries for web-chat/no-IDE contexts.
 ```

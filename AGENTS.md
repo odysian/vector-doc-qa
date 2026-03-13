@@ -44,7 +44,9 @@ Read in this order:
 6. Run verification commands once (or once per code change set).
 7. Open PR that closes the Task issue.
 8. Provide a lean reviewer follow-up prompt for a separate review pass.
-9. Patch only actionable findings, rerun relevant verification, and finalize.
+9. Patch only actionable findings, rerun relevant verification, and repeat review only if explicitly requested.
+10. After explicit reviewer verdict `APPROVED` is relayed back, generate a learning handoff in `docs/learning/` (format defined in `KICKOFF.md`).
+11. Finalize: include the learning handoff path in completion output, then close/complete the Task or Spec as applicable.
 
 ## Process
 
@@ -95,6 +97,27 @@ Quaero is an AI-powered PDF question-answering platform that uses Retrieval Augm
 - **Follow supervised GH fallback order.** Run preflight, try the exact GH command once (default `--max-attempts=1`), request elevated approval for the exact command if it fails, then provide manual one-liner + URL if elevated execution still fails.
 - **Lean reviewer handoff is default.** After PR creation, agent1 provides a review prompt in chat and reviewer returns `APPROVED` or `ACTIONABLE`.
 - **Default to one review pass.** Run a second review pass only when explicitly requested.
+- **Learning handoff is required after approval.** After explicit `APPROVED`, write `docs/learning/YYYY-MM-DD-feature-slug-learning.md` using the static header and section contract in `KICKOFF.md`.
+
+## Learning Handoff Contract
+
+- Generate a learning handoff whenever a Task is finished and whenever a Spec is closed.
+- Trigger only after explicit reviewer verdict `APPROVED` is provided back to the implementation agent.
+- Write to `docs/learning/YYYY-MM-DD-feature-slug-learning.md` (create `docs/learning/` if missing).
+- Copy the static `TUTORING SESSION CONTEXT` header from `KICKOFF.md` verbatim at the top of every handoff; never modify it.
+- Audience and writing style are fixed by that header: senior dev explaining to a junior in web chat with no IDE access, plain English, no agent shorthand.
+
+Required sections below the static header:
+
+- `## What Was Built` (2-3 sentences)
+- `## Top 3 Decisions and Why`
+- `## Non-Obvious Patterns Used`
+- `## Tradeoffs Evaluated`
+- `## What I'm Uncertain About`
+  - Any decisions that felt like a coin flip
+  - Anything I'd do differently with more context
+  - Edge cases I didn't handle and why
+- `## Relevant Code Pointers` using `filename > line number` format
 
 ## Decision Brief (Conditional)
 

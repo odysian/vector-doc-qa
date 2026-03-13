@@ -9,7 +9,8 @@ Workflow template baseline in this repository: `agentic-workflow-template v0.2.0
 1. Whiteboard feature ideas in `plans/*.md` or spec docs (scratch planning).
 2. Document work as issues using one of the execution modes below.
 3. Implement and close Task issues via PRs (`Closes #...`).
-4. Finalize by updating docs only when behavior/contracts changed and close related Spec/tracker issues.
+4. After explicit reviewer verdict `APPROVED`, generate required learning handoff.
+5. Finalize by updating docs only when behavior/contracts changed and close related Spec/tracker issues.
 
 ## Objects
 
@@ -28,6 +29,7 @@ Workflow template baseline in this repository: `agentic-workflow-template v0.2.0
 7. After major refactors, open one docs-only Task for readability hardening (comments + `docs/PATTERNS.md` updates), with no behavior changes.
 8. For `single` and `gated` modes, create a dedicated branch for the Task issue before implementation (for example: `task-123-short-name`).
 9. After Task PR creation, run a lean reviewer follow-up pass and return `APPROVED` or `ACTIONABLE`.
+10. Task/Spec completion requires a learning handoff file after explicit `APPROVED` is relayed back to the implementation agent.
 
 ## Execution Modes (Choose Before Opening Issues)
 
@@ -94,6 +96,7 @@ A Task can be closed when:
 - docs are updated when behavior/contracts changed
 - follow-ups are created
 - reviewer follow-up is completed with verdict and actionable findings addressed or deferred explicitly
+- required learning handoff is written at `docs/learning/YYYY-MM-DD-feature-slug-learning.md` after explicit `APPROVED`
 
 ## Decisions Policy (Locks, Issues, ADRs)
 
@@ -156,7 +159,8 @@ Flow:
    - `APPROVED`, or
    - `ACTIONABLE` with concrete fixes.
 4. If `ACTIONABLE`, implementation agent patches and reruns relevant verification only.
-5. Run second review pass only if explicitly requested.
+5. If `APPROVED`, implementation agent writes the required learning handoff file.
+6. Run second review pass only if explicitly requested.
 
 Reviewer constraints:
 
@@ -171,6 +175,20 @@ Required reviewer output:
 1. Verdict: `APPROVED` or `ACTIONABLE`
 2. Findings (if actionable): severity, file/path:line, issue, required fix
 3. Residual risk/testing gaps (up to 3 bullets)
+
+## Learning Handoff Completion Gate
+
+After explicit reviewer verdict `APPROVED` is relayed back to the implementation agent:
+
+- Write one learning handoff at `docs/learning/YYYY-MM-DD-feature-slug-learning.md`.
+- Copy the static `TUTORING SESSION CONTEXT` header from `KICKOFF.md` verbatim at the top.
+- Fill required sections below the header:
+  - `What Was Built` (2-3 sentences)
+  - `Top 3 Decisions and Why`
+  - `Non-Obvious Patterns Used`
+  - `Tradeoffs Evaluated`
+  - `What I'm Uncertain About`
+  - `Relevant Code Pointers` (`filename > line number`)
 
 ### Resiliency Checkpoints (Lightweight)
 
