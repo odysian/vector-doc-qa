@@ -109,8 +109,11 @@ describe("LoginPage form behavior", () => {
     expect(main).not.toBeNull();
     expect(main!).toHaveClass("items-center");
 
-    const heroTitle = screen.getByRole("heading", { name: "Quaero" });
-    const heroColumn = heroTitle.parentElement;
+    const heroTitles = screen.getAllByRole("heading", { name: "Quaero" });
+    expect(heroTitles).toHaveLength(2);
+    // heroTitles[0] = mobile H1 (lg:hidden), heroTitles[1] = desktop H1 inside left column
+    expect(heroTitles[0]).toHaveClass("lg:hidden");
+    const heroColumn = heroTitles[1].parentElement;
     expect(heroColumn).not.toBeNull();
     expect(heroColumn!).toHaveClass("hidden", "lg:block", "w-full", "space-y-5");
 
