@@ -354,17 +354,11 @@ body {
   background-size: 24px 24px;
 }
 
-/* Dashboard header background: faint lapis radial glow at the left edge
-   (behind the logo) over the existing zinc-900/50 base. */
+/* Dashboard header: faint lapis radial glow at the left edge (behind the logo).
+   Base color is bg-zinc-900/50 on the element; this adds the gradient on top. */
 .quaero-header-bg {
-  background:
-    radial-gradient(ellipse 40% 120% at 5% 50%, rgba(84, 123, 243, 0.08) 0%, transparent 60%),
-    rgb(24 24 27 / 0.5);
+  background-image: radial-gradient(ellipse 40% 120% at 5% 50%, rgba(84, 123, 243, 0.08) 0%, transparent 60%);
 }
-
-/* Wordmark effect placeholder — intentionally empty pending design decision. */
-.quaero-wordmark-glow {}
-.quaero-wordmark-glow-sm {}
 
 /* Lapis radial gradient overlay*/
 .quaero-gradient-overlay {
