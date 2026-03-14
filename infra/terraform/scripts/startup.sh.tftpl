@@ -29,6 +29,7 @@ install -d -m 755 /opt/quaero
 install -d -m 755 /opt/quaero/deploy
 install -d -m 755 /opt/quaero/env
 install -d -m 755 /opt/quaero/logs
+install -d -m 755 /opt/quaero/nginx
 
 if [[ ! -f "$${BOOTSTRAP_MARKER}" ]]; then
   apt-get update
@@ -126,14 +127,18 @@ else
 fi
 
 # Always render the NGINX site so proxy updates apply to existing VMs too.
+# The upstream block lives in /opt/quaero/nginx/upstream.conf so the deploy
+# script can atomically switch ports without root access to /etc/nginx.
 cat > "$${NGINX_SITE}" <<EOF
+include /opt/quaero/nginx/upstream.conf;
+
 server {
     listen 80;
     server_name $${API_DOMAIN};
 
     # Keep SSE responses truly streaming for the query stream endpoint.
     location ~ ^/api/documents/[0-9]+/query/stream$ {
-        proxy_pass http://127.0.0.1:$${BACKEND_PORT};
+        proxy_pass http://quaero_backend;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -149,7 +154,7 @@ server {
     }
 
     location / {
-        proxy_pass http://127.0.0.1:$${BACKEND_PORT};
+        proxy_pass http://quaero_backend;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -158,6 +163,22 @@ server {
     }
 }
 EOF
+
+# Write initial upstream.conf only when absent; the deploy script manages it after first deploy.
+# On reboots the file persists so the active color is preserved without reading state files here.
+if [[ ! -f "/opt/quaero/nginx/upstream.conf" ]]; then
+  cat > /opt/quaero/nginx/upstream.conf <<'UPSTREAM_EOF'
+upstream quaero_backend {
+    server 127.0.0.1:8000;
+}
+UPSTREAM_EOF
+fi
+
+# Grant the deploy user minimum sudo privilege to reload NGINX gracefully.
+# nginx -s reload performs a live upstream switch with no dropped connections.
+echo "$${SSH_USER} ALL=(ALL) NOPASSWD: /usr/sbin/nginx -s reload" \
+  > /etc/sudoers.d/quaero-nginx-reload
+chmod 440 /etc/sudoers.d/quaero-nginx-reload
 
 ln -sf "$${NGINX_SITE}" /etc/nginx/sites-enabled/quaero-backend
 rm -f /etc/nginx/sites-enabled/default
