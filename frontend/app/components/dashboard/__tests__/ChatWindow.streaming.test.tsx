@@ -193,6 +193,62 @@ describe("ChatWindow streaming lifecycle", () => {
     expect(container.querySelectorAll("div.rounded-2xl")).toHaveLength(2);
   });
 
+  it("scrolls to bottom once after history load, then auto-scrolls on new messages", async () => {
+    const setScrollTopSpy = vi.fn();
+    const originalScrollTopDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollTop"
+    );
+    let mockedScrollTop = 0;
+    Object.defineProperty(HTMLElement.prototype, "scrollTop", {
+      configurable: true,
+      get: () => mockedScrollTop,
+      set: (value: number) => {
+        mockedScrollTop = value;
+        setScrollTopSpy(value);
+      },
+    });
+
+    getMessagesMock.mockResolvedValueOnce({
+      messages: [
+        {
+          id: 101,
+          document_id: documentFixture.id,
+          user_id: documentFixture.user_id,
+          role: "assistant",
+          content: "History answer",
+          created_at: "2026-03-02T12:06:00Z",
+        },
+      ],
+      total: 1,
+    });
+
+    queryDocumentStreamMock.mockImplementation(async (_documentId, _query, callbacks) => {
+      await Promise.resolve();
+      callbacks.onDone({ message_id: 200 });
+    });
+
+    try {
+      render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
+      await screen.findByText("History answer");
+
+      expect(setScrollTopSpy).toHaveBeenCalledTimes(1);
+
+      const composer = screen.getByPlaceholderText("Ask a question about this document...");
+      fireEvent.change(composer, { target: { value: "Next question" } });
+      fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+      await waitFor(() => expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1));
+
+      expect(setScrollTopSpy.mock.calls.length).toBeGreaterThan(1);
+    } finally {
+      if (originalScrollTopDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, "scrollTop", originalScrollTopDescriptor);
+      } else {
+        delete (HTMLElement.prototype as Record<string, unknown>)["scrollTop"];
+      }
+    }
+  });
+
   it("retries failed responses with the original query", async () => {
     queryDocumentStreamMock
       .mockImplementationOnce(async (_documentId, _query, callbacks) => {

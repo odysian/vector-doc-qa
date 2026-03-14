@@ -436,17 +436,12 @@ export function PdfViewer({
     setZoomPercent((current) => Math.max(current - ZOOM_STEP_PERCENT, MIN_ZOOM_PERCENT));
   };
 
-  const handleFitWidth = () => {
-    setZoomPercent(100);
-  };
-
   const canZoomOut = zoomPercent > MIN_ZOOM_PERCENT;
   const canZoomIn = zoomPercent < MAX_ZOOM_PERCENT;
-  const isFitWidth = zoomPercent === 100;
 
   return (
     <div className="ui-panel flex h-full min-h-0 w-full flex-1 flex-col shadow-xl overflow-hidden">
-      <div className="shrink-0 border-b border-zinc-800 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div className="shrink-0 border-b border-zinc-800 px-4 py-3 flex items-center justify-between gap-3">
         <div className="min-w-0 flex items-center gap-2">
           <button
             type="button"
@@ -464,7 +459,7 @@ export function PdfViewer({
             <p className="truncate text-meta">{formatDate(uploadedAt)}</p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <div className="inline-flex items-center rounded-md border border-zinc-700 bg-zinc-950/70">
             <button
               type="button"
@@ -476,7 +471,9 @@ export function PdfViewer({
             >
               <ZoomOut className="h-4 w-4" />
             </button>
-            <span className="min-w-14 px-2 text-center text-xs text-zinc-300">{zoomPercent}%</span>
+            <span className="min-w-14 px-2 text-center text-xs text-zinc-300 whitespace-nowrap">
+              {zoomPercent}%
+            </span>
             <button
               type="button"
               onClick={handleZoomIn}
@@ -488,15 +485,6 @@ export function PdfViewer({
               <ZoomIn className="h-4 w-4" />
             </button>
           </div>
-          <button
-            type="button"
-            onClick={handleFitWidth}
-            disabled={isFitWidth}
-            className="ui-btn ui-btn-neutral ui-btn-sm"
-            title="Reset to fit width"
-          >
-            Fit width
-          </button>
           <div className="inline-flex items-center rounded-md border border-zinc-700 bg-zinc-950/70">
             <button
               type="button"
@@ -508,7 +496,7 @@ export function PdfViewer({
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="min-w-16 px-1.5 text-center text-xs text-zinc-300">
+            <span className="px-1.5 text-center text-xs text-zinc-300 whitespace-nowrap">
               {currentPage || 1} / {numPages}
             </span>
             <button
