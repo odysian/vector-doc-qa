@@ -62,6 +62,7 @@ export function ChatWindow({
   const [expandedSourceCards, setExpandedSourceCards] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const hasLoadedHistoryRef = useRef(false);
   const { messages, loadingHistory, isStreaming, canStopStream, submitQuery, stopActiveStream } = useChatState({
     document,
     workspaceId,
@@ -103,12 +104,27 @@ export function ChatWindow({
     });
   };
 
-  // Auto-scroll to bottom when messages change
   useEffect(() => {
+    if (loadingHistory) {
+      hasLoadedHistoryRef.current = false;
+      return;
+    }
+
+    if (!hasLoadedHistoryRef.current) {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+      hasLoadedHistoryRef.current = true;
+    }
+  }, [loadingHistory]);
+
+  // Auto-scroll to bottom for messages added after history has finished loading.
+  useEffect(() => {
+    if (!hasLoadedHistoryRef.current) return;
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, loadingHistory]);
 
   const submitCurrentInput = () => {
     const trimmed = input.trim();

@@ -121,7 +121,7 @@ describe("PdfViewer citation highlight behavior", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it("supports zoom in/out and fit-width reset controls", async () => {
+  it("supports zoom in/out controls", async () => {
     const { getByTestId } = render(<PdfViewer {...baseViewerProps} documentId={7} />);
 
     await waitFor(() => {
@@ -137,7 +137,7 @@ describe("PdfViewer citation highlight behavior", () => {
       expect(Number(page.getAttribute("data-width"))).toBeGreaterThan(initialWidth);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Fit width" }));
+    fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
     await waitFor(() => {
       expect(Number(page.getAttribute("data-width"))).toBe(initialWidth);
     });
