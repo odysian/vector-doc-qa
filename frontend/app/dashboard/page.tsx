@@ -19,7 +19,6 @@ import { WorkspaceSidebar } from "../components/dashboard/WorkspaceSidebar";
 import { DocumentPicker } from "../components/dashboard/DocumentPicker";
 import { useDashboardState } from "@/lib/hooks/useDashboardState";
 
-const SIDEBAR_WIDTH = "w-72";
 const MAX_DOCUMENTS_PER_WORKSPACE = 20;
 const PdfViewer = dynamic(
   () =>
