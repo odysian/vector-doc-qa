@@ -3,9 +3,9 @@ name: Backend CI
 on:
   workflow_call:
   pull_request:
-  push:
-    branches-ignore:
-      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-test.yml"
 
 concurrency:
   group: backend-ci-${{ github.ref }}
