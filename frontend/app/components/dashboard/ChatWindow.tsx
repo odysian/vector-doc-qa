@@ -125,8 +125,11 @@ export function ChatWindow({
   const resizeComposer = useCallback(() => {
     const composer = composerRef.current;
     if (!composer) return;
+    const maxHeight = 144;
     composer.style.height = "auto";
-    composer.style.height = `${Math.min(composer.scrollHeight, 144)}px`;
+    const nextHeight = Math.min(composer.scrollHeight, maxHeight);
+    composer.style.height = `${nextHeight}px`;
+    composer.style.overflowY = nextHeight === maxHeight ? "auto" : "hidden";
   }, []);
 
   useEffect(() => {
@@ -490,7 +493,7 @@ export function ChatWindow({
                 ? "Ask a question across this workspace..."
                 : "Ask a question about this document..."
             }
-            className="ui-input flex-1 resize-none overflow-y-auto min-h-[44px] max-h-36 leading-relaxed"
+            className="ui-input flex-1 resize-none overflow-y-hidden min-h-[44px] max-h-36 leading-relaxed"
             title="Enter to send, Shift+Enter for newline"
           />
           {isStreaming && canStopStream ? (
