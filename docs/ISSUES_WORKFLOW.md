@@ -6,7 +6,7 @@ Workflow template baseline in this repository: `agentic-workflow-template v0.2.0
 
 ## Workflow Loop
 
-1. Whiteboard feature ideas in `plans/*.md` or spec docs (scratch planning).
+1. Whiteboard feature ideas in `plans/YYYY-MM-DD/*.md` or spec docs (scratch planning).
 2. Document work as issues using one of the execution modes below.
 3. Implement and close Task issues via PRs (`Closes #...`).
 4. After explicit reviewer verdict `APPROVED`, generate required learning handoff.
@@ -229,7 +229,7 @@ Recommended board columns:
 
 1. Create issue labels and board columns from this document.
 2. Define stack constraints and canonical verification commands in `AGENTS.md`.
-3. Whiteboard initial feature ideas in `plans/*.md` or spec docs.
+3. Whiteboard initial feature ideas in `plans/YYYY-MM-DD/*.md` or spec docs.
 4. Choose execution mode per feature (`single` default, `gated` for feature sets/risk, `fast` for tiny fixes).
 5. Create issues, implement, and close Task issues with PRs.
 6. Close Specs only after child Tasks are done or deferred.

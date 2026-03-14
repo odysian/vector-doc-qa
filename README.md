@@ -1,150 +1,89 @@
-# Quaero - Document Intelligence Platform
+# Quaero — Document Intelligence Platform
 
-AI-powered PDF question-answering using Retrieval Augmented Generation (RAG). Upload documents, ask questions, get answers with cited sources.
+AI-powered PDF question-answering using Retrieval Augmented Generation (RAG). Upload documents, ask questions in plain language, and get grounded answers with cited source excerpts.
 
 **Live Demo:** https://quaero.odysian.dev
 
 ## What It Does
 
-- Upload PDF documents
-- AI processes and chunks content
-- Ask natural language questions
-- Get accurate answers with source citations
-- Chat history persists across sessions
-- Secure authentication
+- Upload PDF documents (up to 10 MB each)
+- Background processing: text extraction, chunking, and embedding generation via OpenAI
+- Ask natural language questions against a single document or across a workspace of documents
+- Get accurate answers from Claude with inline source citations that link back to the exact PDF page
+- Stream answers token-by-token so you see output as it arrives
+- Organize documents into workspaces for cross-document RAG queries
+- Persistent chat history per document and per workspace
+- Demo mode: try the app instantly without registering
+- Secure authentication with CSRF protection, httpOnly cookies, and refresh token rotation
 
 ## Tech Stack
 
 **Backend:**
-- FastAPI (Python)
-- PostgreSQL with pgvector
-- OpenAI API (embeddings)
-- Anthropic API (Claude for RAG)
-- JWT authentication with argon2
-- Deployed on Render
+- FastAPI (Python 3.12+) with async SQLAlchemy 2.0
+- PostgreSQL + pgvector (HNSW index for approximate nearest-neighbor search)
+- OpenAI API (`text-embedding-3-small`, 1536 dimensions)
+- Anthropic API (Claude 3 Haiku for RAG responses)
+- ARQ + Redis (Upstash in production) for durable background document processing
+- Google Cloud Storage for uploaded PDF files in production
+- JWT authentication (HS256) with Argon2 password hashing
+- Refresh token rotation with server-side revocation
+- Double-submit CSRF protection
+- SlowAPI rate limiting (per-endpoint, per-user/IP)
+- Structured JSON logging with request correlation IDs and external provider observability events
+- Deployed on a GCP Compute Engine VM behind NGINX with TLS
 
 **Frontend:**
-- Next.js 16 with TypeScript
-- Tailwind CSS v4
+- Next.js 16 + React 19 + TypeScript
+- Tailwind CSS v4 with a custom lapis color theme and shared UI primitives
+- Inline PDF viewer with page navigation, zoom, and citation highlighting
+- Responsive layout: split PDF + chat pane on desktop, tab-switch on mobile
 - Deployed on Vercel
 
+**Infrastructure & CI/CD:**
+- Terraform-managed GCP infrastructure (VM, static IP, firewall, GCS bucket, IAM)
+- GitHub Actions: backend CI (ruff, mypy, pytest, bandit), frontend CI (tsc, ESLint, vitest, next build)
+- Blue-green backend deploys: zero-downtime container swap with NGINX upstream hot-reload
+- Manual-dispatch Terraform ops workflow for plan/apply/destroy with typed confirmation gate
+- Google Workload Identity Federation (OIDC) for keyless GitHub Actions → GCP auth
+
 **Database:**
-- Render PostgreSQL with pgvector extension
-- Schema-based isolation for multi-project sharing (uses `quaero` schema)
-
-## What I Learned
-
-### RAG Architecture
-- Vector embeddings represent semantic meaning of text
-- Chunking strategy: 1000 chars with word boundaries preserves context
-- Similarity search using cosine distance in pgvector
-- Achieved 85%+ similarity for relevant chunks vs 45% for noise
-
-### Security
-- Magic bytes validation prevents malware uploads (checks file content, not just extension)
-- JWT authentication with document ownership
-- Input validation with Pydantic
-- Rate limiting to control API costs
-
-### TypeScript
-- Type safety catches bugs at compile time
-- Interfaces make API integration cleaner
-
-### Database
-- Schema-based isolation (`quaero` schema) shares PostgreSQL with other portfolio projects
-- pgvector extension adds vector similarity search without a dedicated vector DB
-- Simpler than Pinecone/Weaviate for this scale
-
-### Key Insights
-- Chunking is critical: too small loses context, too large reduces precision
-- Prompt engineering prevents hallucinations (instruct AI to cite sources)
-
-## Running Locally
-
-### Prerequisites
-- Python 3.12+
-- Node.js 18+
-- PostgreSQL with pgvector extension
-- OpenAI API key
-- Anthropic API key
-
-### Backend Setup
-```bash
-# Clone and setup
-git clone https://github.com/odysian/vector-doc-qa
-cd vector-doc-qa/backend
-
-# Virtual environment
-python -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Create .env file
-cp .env.example .env
-# Edit with DATABASE_URL, SECRET_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY
-
-# Run migrations
-alembic upgrade head
-
-# Start server
-uvicorn app.main:app --reload
-```
-
-Backend runs at http://localhost:8000
-API docs at http://localhost:8000/docs
-
-### Frontend Setup
-```bash
-# In new terminal
-cd vector-doc-qa/frontend
-
-# Install dependencies
-npm install
-
-# Create .env.local
-echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
-
-# Start dev server
-npm run dev
-```
-
-Frontend runs at http://localhost:3000
-
-### Database (Docker)
-```bash
-# If you don't have PostgreSQL + pgvector locally
-docker-compose up -d
-```
-
-The Docker setup uses the `ankane/pgvector` image with pgvector pre-installed.
-
+- Cloud SQL PostgreSQL with pgvector extension
+- Schema-isolated under `quaero` for multi-project sharing on a shared instance
+- Alembic migrations (reversible, autogenerate-safe)
 
 ## How It Works
 
-1. User uploads PDF → Extract text → Chunk into 1000-char segments
-2. Generate embeddings with OpenAI → Store in PostgreSQL with pgvector
-3. User asks question → Generate embedding → Similarity search
-4. Retrieve top 5 chunks → Send to Claude → Get answer with citations
+```
+1. Upload   → PDF validated (magic bytes + size) → saved to GCS → Document row created (PENDING)
+             → job enqueued to Redis
+
+2. Process  → ARQ worker picks up job
+             → extracts text with pdfplumber
+             → chunks into 1000-char segments with 50-char overlap at word boundaries
+             → generates embeddings in batch (OpenAI)
+             → stores chunks + embeddings in PostgreSQL
+             → Document marked COMPLETED
+
+3. Query    → query embedded (OpenAI)
+             → cosine similarity search against HNSW index (top 5 chunks)
+             → chunks + chat history sent to Claude
+             → answer streamed token-by-token to browser
+             → message and sources saved to database
+```
+
+## Workspaces
+
+Workspaces let you group multiple documents and ask questions across all of them in a single query. Each workspace query embeds your question, searches chunks from every document in the workspace, and passes the top results to Claude — so you can ask "which document mentions X?" or "summarize the differences between these two papers" with a single prompt.
 
 ## Deployment
 
 - **Frontend:** Vercel (auto-deploy from `main` branch)
-- **Backend:** Render (free tier with cold starts)
-- **Database:** Render PostgreSQL (shared free-tier instance with pgvector extension)
-  - Uses `quaero` schema for table isolation
-  - Shared with 2 other portfolio projects
+- **Backend:** GCP Compute Engine VM (Docker container, NGINX reverse proxy, TLS via Certbot)
+- **Database:** Cloud SQL PostgreSQL with pgvector (shared instance, `quaero` schema isolation)
+- **File storage:** Google Cloud Storage bucket
+- **Queue:** Upstash Redis
+- **CI:** GitHub Actions — backend (ruff + mypy + pytest + bandit) and frontend (tsc + ESLint + vitest + next build) run on every PR; deploy is gated on passing backend tests
 
-## Challenges
-
-- **Cold starts:** Free tier spins down after 15 min (30-60 sec first load)
-- **Chunking strategy:** Increased from 500 to 1000 chars for better context
-- **File security:** Check magic bytes (`%PDF`), not just extension
-
-## AI Review Log
-
-No logged review corrections yet. Add entries here when agent-generated code is reviewed and corrected.
 
 ## Contact
 
@@ -155,4 +94,4 @@ No logged review corrections yet. Add entries here when agent-generated code is 
 
 ## License
 
-MIT License - feel free to use this as a learning reference.
+MIT License
