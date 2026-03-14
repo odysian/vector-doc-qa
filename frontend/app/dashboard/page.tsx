@@ -8,7 +8,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { PanelLeft, X, FileUp } from "lucide-react";
+import { PanelLeft, X, FileUp, Settings2 } from "lucide-react";
 import { UploadZone } from "../components/dashboard/UploadZone";
 import { DocumentList } from "../components/dashboard/DocumentList";
 import { ChatWindow } from "../components/dashboard/ChatWindow";
@@ -16,7 +16,6 @@ import { DeleteDocumentModal } from "../components/dashboard/DeleteDocumentModal
 import { DeleteWorkspaceModal } from "../components/dashboard/DeleteWorkspaceModal";
 import { WorkspaceList } from "../components/dashboard/WorkspaceList";
 import { WorkspaceSidebar } from "../components/dashboard/WorkspaceSidebar";
-import { DocumentSwitcher } from "../components/dashboard/DocumentSwitcher";
 import { DocumentPicker } from "../components/dashboard/DocumentPicker";
 import { useDashboardState } from "@/lib/hooks/useDashboardState";
 
@@ -58,7 +57,9 @@ export default function DashboardPage() {
     mobileTab,
     layoutMode,
     desktopSidebarCollapsed,
+    debugMode,
     isDemoUser,
+    toggleDebugMode,
     clearError,
     handleUpload,
     handleLogout,
@@ -137,6 +138,15 @@ export default function DashboardPage() {
   const isDesktopLayout = layoutMode === "desktop";
   const showPdfPane = !useTabLayout || mobileTab === "pdf";
   const showChatPane = !useTabLayout || mobileTab === "chat";
+  const chatContextTitle =
+    dashboardMode === "workspaces"
+      ? selectedWorkspace?.name || viewerDocument?.filename || "Workspace"
+      : viewerDocument?.filename || "Document";
+  const chatContextDate = viewerDocument?.uploaded_at || "";
+  const viewerBackLabel =
+    dashboardMode === "workspaces" ? "Back to Workspaces" : "Back to Documents";
+  const handleViewerBack =
+    dashboardMode === "workspaces" ? handleBackToWorkspaces : handleBackToDocuments;
   const errorBanner = error ? (
     <div className="ui-alert-error text-body-sm flex items-start gap-2">
       <p className="flex-1 min-w-0">{error}</p>
@@ -283,13 +293,26 @@ export default function DashboardPage() {
               Quaero
             </h1>
           </div>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="ui-btn ui-btn-ghost ui-btn-sm"
-          >
-            Logout
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleDebugMode}
+              aria-pressed={debugMode}
+              className={`ui-btn ui-btn-sm ${
+                debugMode ? "ui-btn-secondary" : "ui-btn-ghost"
+              }`}
+            >
+              <Settings2 size={14} aria-hidden />
+              <span>{debugMode ? "Debug on" : "Debug off"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="ui-btn ui-btn-ghost ui-btn-sm"
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </header>
 
@@ -431,18 +454,13 @@ export default function DashboardPage() {
                   }`}
                 >
                   <div className="w-full h-full min-h-0 flex flex-col">
-                    {dashboardMode === "workspaces" &&
-                      selectedWorkspace &&
-                      viewerDocumentId && (
-                        <DocumentSwitcher
-                          documents={selectedWorkspace.documents}
-                          activeDocumentId={viewerDocumentId}
-                          onSwitch={handleViewerDocumentSwitch}
-                        />
-                      )}
                     {viewerDocument && (
                       <PdfViewer
                         documentId={viewerDocument.id}
+                        filename={viewerDocument.filename}
+                        uploadedAt={viewerDocument.uploaded_at}
+                        onBack={handleViewerBack}
+                        backLabel={viewerBackLabel}
                         highlightPage={highlightPage}
                         highlightSnippet={highlightSnippet}
                         onSessionExpired={handleSessionExpired}
@@ -462,6 +480,11 @@ export default function DashboardPage() {
                     <ChatWindow
                       document={selectedDocument}
                       onBack={handleBackToDocuments}
+                      debugMode={debugMode}
+                      onToggleDebugMode={toggleDebugMode}
+                      showContextBar={useTabLayout}
+                      contextTitle={chatContextTitle}
+                      contextDate={chatContextDate}
                       onCitationClick={handleCitationClick}
                       onSessionExpired={handleSessionExpired}
                     />
@@ -473,6 +496,11 @@ export default function DashboardPage() {
                         (doc) => doc.id,
                       )}
                       onBack={handleBackToWorkspaces}
+                      debugMode={debugMode}
+                      onToggleDebugMode={toggleDebugMode}
+                      showContextBar={useTabLayout}
+                      contextTitle={chatContextTitle}
+                      contextDate={chatContextDate}
                       onCitationClick={handleCitationClick}
                       onSessionExpired={handleSessionExpired}
                     />

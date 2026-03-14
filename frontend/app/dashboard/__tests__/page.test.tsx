@@ -8,13 +8,23 @@ import { workspaceService } from "@/lib/services/workspaceService";
 
 const pushMock = vi.fn();
 const routerMock = { push: pushMock };
+const pdfViewerMock = vi.fn(
+  ({ filename, uploadedAt, backLabel }: { filename: string; uploadedAt: string; backLabel: string }) => (
+    <div>
+      <div>PDF Viewer</div>
+      <div>{filename}</div>
+      <div>{uploadedAt}</div>
+      <div>{backLabel}</div>
+    </div>
+  )
+);
 
 vi.mock("next/navigation", () => ({
   useRouter: () => routerMock,
 }));
 
 vi.mock("@/app/components/dashboard/PdfViewer", () => ({
-  PdfViewer: () => <div>PDF Viewer</div>,
+  PdfViewer: (props: { filename: string; uploadedAt: string; backLabel: string }) => pdfViewerMock(props),
 }));
 
 vi.mock("@/lib/api", async () => {
@@ -207,7 +217,9 @@ describe("DashboardPage regression behavior", () => {
     const mediaController = installResponsiveMatchMediaMock(390);
     setViewportWidth = mediaController.setWidth;
 
+    localStorage.clear();
     pushMock.mockReset();
+    pdfViewerMock.mockClear();
     isLoggedInMock.mockReset();
     getDashboardContextMock.mockReset();
     getDocumentsMock.mockReset();
@@ -449,6 +461,23 @@ describe("DashboardPage regression behavior", () => {
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
   });
 
+  it("renders debug toggle in app header and persists the setting", async () => {
+    const doc = makeDocument({ id: 304 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [doc],
+    });
+
+    render(<DashboardPage />);
+
+    await screen.findByText("alpha.pdf");
+    expect(screen.getByRole("button", { name: "Debug off" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Debug off" }));
+
+    expect(screen.getByRole("button", { name: "Debug on" })).toBeInTheDocument();
+    expect(localStorage.getItem("quaero_debug_mode")).toBe("true");
+  });
+
   it("keeps add-documents dialog open and shows workspace error when add fails", async () => {
     const availableDoc = makeDocument({ id: 901, filename: "workspace-source.pdf" });
     const workspace = makeWorkspace({ id: 21, name: "Roadmap", document_count: 0 });
@@ -663,7 +692,9 @@ describe("DashboardPage layout contracts", () => {
     const mediaController = installResponsiveMatchMediaMock(390);
     setViewportWidth = mediaController.setWidth;
 
+    localStorage.clear();
     pushMock.mockReset();
+    pdfViewerMock.mockClear();
     isLoggedInMock.mockReset();
     getDashboardContextMock.mockReset();
     getDocumentsMock.mockReset();
@@ -690,6 +721,20 @@ describe("DashboardPage layout contracts", () => {
     fireEvent.click(screen.getByText("alpha.pdf"));
     await screen.findByText("Ask a question about this document");
   }
+
+  it("shows a condensed chat context bar in compact mode and removes it on desktop", async () => {
+    setViewportWidth(1024);
+    await selectDocument();
+
+    expect(screen.getByTestId("chat-context-bar")).toHaveTextContent("alpha.pdf");
+    expect(screen.getByRole("button", { name: "Back to Documents" })).toBeInTheDocument();
+
+    setViewportWidth(1150);
+    await waitFor(() => {
+      expect(screen.queryByTestId("chat-context-bar")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: "Back to Documents" })).not.toBeInTheDocument();
+  });
 
   it("chat section has w-full in tab mode for centering parity with PDF section", async () => {
     setViewportWidth(1024);
@@ -765,6 +810,64 @@ describe("DashboardPage layout contracts", () => {
 
     const main = screen.getByRole("main");
     expect(main.className).toContain("flex-1 min-w-0");
+  });
+
+  it("removes document switcher and closes compact drawer after workspace document switch", async () => {
+    setViewportWidth(1024);
+    const alphaDoc = makeDocument({ id: 411, filename: "alpha.pdf" });
+    const betaDoc = makeDocument({
+      id: 412,
+      filename: "beta.pdf",
+      uploaded_at: "2026-03-03T10:00:00Z",
+    });
+    const workspace = makeWorkspace({ id: 61, name: "Roadmap", document_count: 2 });
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [alphaDoc, betaDoc],
+    });
+    getWorkspacesMock.mockResolvedValueOnce({ workspaces: [workspace], total: 1 });
+    getWorkspaceMock.mockResolvedValueOnce({
+      ...workspace,
+      documents: [alphaDoc, betaDoc],
+    });
+
+    render(<DashboardPage />);
+
+    await screen.findByText("alpha.pdf");
+    fireEvent.click(screen.getByRole("button", { name: "Workspaces" }));
+    const workspaceButton = (await screen.findByText("Roadmap")).closest("button");
+    fireEvent.click(workspaceButton as HTMLButtonElement);
+    fireEvent.click(await screen.findByRole("button", { name: "PDF" }));
+
+    expect(screen.queryByLabelText("Switch document")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(pdfViewerMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          filename: "alpha.pdf",
+          uploadedAt: alphaDoc.uploaded_at,
+          backLabel: "Back to Workspaces",
+        })
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle sidebar" }));
+    await waitFor(() => {
+      expect(screen.getByRole("complementary").className).toContain("translate-x-0");
+    });
+
+    fireEvent.click(within(screen.getByRole("complementary")).getByRole("button", { name: "beta.pdf" }));
+    await waitFor(() => {
+      expect(screen.getByRole("complementary").className).toContain("-translate-x-full");
+    });
+    await waitFor(() => {
+      expect(pdfViewerMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          filename: "beta.pdf",
+          uploadedAt: betaDoc.uploaded_at,
+          backLabel: "Back to Workspaces",
+        })
+      );
+    });
   });
 
   it("keeps mobile backdrop visibility controlled by hidden/block utilities", async () => {

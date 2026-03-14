@@ -55,6 +55,12 @@ vi.mock("react-pdf", () => {
 });
 
 const getDocumentFileMock = vi.mocked(api.getDocumentFile);
+const baseViewerProps = {
+  filename: "guide.pdf",
+  uploadedAt: "2026-03-02T12:00:00Z",
+  onBack: () => {},
+  backLabel: "Back to Documents",
+};
 
 describe("PdfViewer citation highlight behavior", () => {
   let scrollIntoViewSpy: ReturnType<typeof vi.fn>;
@@ -97,8 +103,26 @@ describe("PdfViewer citation highlight behavior", () => {
     vi.unstubAllGlobals();
   });
 
+  it("renders context header and calls the back action", async () => {
+    const onBack = vi.fn();
+    render(
+      <PdfViewer
+        {...baseViewerProps}
+        documentId={7}
+        onBack={onBack}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("guide.pdf")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Back to Documents" }));
+
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
   it("supports zoom in/out and fit-width reset controls", async () => {
-    const { getByTestId } = render(<PdfViewer documentId={7} />);
+    const { getByTestId } = render(<PdfViewer {...baseViewerProps} documentId={7} />);
 
     await waitFor(() => {
       expect(getDocumentFileMock).toHaveBeenCalledWith(7);
@@ -122,7 +146,7 @@ describe("PdfViewer citation highlight behavior", () => {
   it("navigates to next page via arrow button", async () => {
     mockPdfState.numPages = 3;
 
-    render(<PdfViewer documentId={8} />);
+    render(<PdfViewer {...baseViewerProps} documentId={8} />);
     await waitFor(() => {
       expect(screen.getByText("1 / 3")).toBeInTheDocument();
     });
@@ -144,6 +168,7 @@ describe("PdfViewer citation highlight behavior", () => {
 
     const { container } = render(
       <PdfViewer
+        {...baseViewerProps}
         documentId={7}
         highlightPage={1}
         highlightSnippet="Q4 revenue of $5M with strong growth and expanded margins."
@@ -176,6 +201,7 @@ describe("PdfViewer citation highlight behavior", () => {
 
     const { container, rerender } = render(
       <PdfViewer
+        {...baseViewerProps}
         documentId={7}
         highlightPage={1}
         highlightSnippet="Q4 revenue of $5M with strong growth and expanded margins."
@@ -189,9 +215,17 @@ describe("PdfViewer citation highlight behavior", () => {
       expect(container.querySelectorAll(".citation-text-highlight")).toHaveLength(0);
     }, { timeout: 4200 });
 
-    rerender(<PdfViewer documentId={7} highlightPage={null} highlightSnippet={null} />);
     rerender(
       <PdfViewer
+        {...baseViewerProps}
+        documentId={7}
+        highlightPage={null}
+        highlightSnippet={null}
+      />
+    );
+    rerender(
+      <PdfViewer
+        {...baseViewerProps}
         documentId={7}
         highlightPage={1}
         highlightSnippet="Q4 revenue of $5M with strong growth and expanded margins."
@@ -214,6 +248,7 @@ describe("PdfViewer citation highlight behavior", () => {
 
     const { container, rerender } = render(
       <PdfViewer
+        {...baseViewerProps}
         documentId={7}
         highlightPage={1}
         highlightSnippet="Q4 revenue of $5M with strong growth and expanded margins."
@@ -234,6 +269,7 @@ describe("PdfViewer citation highlight behavior", () => {
     ]);
     rerender(
       <PdfViewer
+        {...baseViewerProps}
         documentId={7}
         highlightPage={1}
         highlightSnippet="Q4 revenue of $5M with strong growth and expanded margins."
@@ -261,6 +297,7 @@ describe("PdfViewer citation highlight behavior", () => {
 
     render(
       <PdfViewer
+        {...baseViewerProps}
         documentId={11}
         highlightPage={2}
         highlightSnippet="Quarterly revenue hit five million with double-digit growth."
@@ -286,6 +323,7 @@ describe("PdfViewer citation highlight behavior", () => {
 
     render(
       <PdfViewer
+        {...baseViewerProps}
         documentId={12}
         highlightPage={2}
         highlightSnippet="Policy exceptions require annual board signoff for temporary contractors."
@@ -310,6 +348,7 @@ describe("PdfViewer citation highlight behavior", () => {
 
     const { container } = render(
       <PdfViewer
+        {...baseViewerProps}
         documentId={13}
         highlightPage={2}
         highlightSnippet="Credential policy and access ownership controls are mandatory during incident drills."

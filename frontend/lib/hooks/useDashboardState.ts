@@ -20,6 +20,7 @@ const COMPACT_LAYOUT_MIN_WIDTH = 1024;
 const DESKTOP_LAYOUT_MIN_WIDTH = 1150;
 const POLL_INITIAL_DELAY_MS = 3000;
 const POLL_MAX_DELAY_MS = 10000;
+const DEBUG_MODE_STORAGE_KEY = "quaero_debug_mode";
 
 export type MobileTab = "pdf" | "chat";
 export type DashboardMode = "documents" | "workspaces";
@@ -34,6 +35,11 @@ const getLayoutModeFromWidth = (width: number): LayoutMode => {
 const getInitialLayoutMode = (): LayoutMode => {
   if (typeof window === "undefined") return "mobile";
   return getLayoutModeFromWidth(window.innerWidth);
+};
+
+const getInitialDebugMode = (): boolean => {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(DEBUG_MODE_STORAGE_KEY) === "true";
 };
 
 interface CitationTarget {
@@ -64,8 +70,10 @@ export interface UseDashboardStateResult {
   mobileTab: MobileTab;
   layoutMode: LayoutMode;
   desktopSidebarCollapsed: boolean;
+  debugMode: boolean;
   isDemoUser: boolean;
   hasActiveDocuments: boolean;
+  toggleDebugMode: () => void;
   clearError: () => void;
   handleUpload: (file: File) => Promise<void>;
   handleLogout: () => Promise<void>;
@@ -112,6 +120,7 @@ export function useDashboardState({
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
   const [layoutMode, setLayoutMode] = useState<LayoutMode>(getInitialLayoutMode);
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
+  const [debugMode, setDebugMode] = useState(getInitialDebugMode);
   const [isDemoUser, setIsDemoUser] = useState(false);
   const documentsRef = useRef<Document[]>([]);
 
@@ -352,6 +361,16 @@ export function useDashboardState({
     handleSessionExpired();
   };
 
+  const toggleDebugMode = useCallback(() => {
+    setDebugMode((current) => {
+      const next = !current;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(DEBUG_MODE_STORAGE_KEY, next ? "true" : "false");
+      }
+      return next;
+    });
+  }, []);
+
   const clearError = useCallback(() => {
     setError("");
   }, []);
@@ -584,7 +603,10 @@ export function useDashboardState({
     setViewerDocumentId(documentId);
     setHighlightPage(null);
     setHighlightSnippet(null);
-  }, []);
+    if (layoutMode !== "desktop") {
+      setSidebarOpen(false);
+    }
+  }, [layoutMode]);
 
   const handleBackToWorkspaces = useCallback(() => {
     setSelectedWorkspace(null);
@@ -613,8 +635,10 @@ export function useDashboardState({
     mobileTab,
     layoutMode,
     desktopSidebarCollapsed,
+    debugMode,
     isDemoUser,
     hasActiveDocuments,
+    toggleDebugMode,
     clearError,
     handleUpload,
     handleLogout,

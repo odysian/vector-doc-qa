@@ -6,7 +6,7 @@
 "use client";
 
 import { KeyboardEvent, SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Settings2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { Document } from "@/lib/api";
 import { useChatState } from "@/lib/hooks/useChatState";
@@ -22,6 +22,11 @@ interface ChatWindowProps {
   workspaceId?: number;
   workspaceName?: string;
   workspaceDocumentIds?: number[];
+  debugMode?: boolean;
+  onToggleDebugMode?: () => void;
+  showContextBar?: boolean;
+  contextTitle?: string;
+  contextDate?: string;
   onBack: () => void;
   onCitationClick?: (citation: CitationTarget) => void;
   onSessionExpired?: () => void;
@@ -32,7 +37,6 @@ const SUGGESTED_PROMPTS = [
   "What are the main points?",
   "Find key dates or numbers",
 ];
-const DEBUG_MODE_STORAGE_KEY = "quaero_debug_mode";
 const HIGH_CONFIDENCE_THRESHOLD = 0.5864;
 const MEDIUM_CONFIDENCE_THRESHOLD = 0.3699;
 
@@ -44,16 +48,16 @@ export function ChatWindow({
   workspaceId,
   workspaceName,
   workspaceDocumentIds,
+  debugMode = false,
+  showContextBar = false,
+  contextTitle,
+  contextDate,
   onBack,
   onCitationClick,
   onSessionExpired,
 }: ChatWindowProps) {
   const isWorkspaceMode = workspaceId !== undefined;
   const [input, setInput] = useState("");
-  const [debugMode, setDebugMode] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem(DEBUG_MODE_STORAGE_KEY) === "true";
-  });
   const [expandedSourceIndices, setExpandedSourceIndices] = useState<Set<number>>(new Set());
   const [expandedSourceCards, setExpandedSourceCards] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -96,14 +100,6 @@ export function ChatWindow({
       else next.add(key);
       return next;
     });
-  };
-
-  const toggleDebugMode = () => {
-    const nextDebugMode = !debugMode;
-    setDebugMode(nextDebugMode);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(DEBUG_MODE_STORAGE_KEY, nextDebugMode ? "true" : "false");
-    }
   };
 
   // Auto-scroll to bottom when messages change
@@ -152,11 +148,17 @@ export function ChatWindow({
     return "low";
   };
 
+  const resolvedContextTitle = contextTitle
+    || (isWorkspaceMode ? (workspaceName || "Workspace") : (document?.filename || "Document"));
+  const resolvedContextDate = contextDate || document?.uploaded_at || "";
+
   return (
     <div className="ui-panel flex flex-col w-full h-full min-h-0 max-h-full overflow-hidden shadow-xl">
-      {/* Header */}
-      <div className="shrink-0 flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50 backdrop-blur">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
+      {showContextBar && (
+        <div
+          data-testid="chat-context-bar"
+          className="shrink-0 flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/50 px-3 py-2"
+        >
           <button
             type="button"
             onClick={onBack}
@@ -164,32 +166,16 @@ export function ChatWindow({
             className="ui-btn ui-btn-ghost ui-btn-sm shrink-0"
             aria-label={isWorkspaceMode ? "Back to Workspaces" : "Back to Documents"}
           >
-            <ArrowLeft size={24} strokeWidth={2} />
+            <ArrowLeft size={18} strokeWidth={2} />
           </button>
-          <div className="h-4 w-px bg-zinc-700 shrink-0" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <h2 className="font-medium text-lapis-400 italic truncate text-sm sm:text-base">
-              {isWorkspaceMode ? (workspaceName || "Workspace") : document?.filename}
-            </h2>
-            <p className="text-meta truncate mt-0.5">
-              {isWorkspaceMode
-                ? "Cross-document chat"
-                : `Uploaded ${document ? formatDate(document.uploaded_at) : ""}`}
-            </p>
-          </div>
+          <p className="min-w-0 truncate text-sm text-zinc-200">
+            <span className="font-medium text-lapis-400 italic">{resolvedContextTitle}</span>
+            {resolvedContextDate && (
+              <span className="text-meta"> · {formatDate(resolvedContextDate)}</span>
+            )}
+          </p>
         </div>
-        <button
-          type="button"
-          onClick={toggleDebugMode}
-          aria-pressed={debugMode}
-          className={`ui-btn ui-btn-sm ml-3 shrink-0 ${
-            debugMode ? "ui-btn-secondary" : "ui-btn-ghost"
-          }`}
-        >
-          <Settings2 size={14} aria-hidden />
-          <span>{debugMode ? "Debug on" : "Debug off"}</span>
-        </button>
-      </div>
+      )}
 
       {/* Messages Area */}
       <div
