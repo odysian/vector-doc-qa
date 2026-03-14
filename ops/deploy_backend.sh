@@ -14,6 +14,8 @@ LAST_GOOD_FILE="${LAST_GOOD_FILE:-$DEPLOY_DIR/last_successful_image}"
 ACTIVE_COLOR_FILE="${ACTIVE_COLOR_FILE:-$DEPLOY_DIR/active_color}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
 HEALTH_SLEEP_SECONDS="${HEALTH_SLEEP_SECONDS:-2}"
+# Internal port the container process binds; must match PORT in ENV_FILE (default 8000).
+CONTAINER_PORT="${CONTAINER_PORT:-8000}"
 
 mkdir -p "$DEPLOY_DIR"
 
@@ -49,8 +51,8 @@ if [[ -f "$ACTIVE_COLOR_FILE" ]]; then
   active_color="$(cat "$ACTIVE_COLOR_FILE")"
 fi
 
-# Derive new color and host ports. Containers always listen on internal port 8000;
-# host ports 8000 (blue) and 8001 (green) keep the active slot consistent across restarts.
+# Derive new color and host ports. The container process binds to CONTAINER_PORT internally;
+# host ports 8000 (blue) and 8001 (green) are mapped to it for NGINX upstream switching.
 if [[ "$active_color" == "blue" ]]; then
   new_color="green"
   new_port=8001
@@ -70,13 +72,25 @@ echo "Active: ${active_color} (port ${old_port}). Deploying ${new_color} on port
 echo "Starting container: $new_container ($IMAGE_TAG)"
 if ! docker run -d \
     --name "$new_container" \
-    -p "127.0.0.1:${new_port}:8000" \
+    -p "127.0.0.1:${new_port}:${CONTAINER_PORT}" \
     --env-file "$ENV_FILE" \
     --restart unless-stopped \
     "$IMAGE_TAG" >/dev/null; then
   echo "Failed to start new container $new_container"
   exit 1
 fi
+
+# Any failure from here to success recording must stop the new container so it doesn't
+# run orphaned while the old container continues to serve live traffic.
+_cleanup_on_failure() {
+  local rc=$?
+  if [[ $rc -ne 0 ]]; then
+    echo "Deploy failed (exit $rc); removing $new_container. Old container $old_container is untouched."
+    docker stop "$new_container" >/dev/null 2>&1 || true
+    docker rm   "$new_container" >/dev/null 2>&1 || true
+  fi
+}
+trap _cleanup_on_failure EXIT
 
 # Health-check the new container before touching the live NGINX upstream.
 healthy=false
@@ -92,8 +106,6 @@ done
 if [[ "$healthy" != "true" ]]; then
   echo "New container $new_container failed health checks"
   docker logs "$new_container" --tail 200 || true
-  docker stop "$new_container" >/dev/null || true
-  docker rm "$new_container" >/dev/null || true
   echo "Old container $old_container is untouched. Deploy aborted."
   exit 1
 fi
@@ -107,6 +119,9 @@ echo "NGINX upstream switched to ${new_color} (port ${new_port})"
 echo "$new_color" > "$ACTIVE_COLOR_FILE"
 echo "$IMAGE_TAG" > "$LAST_GOOD_FILE"
 echo "Deployment successful. Recorded last good image in $LAST_GOOD_FILE"
+
+# Disarm the failure trap — we're past the point of no return.
+trap - EXIT
 
 # Stop old blue-green container (safe no-op if it doesn't exist yet).
 docker stop "$old_container" >/dev/null 2>&1 || true
