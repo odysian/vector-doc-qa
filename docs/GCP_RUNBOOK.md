@@ -105,8 +105,8 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA quaero
 ## 3. Deployment Flow (Normal)
 
 1. CI validation runs on:
-   - every `pull_request` (`Backend CI`)
-   - direct `push` to non-`main` branches (`Backend CI`)
+   - every `pull_request` touching `backend/**` or `.github/workflows/backend-test.yml` (`Backend CI`)
+   - each new commit pushed to an open PR fires via the `synchronize` event automatically
 2. Production deploy runs on:
    - `push` to `main` (`Deploy Backend`)
    - manual `workflow_dispatch` from `main` only (`Deploy Backend`)

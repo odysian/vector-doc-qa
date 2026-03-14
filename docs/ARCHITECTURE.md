@@ -37,7 +37,7 @@ Quaero is a document intelligence platform that allows users to upload PDF docum
 - **Bootstrap model:** VM bootstraps directly from `infra/terraform/scripts/startup.sh.tftpl` on instance startup (Docker, NGINX, Certbot, Ops Agent, `/opt/quaero` directories, and placeholder `backend.env` path). Production `backend.env` is pushed by deploy workflow from GitHub secret `BACKEND_ENV_B64`.
 - **Rollout governance:** Current production rollout/rollback uses manual-first Terraform with pinned `vm_image` and standard health gates in `docs/GCP_RUNBOOK.md`. Golden-image + reconcile tuple governance is retired (see ADR-008 historical status).
 - **Streaming proxy hardening:** NGINX includes a dedicated `/api/documents/{id}/query/stream` location with buffering/cache/compression disabled and extended timeouts so SSE tokens flush incrementally to clients.
-- **CI trigger policy:** `Backend CI` runs on every PR and direct push to non-`main` branches.
+- **CI trigger policy:** `Backend CI` runs on `pull_request` events (opened, synchronize, reopened) when `backend/**` or `.github/workflows/backend-test.yml` changes. No `push:` trigger — every commit on an open PR triggers via the synchronize event; bare branch pushes without a PR do not run CI by design.
 - **Deploy trigger policy:** `Deploy Backend` runs on `main` pushes and manual `workflow_dispatch` from `main`; deploy is blocked unless backend tests pass.
 - **Control-plane guardrail:** `main` branch protection should require status check `Backend CI / backend-verify`.
 - **Operational references:** day-2 operations live in `docs/GCP_RUNBOOK.md`; Terraform usage/import/apply steps live in `infra/terraform/README.md`.
