@@ -244,7 +244,7 @@ describe("ChatWindow streaming lifecycle", () => {
       if (originalScrollTopDescriptor) {
         Object.defineProperty(HTMLElement.prototype, "scrollTop", originalScrollTopDescriptor);
       } else {
-        delete (HTMLElement.prototype as Record<string, unknown>)["scrollTop"];
+        delete (HTMLElement.prototype as unknown as Record<string, unknown>)["scrollTop"];
       }
     }
   });
