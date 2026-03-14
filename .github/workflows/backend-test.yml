@@ -3,9 +3,6 @@ name: Backend CI
 on:
   workflow_call:
   pull_request:
-    paths:
-      - "backend/**"
-      - ".github/workflows/backend-test.yml"
 
 concurrency:
   group: backend-ci-${{ github.event.pull_request.number || github.run_id }}
@@ -15,7 +12,36 @@ permissions:
   contents: read
 
 jobs:
-  backend-verify:
+  # Always runs. Detects whether backend files changed so the test job
+  # can be skipped on frontend-only PRs while still reporting a status.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.detect.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect backend changes
+        id: detect
+        run: |
+          # workflow_call = deploy pipeline; always run tests
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "backend=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if git diff --name-only "$BASE" HEAD | grep -qE '^(backend/|\.github/workflows/backend-test\.yml)'; then
+            echo "backend=true" >> $GITHUB_OUTPUT
+          else
+            echo "backend=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Runs only when backend files changed. Spins up postgres + redis.
+  backend-tests:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
 
     services:
@@ -81,3 +107,20 @@ jobs:
 
       - name: Bandit
         run: bandit -r app/ -ll
+
+  # Gate job: always runs, always reports the required status check name.
+  # Branch protection requires "Backend CI / backend-verify"; this job
+  # exits 0 when tests passed or were skipped (no backend changes).
+  backend-verify:
+    needs: [changes, backend-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report status
+        run: |
+          result="${{ needs.backend-tests.result }}"
+          if [[ "$result" == "success" || "$result" == "skipped" ]]; then
+            exit 0
+          else
+            exit 1
+          fi

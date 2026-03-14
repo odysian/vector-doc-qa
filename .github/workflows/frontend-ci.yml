@@ -3,9 +3,6 @@ name: Frontend CI
 on:
   workflow_call:
   pull_request:
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend-ci.yml"
 
 concurrency:
   group: frontend-ci-${{ github.event.pull_request.number || github.run_id }}
@@ -15,7 +12,36 @@ permissions:
   contents: read
 
 jobs:
-  frontend-verify:
+  # Always runs. Detects whether frontend files changed so the test job
+  # can be skipped on backend-only PRs while still reporting a status.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.detect.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect frontend changes
+        id: detect
+        run: |
+          # workflow_call = deploy pipeline; always run tests
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "frontend=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if git diff --name-only "$BASE" HEAD | grep -qE '^(frontend/|\.github/workflows/frontend-ci\.yml)'; then
+            echo "frontend=true" >> $GITHUB_OUTPUT
+          else
+            echo "frontend=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Runs only when frontend files changed.
+  frontend-tests:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
 
     defaults:
@@ -52,3 +78,20 @@ jobs:
 
       - name: Audit
         run: npm audit --audit-level=high
+
+  # Gate job: always runs, always reports the required status check name.
+  # Branch protection requires "Frontend CI / frontend-verify"; this job
+  # exits 0 when tests passed or were skipped (no frontend changes).
+  frontend-verify:
+    needs: [changes, frontend-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report status
+        run: |
+          result="${{ needs.frontend-tests.result }}"
+          if [[ "$result" == "success" || "$result" == "skipped" ]]; then
+            exit 0
+          else
+            exit 1
+          fi
