@@ -26,22 +26,6 @@ export type MobileTab = "pdf" | "chat";
 export type DashboardMode = "documents" | "workspaces";
 export type LayoutMode = "mobile" | "compact" | "desktop";
 
-const getLayoutModeFromWidth = (width: number): LayoutMode => {
-  if (width >= DESKTOP_LAYOUT_MIN_WIDTH) return "desktop";
-  if (width >= COMPACT_LAYOUT_MIN_WIDTH) return "compact";
-  return "mobile";
-};
-
-const getInitialLayoutMode = (): LayoutMode => {
-  if (typeof window === "undefined") return "mobile";
-  return getLayoutModeFromWidth(window.innerWidth);
-};
-
-const getInitialDebugMode = (): boolean => {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(DEBUG_MODE_STORAGE_KEY) === "true";
-};
-
 interface CitationTarget {
   page: number;
   snippet?: string;
@@ -118,9 +102,9 @@ export function useDashboardState({
   const [highlightPage, setHighlightPage] = useState<number | null>(null);
   const [highlightSnippet, setHighlightSnippet] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>(getInitialLayoutMode);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>("mobile");
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
-  const [debugMode, setDebugMode] = useState(getInitialDebugMode);
+  const [debugMode, setDebugMode] = useState(false);
   const [isDemoUser, setIsDemoUser] = useState(false);
   const documentsRef = useRef<Document[]>([]);
 
@@ -200,6 +184,16 @@ export function useDashboardState({
   useEffect(() => {
     documentsRef.current = documents;
   }, [documents]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      setDebugMode(window.localStorage.getItem(DEBUG_MODE_STORAGE_KEY) === "true");
+    } catch {
+      // Keep debug mode disabled if localStorage is unavailable or inaccessible.
+      setDebugMode(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!selectedDocument) return;

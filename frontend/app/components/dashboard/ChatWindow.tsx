@@ -131,7 +131,7 @@ export function ChatWindow({
       // Skip the next generic message-driven auto-scroll run so initial render doesn't jump twice.
       skipPostHistoryScrollRef.current = true;
     }
-  }, [loadingHistory]);
+  }, [loadingHistory, scrollToBottom]);
 
   // Keep chat at bottom for live updates after initial history load.
   useLayoutEffect(() => {
