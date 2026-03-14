@@ -347,6 +347,25 @@ body {
   animation: quaero-logo-pulse 1.6s ease-in-out infinite;
 }
 
+/* Dot grid texture: lapis-tinted 1px dots, 24px grid.
+   Layered below quaero-gradient-overlay so the glow fades it at the focal point. */
+.quaero-bg-grid {
+  background-image: radial-gradient(circle, rgba(84, 123, 243, 0.22) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Dashboard header background: faint lapis radial glow at the left edge
+   (behind the logo) over the existing zinc-900/50 base. */
+.quaero-header-bg {
+  background:
+    radial-gradient(ellipse 40% 120% at 5% 50%, rgba(84, 123, 243, 0.08) 0%, transparent 60%),
+    rgb(24 24 27 / 0.5);
+}
+
+/* Wordmark effect placeholder — intentionally empty pending design decision. */
+.quaero-wordmark-glow {}
+.quaero-wordmark-glow-sm {}
+
 /* Lapis radial gradient overlay*/
 .quaero-gradient-overlay {
   background-image: radial-gradient(
