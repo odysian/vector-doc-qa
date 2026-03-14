@@ -57,7 +57,7 @@ When the shorthand request is used, default to this non-interactive behavior:
 1. For issue drafting, use the current branch; before implementation, switch to a dedicated Task branch.
 2. Run `scripts/gh_preflight.sh` before GH write commands; avoid broad GH discovery scans (`gh label list`, wide repo scans) unless needed.
 3. Write one Task issue body file under `plans/`:
-- `plans/task-<feature-slug>-01.md`
+- `plans/YYYY-MM-DD-task-<feature-slug>-01.md`
 4. Run `gh issue create` directly with the labels inferred from scope.
 5. Only ask follow-up questions on hard failures (auth, permissions, missing required labels).
 6. Output only:
@@ -82,8 +82,8 @@ Ask Codex to:
 Ask Codex to output:
 
 - mode-specific filenames to save locally:
-  - `task-<feature>-01.md` (`single`)
-  - `spec-<feature>.md` + `task-<feature>-01.md` (`gated`)
+  - `YYYY-MM-DD-task-<feature>-01.md` (`single`)
+  - `YYYY-MM-DD-spec-<feature>.md` + `YYYY-MM-DD-task-<feature>-01.md` (`gated`)
 - mode-specific `gh issue create` commands using `--body-file` and `--label`
 
 You run those commands in the repo terminal.
@@ -113,8 +113,8 @@ scripts/create_pr.sh --title "Task #<id>: <short-title>" --body-file <path-to-pr
 ## Common GitHub CLI Snippets
 
 ```bash
-gh issue create --title "Task: <feature> end-to-end" --label "type:task,area:frontend" --body-file task-<feature>-01.md
-gh issue create --title "Spec: <feature set>" --label "type:spec" --body-file spec-<feature-set>.md
+gh issue create --title "Task: <feature> end-to-end" --label "type:task,area:frontend" --body-file YYYY-MM-DD-task-<feature>-01.md
+gh issue create --title "Spec: <feature set>" --label "type:spec" --body-file YYYY-MM-DD-spec-<feature-set>.md
 gh issue list --label type:task
 gh issue view <id>
 ```

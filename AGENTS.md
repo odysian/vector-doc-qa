@@ -36,7 +36,7 @@ Read in this order:
 
 ## Agent Operating Loop
 
-1. Whiteboard scope in `plans/*.md` or spec docs (scratch only).
+1. Whiteboard scope in `plans/*.md` or spec docs (scratch only). All files written to `plans/` must use the date-slug format: `YYYY-MM-DD-<type>-<slug>.md` (e.g. `2026-03-13-task-auth-refresh-01.md`, `2026-03-13-spec-dashboard-layout.md`).
 2. Choose execution mode and create required issue(s) (`single` unless explicitly asked for `gated`/`fast`).
 3. Restate goal and acceptance criteria.
 4. Plan minimal files and scope.
