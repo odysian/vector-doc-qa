@@ -139,8 +139,74 @@ function makeWorkspace(overrides: Partial<{
   };
 }
 
+function installResponsiveMatchMediaMock(initialWidth: number): { setWidth: (width: number) => void } {
+  let currentWidth = initialWidth;
+  const listenersByQuery = new Map<string, Set<(event: MediaQueryListEvent) => void>>();
+
+  const evaluateMinWidth = (query: string): boolean => {
+    const match = query.match(/\(min-width:\s*(\d+)px\)/);
+    if (!match) {
+      throw new Error(`Unsupported media query in test: ${query}`);
+    }
+    return currentWidth >= Number(match[1]);
+  };
+
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: vi.fn().mockImplementation((query: string): MediaQueryList => {
+      const listeners = listenersByQuery.get(query) ?? new Set<(event: MediaQueryListEvent) => void>();
+      listenersByQuery.set(query, listeners);
+      return {
+        media: query,
+        get matches() {
+          return evaluateMinWidth(query);
+        },
+        onchange: null,
+        addEventListener: (type: string, listener: EventListenerOrEventListenerObject | null) => {
+          if (type !== "change") return;
+          if (typeof listener !== "function") return;
+          listeners.add(listener as (event: MediaQueryListEvent) => void);
+        },
+        removeEventListener: (type: string, listener: EventListenerOrEventListenerObject | null) => {
+          if (type !== "change") return;
+          if (typeof listener !== "function") return;
+          listeners.delete(listener as (event: MediaQueryListEvent) => void);
+        },
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => true,
+      } as MediaQueryList;
+    }),
+  });
+
+  const setWidth = (nextWidth: number) => {
+    currentWidth = nextWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: nextWidth,
+    });
+    listenersByQuery.forEach((listeners, query) => {
+      const event = {
+        matches: evaluateMinWidth(query),
+        media: query,
+      } as MediaQueryListEvent;
+      listeners.forEach((listener) => listener(event));
+    });
+  };
+
+  setWidth(initialWidth);
+  return { setWidth };
+}
+
+let setViewportWidth: (width: number) => void = () => {};
+
 describe("DashboardPage regression behavior", () => {
   beforeEach(() => {
+    const mediaController = installResponsiveMatchMediaMock(390);
+    setViewportWidth = mediaController.setWidth;
+
     pushMock.mockReset();
     isLoggedInMock.mockReset();
     getDashboardContextMock.mockReset();
@@ -594,6 +660,9 @@ describe("DashboardPage layout contracts", () => {
   });
 
   beforeEach(() => {
+    const mediaController = installResponsiveMatchMediaMock(390);
+    setViewportWidth = mediaController.setWidth;
+
     pushMock.mockReset();
     isLoggedInMock.mockReset();
     getDashboardContextMock.mockReset();
@@ -623,7 +692,7 @@ describe("DashboardPage layout contracts", () => {
   }
 
   it("chat section has w-full in tab mode for centering parity with PDF section", async () => {
-    // jsdom defaults innerWidth to 0, which triggers tab layout
+    setViewportWidth(1024);
     await selectDocument();
 
     const chatSection = screen.getByText("Ask a question about this document")
@@ -633,7 +702,29 @@ describe("DashboardPage layout contracts", () => {
     expect(chatSection!.className).toContain("max-w-5xl");
   });
 
+  it("derives compact and desktop layouts from 1024/1150 breakpoints", async () => {
+    setViewportWidth(1024);
+    await selectDocument();
+
+    expect(screen.getByRole("button", { name: "PDF" })).toBeInTheDocument();
+    const compactChatSection = screen.getByText("Ask a question about this document").closest("section");
+    expect(compactChatSection).not.toBeNull();
+    expect(compactChatSection!.className).toContain("max-w-5xl");
+
+    setViewportWidth(1150);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "PDF" })).not.toBeInTheDocument();
+    });
+
+    const desktopChatSection = screen.getByText("Ask a question about this document").closest("section");
+    expect(desktopChatSection).not.toBeNull();
+    expect(desktopChatSection!.className).toContain("flex-[0.9_0_40%]");
+    expect(desktopChatSection!.className).toContain("min-w-72");
+  });
+
   it("empty-state open-documents button expands collapsed desktop sidebar", async () => {
+    setViewportWidth(1150);
     const doc = makeDocument();
     getDashboardContextMock.mockResolvedValueOnce({
       user: makeUser(),
@@ -644,13 +735,40 @@ describe("DashboardPage layout contracts", () => {
     await screen.findByText("alpha.pdf");
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
-    expect(screen.getByRole("complementary").className).toContain("xl:w-0");
+    expect(screen.getByRole("complementary").className).toContain("w-0");
 
     fireEvent.click(screen.getByRole("button", { name: "Open documents" }));
-    expect(screen.getByRole("complementary").className).toContain("xl:w-72");
+    expect(screen.getByRole("complementary").className).not.toContain("w-0");
+  });
+
+  it("keeps compact sidebar as overlay and does not push panes", async () => {
+    setViewportWidth(1024);
+    const doc = makeDocument();
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [doc],
+    });
+
+    render(<DashboardPage />);
+    await screen.findByText("alpha.pdf");
+    fireEvent.click(screen.getByText("alpha.pdf"));
+    await screen.findByText("Ask a question about this document");
+
+    const sidebar = screen.getByRole("complementary");
+    expect(sidebar.className).toContain("fixed");
+    expect(sidebar.className).toContain("-translate-x-full");
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle sidebar" }));
+    await waitFor(() => {
+      expect(screen.getByRole("complementary").className).toContain("translate-x-0");
+    });
+
+    const main = screen.getByRole("main");
+    expect(main.className).toContain("flex-1 min-w-0");
   });
 
   it("keeps mobile backdrop visibility controlled by hidden/block utilities", async () => {
+    setViewportWidth(1024);
     const doc = makeDocument();
     getDashboardContextMock.mockResolvedValueOnce({
       user: makeUser(),
@@ -668,7 +786,6 @@ describe("DashboardPage layout contracts", () => {
       return backdrop as HTMLButtonElement;
     };
 
-    expect(getBackdrop().classList.contains("xl:hidden")).toBe(true);
     expect(getBackdrop().classList.contains("hidden")).toBe(true);
     expect(getBackdrop().classList.contains("block")).toBe(false);
 
@@ -677,7 +794,6 @@ describe("DashboardPage layout contracts", () => {
     await waitFor(() => {
       expect(getBackdrop().className).toContain("block");
     });
-    expect(getBackdrop().classList.contains("xl:hidden")).toBe(true);
     expect(getBackdrop().classList.contains("hidden")).toBe(false);
 
     fireEvent.click(getBackdrop());

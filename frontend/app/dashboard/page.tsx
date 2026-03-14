@@ -23,8 +23,9 @@ import { useDashboardState } from "@/lib/hooks/useDashboardState";
 const SIDEBAR_WIDTH = "w-72";
 const MAX_DOCUMENTS_PER_WORKSPACE = 20;
 const PdfViewer = dynamic(
-  () => import("../components/dashboard/PdfViewer").then((mod) => mod.PdfViewer),
-  { ssr: false }
+  () =>
+    import("../components/dashboard/PdfViewer").then((mod) => mod.PdfViewer),
+  { ssr: false },
 );
 
 export default function DashboardPage() {
@@ -55,7 +56,7 @@ export default function DashboardPage() {
     highlightPage,
     highlightSnippet,
     mobileTab,
-    useTabLayout,
+    layoutMode,
     desktopSidebarCollapsed,
     isDemoUser,
     clearError,
@@ -77,7 +78,6 @@ export default function DashboardPage() {
     handleViewerDocumentSwitch,
     handleBackToWorkspaces,
     setSidebarOpen,
-    setWorkspaceElement,
     setMobileTab,
     setDesktopSidebarCollapsed,
   } = useDashboardState({ onSessionExpired: handleSessionExpired });
@@ -88,7 +88,7 @@ export default function DashboardPage() {
     setDeletingWorkspace(true);
     const deleted = await handleDeleteWorkspace(
       workspaceToDelete.id,
-      workspaceToDelete.clearSelection
+      workspaceToDelete.clearSelection,
     );
 
     if (deleted) {
@@ -111,22 +111,30 @@ export default function DashboardPage() {
       return null;
     }
 
-    return selectedWorkspace.documents.find((doc) => doc.id === viewerDocumentId) || null;
+    return (
+      selectedWorkspace.documents.find((doc) => doc.id === viewerDocumentId) ||
+      null
+    );
   }, [dashboardMode, selectedDocument, selectedWorkspace, viewerDocumentId]);
 
   const availableWorkspaceDocuments = useMemo(() => {
     if (!selectedWorkspace) return [];
-    const currentWorkspaceDocIds = new Set(selectedWorkspace.documents.map((doc) => doc.id));
+    const currentWorkspaceDocIds = new Set(
+      selectedWorkspace.documents.map((doc) => doc.id),
+    );
     return documents.filter(
-      (doc) => doc.status === "completed" && !currentWorkspaceDocIds.has(doc.id)
+      (doc) =>
+        doc.status === "completed" && !currentWorkspaceDocIds.has(doc.id),
     );
   }, [documents, selectedWorkspace]);
 
   const workspaceCapacityRemaining = Math.max(
     MAX_DOCUMENTS_PER_WORKSPACE - (selectedWorkspace?.documents.length ?? 0),
-    0
+    0,
   );
 
+  const useTabLayout = layoutMode !== "desktop";
+  const isDesktopLayout = layoutMode === "desktop";
   const showPdfPane = !useTabLayout || mobileTab === "pdf";
   const showChatPane = !useTabLayout || mobileTab === "chat";
   const errorBanner = error ? (
@@ -145,7 +153,11 @@ export default function DashboardPage() {
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between p-3 border-b border-zinc-800 xl:border-b-0">
+      <div
+        className={`flex items-center justify-between p-3 border-b border-zinc-800 ${
+          isDesktopLayout ? "border-b-0" : ""
+        }`}
+      >
         <div className="ui-segmented">
           <button
             type="button"
@@ -165,7 +177,7 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={() => setSidebarOpen(false)}
-          className="ui-btn ui-btn-ghost ui-btn-sm xl:hidden"
+          className={`ui-btn ui-btn-ghost ui-btn-sm ${isDesktopLayout ? "hidden" : ""}`}
           aria-label="Close sidebar"
         >
           <X className="w-5 h-5" />
@@ -245,17 +257,23 @@ export default function DashboardPage() {
             <button
               type="button"
               onClick={() => setSidebarOpen((o) => !o)}
-              className="ui-btn ui-btn-ghost ui-btn-sm xl:hidden"
+              className={`ui-btn ui-btn-ghost ui-btn-sm ${isDesktopLayout ? "hidden" : ""}`}
               aria-label="Toggle sidebar"
             >
               <PanelLeft className="w-5 h-5" />
             </button>
             <button
               type="button"
-              onClick={() => setDesktopSidebarCollapsed((collapsed) => !collapsed)}
-              className="ui-btn ui-btn-ghost ui-btn-sm hidden xl:inline-flex"
-              aria-label={desktopSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              title={desktopSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              onClick={() =>
+                setDesktopSidebarCollapsed((collapsed) => !collapsed)
+              }
+              className={`ui-btn ui-btn-ghost ui-btn-sm ${isDesktopLayout ? "inline-flex" : "hidden"}`}
+              aria-label={
+                desktopSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+              }
+              title={
+                desktopSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+              }
             >
               <PanelLeft
                 className={`w-5 h-5 transition-transform ${desktopSidebarCollapsed ? "rotate-180" : ""}`}
@@ -279,11 +297,14 @@ export default function DashboardPage() {
         {/* Sidebar: drawer on mobile, fixed on desktop */}
         <aside
           className={`
-            ${SIDEBAR_WIDTH} shrink-0 flex flex-col bg-zinc-900 border-r border-zinc-800
-            fixed left-0 top-14 bottom-0 xl:relative xl:top-0 z-40 xl:z-auto
+            shrink-0 flex flex-col bg-zinc-900 border-r border-zinc-800
             transform transition-[transform,width] duration-200 ease-out
-            ${sidebarOpen ? "translate-x-0" : "-translate-x-full xl:translate-x-0"}
-            ${desktopSidebarCollapsed ? "xl:w-0 xl:border-r-0 xl:overflow-hidden xl:pointer-events-none" : "xl:w-72"}
+            ${
+              isDesktopLayout
+                ? "relative top-0 left-auto bottom-auto z-auto translate-x-0"
+                : `fixed left-0 top-14 bottom-0 z-40 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`
+            }
+            ${isDesktopLayout && desktopSidebarCollapsed ? "w-0 border-r-0 overflow-hidden pointer-events-none" : "w-72"}
           `}
         >
           {sidebarContent}
@@ -294,8 +315,8 @@ export default function DashboardPage() {
           type="button"
           onClick={() => setSidebarOpen(false)}
           className={`
-            fixed inset-0 bg-black/50 z-30 xl:hidden
-            ${sidebarOpen ? "block" : "hidden"}
+            fixed inset-0 bg-black/50 z-30
+            ${!isDesktopLayout && sidebarOpen ? "block" : "hidden"}
           `}
           aria-label="Close sidebar"
         />
@@ -335,7 +356,10 @@ export default function DashboardPage() {
           {isDemoUser && (
             <div className="mb-4 rounded-lg border border-amber-700/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
               You&apos;re using a demo account.{" "}
-              <Link href="/register" className="font-medium underline hover:text-amber-200">
+              <Link
+                href="/register"
+                className="font-medium underline hover:text-amber-200"
+              >
                 Create an account
               </Link>{" "}
               to upload your own documents.
@@ -351,7 +375,9 @@ export default function DashboardPage() {
               </h2>
               <p className="text-empty">Loading your documents...</p>
             </div>
-          ) : dashboardMode === "workspaces" && selectedWorkspace && selectedWorkspace.documents.length === 0 ? (
+          ) : dashboardMode === "workspaces" &&
+            selectedWorkspace &&
+            selectedWorkspace.documents.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto">
               <div className="p-4 rounded-full bg-zinc-800/50 mb-4">
                 <FileUp className="w-12 h-12 text-lapis-400" aria-hidden />
@@ -360,7 +386,8 @@ export default function DashboardPage() {
                 Add documents to this workspace
               </h2>
               <p className="text-empty mb-8">
-                Add documents to start asking cross-document questions with citations.
+                Add documents to start asking cross-document questions with
+                citations.
               </p>
               <button
                 type="button"
@@ -371,8 +398,11 @@ export default function DashboardPage() {
                 Add documents
               </button>
             </div>
-          ) : (dashboardMode === "documents" && selectedDocument) || (dashboardMode === "workspaces" && selectedWorkspace && viewerDocument) ? (
-            <div ref={setWorkspaceElement} className="flex-1 min-h-0 flex flex-col">
+          ) : (dashboardMode === "documents" && selectedDocument) ||
+            (dashboardMode === "workspaces" &&
+              selectedWorkspace &&
+              viewerDocument) ? (
+            <div className="flex-1 min-h-0 flex flex-col">
               {useTabLayout && (
                 <div className="mb-3 ui-segmented w-full max-w-md self-center">
                   <button
@@ -392,20 +422,24 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              <div className={`flex-1 min-h-0 flex gap-4 ${useTabLayout ? "flex-col items-center" : "flex-row"}`}>
+              <div
+                className={`flex-1 min-h-0 flex gap-4 ${useTabLayout ? "flex-col items-center" : "flex-row"}`}
+              >
                 <section
                   className={`${showPdfPane ? "flex" : "hidden"} min-h-0 min-w-0 w-full ${
-                    useTabLayout ? "flex-1 max-w-5xl" : "flex-[1.15_0_56%]"
+                    useTabLayout ? "flex-1 max-w-5xl" : "flex-[1.2_0_60%]"
                   }`}
                 >
                   <div className="w-full h-full min-h-0 flex flex-col">
-                    {dashboardMode === "workspaces" && selectedWorkspace && viewerDocumentId && (
-                      <DocumentSwitcher
-                        documents={selectedWorkspace.documents}
-                        activeDocumentId={viewerDocumentId}
-                        onSwitch={handleViewerDocumentSwitch}
-                      />
-                    )}
+                    {dashboardMode === "workspaces" &&
+                      selectedWorkspace &&
+                      viewerDocumentId && (
+                        <DocumentSwitcher
+                          documents={selectedWorkspace.documents}
+                          activeDocumentId={viewerDocumentId}
+                          onSwitch={handleViewerDocumentSwitch}
+                        />
+                      )}
                     {viewerDocument && (
                       <PdfViewer
                         documentId={viewerDocument.id}
@@ -419,7 +453,9 @@ export default function DashboardPage() {
 
                 <section
                   className={`${showChatPane ? "flex" : "hidden"} min-h-0 min-w-0 w-full ${
-                    useTabLayout ? "flex-1 max-w-5xl" : "flex-[0.95_0_44%]"
+                    useTabLayout
+                      ? "flex-1 max-w-5xl"
+                      : "flex-[0.9_0_40%] min-w-72"
                   }`}
                 >
                   {dashboardMode === "documents" && selectedDocument ? (
@@ -433,7 +469,9 @@ export default function DashboardPage() {
                     <ChatWindow
                       workspaceId={selectedWorkspace.id}
                       workspaceName={selectedWorkspace.name}
-                      workspaceDocumentIds={selectedWorkspace.documents.map((doc) => doc.id)}
+                      workspaceDocumentIds={selectedWorkspace.documents.map(
+                        (doc) => doc.id,
+                      )}
                       onBack={handleBackToWorkspaces}
                       onCitationClick={handleCitationClick}
                       onSessionExpired={handleSessionExpired}
@@ -451,7 +489,8 @@ export default function DashboardPage() {
                 Select a workspace
               </h2>
               <p className="text-empty max-w-sm">
-                Choose a workspace from the sidebar to start cross-document chat.
+                Choose a workspace from the sidebar to start cross-document
+                chat.
               </p>
             </div>
           ) : documents.length === 0 ? (
