@@ -7,6 +7,7 @@
 import { useState, type SyntheticEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Check } from "lucide-react";
 import { authService } from "@/lib/services/authService";
 
 /**
@@ -46,13 +47,29 @@ export default function RegisterPage() {
 
       <main className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-5xl items-center py-6 sm:py-8">
         <section className="grid w-full items-center gap-8 lg:grid-cols-[1fr_0.95fr] lg:gap-10">
-          <div className="w-full max-w-md mx-auto space-y-5 text-center lg:max-w-none lg:mx-0 lg:text-left">
+          <h1 className="lg:hidden font-cormorant text-5xl font-bold italic text-lapis-300 text-center">
+            Quaero
+          </h1>
+
+          <div className="hidden lg:block w-full space-y-5">
             <h1 className="font-cormorant text-5xl font-bold italic text-lapis-300 sm:text-6xl">
               Quaero
             </h1>
-            <p className="max-w-md mx-auto text-2xl leading-tight text-zinc-100 lg:mx-0">
-              Create an account and start asking better questions across your PDFs.
+            <p className="mt-2 text-sm text-zinc-400">
+              Document intelligence for serious researchers.
             </p>
+            <ul className="mt-6 space-y-3 list-none">
+              {[
+                "Upload once, query forever",
+                "Answers grounded in your sources",
+                "Cite the exact passage",
+              ].map((feature) => (
+                <li key={feature} className="flex items-center gap-2 text-sm text-zinc-300">
+                  <Check className="h-3.5 w-3.5 shrink-0 text-lapis-400" />
+                  {feature}
+                </li>
+              ))}
+            </ul>
           </div>
 
           <div className="w-full max-w-md mx-auto rounded-xl border border-zinc-800 bg-zinc-900/70 p-8 lg:max-w-none lg:mx-0">
