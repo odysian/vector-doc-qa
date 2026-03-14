@@ -6,7 +6,7 @@
 "use client";
 
 import { KeyboardEvent, SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Send, Square } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { Document } from "@/lib/api";
 import { useChatState } from "@/lib/hooks/useChatState";
@@ -61,6 +61,7 @@ export function ChatWindow({
   const [expandedSourceIndices, setExpandedSourceIndices] = useState<Set<number>>(new Set());
   const [expandedSourceCards, setExpandedSourceCards] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const { messages, loadingHistory, isStreaming, canStopStream, submitQuery, stopActiveStream } = useChatState({
     document,
     workspaceId,
@@ -121,6 +122,17 @@ export function ChatWindow({
     submitCurrentInput();
   };
 
+  const resizeComposer = useCallback(() => {
+    const composer = composerRef.current;
+    if (!composer) return;
+    composer.style.height = "auto";
+    composer.style.height = `${Math.min(composer.scrollHeight, 144)}px`;
+  }, []);
+
+  useEffect(() => {
+    resizeComposer();
+  }, [input, resizeComposer]);
+
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== "Enter") return;
     if (event.nativeEvent.isComposing) return;
@@ -157,7 +169,7 @@ export function ChatWindow({
       {showContextBar && (
         <div
           data-testid="chat-context-bar"
-          className="shrink-0 flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/50 px-3 py-2"
+          className="shrink-0 flex items-center gap-1.5 border-b border-zinc-800 bg-zinc-900/50 px-2.5 py-1.5"
         >
           <button
             type="button"
@@ -468,33 +480,38 @@ export function ChatWindow({
       <div className="shrink-0 px-3 py-3 border-t border-zinc-800 bg-zinc-900">
         <form onSubmit={handleSubmit} className="flex items-end gap-2">
           <textarea
+            ref={composerRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleComposerKeyDown}
-            rows={2}
+            rows={1}
             placeholder={
               isWorkspaceMode
                 ? "Ask a question across this workspace..."
                 : "Ask a question about this document..."
             }
-            className="ui-input flex-1 resize-none min-h-[44px] max-h-36 leading-relaxed"
+            className="ui-input flex-1 resize-none overflow-y-auto min-h-[44px] max-h-36 leading-relaxed"
             title="Enter to send, Shift+Enter for newline"
           />
           {isStreaming && canStopStream ? (
             <button
               type="button"
               onClick={stopActiveStream}
-              className="ui-btn ui-btn-neutral ui-btn-md shrink-0 self-stretch px-4"
+              aria-label="Stop response"
+              title="Stop response"
+              className="ui-btn ui-btn-neutral ui-btn-sm shrink-0 self-stretch px-2"
             >
-              Stop
+              <Square size={16} strokeWidth={2} aria-hidden />
             </button>
           ) : (
             <button
               type="submit"
               disabled={!input.trim() || isStreaming}
-              className="ui-btn ui-btn-primary ui-btn-md shrink-0 self-stretch px-4"
+              aria-label="Send message"
+              title="Send message"
+              className="ui-btn ui-btn-primary ui-btn-sm shrink-0 self-stretch px-2"
             >
-              Send
+              <Send size={16} strokeWidth={2} aria-hidden />
             </button>
           )}
         </form>
