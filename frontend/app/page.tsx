@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Check, CheckCircle, MessageCircle, Upload } from "lucide-react";
 import { authService } from "@/lib/services/authService";
 
 export default function Home() {
@@ -17,8 +18,6 @@ export default function Home() {
     "inline-flex items-center justify-center rounded-md border border-lapis-500 bg-lapis-600 px-8 py-3 text-base font-medium text-white transition hover:bg-lapis-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lapis-400/50";
   const secondaryActionClass =
     "inline-flex items-center justify-center rounded-md border border-lapis-500/40 px-8 py-3 text-base font-medium text-lapis-200 transition hover:bg-lapis-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lapis-400/50 disabled:cursor-not-allowed disabled:opacity-60";
-  const neutralActionClass =
-    "inline-flex items-center justify-center rounded-md border border-zinc-700 bg-zinc-800 px-8 py-3 text-base font-medium text-zinc-100 transition hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lapis-400/50";
 
   useEffect(() => {
     if (authService.hasActiveSession()) {
@@ -66,39 +65,70 @@ export default function Home() {
               >
                 {loadingDemo ? "Accessing..." : "Try Demo"}
               </button>
-              <Link href="/register" className={neutralActionClass}>
-                Register
-              </Link>
             </div>
+            <p className="text-sm text-zinc-500">
+              New here?{" "}
+              <Link
+                href="/register"
+                className="text-lapis-400 hover:text-lapis-300 transition-colors"
+              >
+                Create a free account →
+              </Link>
+            </p>
             {error && <p className="text-sm text-red-400">{error}</p>}
           </div>
 
           <div className="w-full max-w-md mx-auto space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/70 p-6 sm:p-8 lg:max-w-none lg:mx-0">
             <p className="text-label-accent">How It Works</p>
             <ol className="space-y-4 text-sm text-zinc-300">
-              <li>
-                <p className="text-zinc-100">1. Upload PDFs</p>
-                <p className="text-zinc-400">
-                  Ingest files once, then query them anytime.
-                </p>
+              <li className="flex gap-3">
+                <div className="h-7 w-7 shrink-0 rounded-full bg-lapis-500/15 text-lapis-400 flex items-center justify-center">
+                  <Upload className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <p className="text-zinc-100">Upload PDFs</p>
+                  <p className="text-zinc-400">
+                    Ingest files once, then query them anytime.
+                  </p>
+                </div>
               </li>
-              <li>
-                <p className="text-zinc-100">2. Ask in plain language</p>
-                <p className="text-zinc-400">
-                  Use natural prompts instead of manual searching.
-                </p>
+              <li className="flex gap-3">
+                <div className="h-7 w-7 shrink-0 rounded-full bg-lapis-500/15 text-lapis-400 flex items-center justify-center">
+                  <MessageCircle className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <p className="text-zinc-100">Ask in plain language</p>
+                  <p className="text-zinc-400">
+                    Use natural prompts instead of manual searching.
+                  </p>
+                </div>
               </li>
-              <li>
-                <p className="text-zinc-100">3. Validate with citations</p>
-                <p className="text-zinc-400">
-                  Jump straight to supporting excerpts.
-                </p>
+              <li className="flex gap-3">
+                <div className="h-7 w-7 shrink-0 rounded-full bg-lapis-500/15 text-lapis-400 flex items-center justify-center">
+                  <CheckCircle className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <p className="text-zinc-100">Validate with citations</p>
+                  <p className="text-zinc-400">
+                    Jump straight to supporting excerpts.
+                  </p>
+                </div>
               </li>
             </ol>
-            <ul className="space-y-2 border-t border-zinc-800 pt-4 text-sm text-zinc-300">
-              <li>Cited answers only</li>
-              <li>Your documents stay scoped</li>
-              <li>Fast retrieval + chat workflow</li>
+            <p className="text-label-accent border-t border-zinc-800 pt-4">Why it works</p>
+            <ul className="space-y-2 text-sm">
+              <li className="flex items-center gap-2 text-zinc-300">
+                <Check className="h-3.5 w-3.5 shrink-0 text-lapis-400" />
+                Cited answers only
+              </li>
+              <li className="flex items-center gap-2 text-zinc-300">
+                <Check className="h-3.5 w-3.5 shrink-0 text-lapis-400" />
+                Your documents stay scoped
+              </li>
+              <li className="flex items-center gap-2 text-zinc-300">
+                <Check className="h-3.5 w-3.5 shrink-0 text-lapis-400" />
+                Fast retrieval + chat workflow
+              </li>
             </ul>
           </div>
         </section>
