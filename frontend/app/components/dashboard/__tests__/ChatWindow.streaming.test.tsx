@@ -25,6 +25,13 @@ const getWorkspaceMessagesMock = vi.mocked(chatService.getWorkspaceMessages);
 const queryWorkspaceMock = vi.mocked(chatService.queryWorkspace);
 const queryDocumentStreamMock = vi.mocked(chatService.queryDocumentStream);
 
+const setComposerScrollHeight = (element: HTMLTextAreaElement, scrollHeight: number) => {
+  Object.defineProperty(element, "scrollHeight", {
+    configurable: true,
+    value: scrollHeight,
+  });
+};
+
 interface StreamCallbacks {
   onSources: (sources: QueryResponse["sources"]) => void;
   onToken: (token: string) => void;
@@ -74,14 +81,22 @@ describe("ChatWindow streaming lifecycle", () => {
 
     const input = screen.getByPlaceholderText("Ask a question about this document...");
     fireEvent.change(input, { target: { value: "First question" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    const sendButton = screen.getByRole("button", { name: "Send message" });
+    expect(sendButton).toHaveAttribute("title", "Send message");
+    expect(sendButton).toHaveAttribute("aria-label", "Send message");
+    expect(sendButton.textContent).toBe("");
+    fireEvent.click(sendButton);
 
     await waitFor(() => expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+    const stopButton = screen.getByRole("button", { name: "Stop response" });
+    expect(stopButton).toBeInTheDocument();
+    expect(stopButton).toHaveAttribute("title", "Stop response");
+    expect(stopButton).toHaveAttribute("aria-label", "Stop response");
+    expect(stopButton.textContent).toBe("");
+    expect(screen.queryByRole("button", { name: "Send message" })).not.toBeInTheDocument();
 
     fireEvent.change(input, { target: { value: "Follow up question" } });
-    expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send message" })).not.toBeInTheDocument();
 
     const streamCallbacks = queryDocumentStreamMock.mock.calls[0]?.[2] as StreamCallbacks | undefined;
     expect(streamCallbacks).toBeDefined();
@@ -89,12 +104,12 @@ describe("ChatWindow streaming lifecycle", () => {
     releaseStreamRef.current?.();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
     });
-    expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stop response" })).not.toBeInTheDocument();
 
     fireEvent.change(input, { target: { value: "Question after done" } });
-    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
   });
 
   it("submits on Enter, keeps Shift+Enter as newline path, and ignores IME enter", async () => {
@@ -124,6 +139,37 @@ describe("ChatWindow streaming lifecycle", () => {
     expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1);
   });
 
+  it("auto-resizes composer textarea up to max height and downscales when text is removed", async () => {
+    render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.queryByText("Loading conversation...")).not.toBeInTheDocument();
+    });
+
+    const composer = screen.getByPlaceholderText("Ask a question about this document...");
+
+    setComposerScrollHeight(composer as HTMLTextAreaElement, 72);
+    fireEvent.change(composer, { target: { value: "Short text." } });
+    await waitFor(() => {
+      expect((composer as HTMLTextAreaElement).style.height).toBe("72px");
+    });
+    expect((composer as HTMLTextAreaElement).style.overflowY).toBe("hidden");
+    expect((composer as HTMLTextAreaElement).style.height).not.toBe("144px");
+
+    setComposerScrollHeight(composer as HTMLTextAreaElement, 220);
+    fireEvent.change(composer, { target: { value: "A\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM" } });
+    await waitFor(() => {
+      expect((composer as HTMLTextAreaElement).style.height).toBe("144px");
+    });
+    expect((composer as HTMLTextAreaElement).style.overflowY).toBe("auto");
+
+    setComposerScrollHeight(composer as HTMLTextAreaElement, 90);
+    fireEvent.change(composer, { target: { value: "Back to short." } });
+    await waitFor(() => {
+      expect((composer as HTMLTextAreaElement).style.height).toBe("90px");
+    });
+    expect((composer as HTMLTextAreaElement).style.overflowY).toBe("hidden");
+  });
+
   it("appends streaming errors without duplicating assistant bubbles", async () => {
     queryDocumentStreamMock.mockImplementation(async (_documentId, _query, callbacks) => {
       await Promise.resolve();
@@ -137,7 +183,7 @@ describe("ChatWindow streaming lifecycle", () => {
 
     const input = screen.getByPlaceholderText("Ask a question about this document...");
     fireEvent.change(input, { target: { value: "Trigger error" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
     await waitFor(() => {
       expect(screen.getByText("Error: Stream failed")).toBeInTheDocument();
@@ -166,7 +212,7 @@ describe("ChatWindow streaming lifecycle", () => {
 
     const input = screen.getByPlaceholderText("Ask a question about this document...");
     fireEvent.change(input, { target: { value: "Retry this question" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
     const retryButton = await screen.findByRole("button", { name: "Retry" });
     fireEvent.click(retryButton);
@@ -216,11 +262,11 @@ describe("ChatWindow streaming lifecycle", () => {
 
     const input = screen.getByPlaceholderText("Ask a question about this document...");
     fireEvent.change(input, { target: { value: originalQuery } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
     await waitFor(() => expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1));
     expect(capturedSignal).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop response" }));
 
     await waitFor(() => {
       expect(capturedSignal?.aborted).toBe(true);
@@ -234,8 +280,8 @@ describe("ChatWindow streaming lifecycle", () => {
     await waitFor(() => expect(queryDocumentStreamMock).toHaveBeenCalledTimes(2));
     expect(queryDocumentStreamMock.mock.calls[1]?.[1]).toBe(originalQuery);
     expect(await screen.findByText("Recovered after stop")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stop response" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeInTheDocument();
   });
 
   it("aborts active stream on unmount cleanup", async () => {
@@ -266,7 +312,7 @@ describe("ChatWindow streaming lifecycle", () => {
 
     const input = screen.getByPlaceholderText("Ask a question about this document...");
     fireEvent.change(input, { target: { value: "Abort me" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
     await waitFor(() => expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1));
     expect(capturedSignal).toBeDefined();
@@ -600,7 +646,7 @@ describe("ChatWindow streaming lifecycle", () => {
 
     const input = screen.getByPlaceholderText("Ask a question across this workspace...");
     fireEvent.change(input, { target: { value: "How do these files connect?" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
     expect(queryDocumentStreamMock).not.toHaveBeenCalled();
     await waitFor(() => {
