@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.config import settings
 from app.database import AsyncSessionLocal
@@ -27,7 +27,7 @@ async def _reset_stale_processing_documents() -> int:
     Render free-tier instances can sleep mid-job. On startup, any old PROCESSING
     rows are returned to PENDING so they can be retried.
     """
-    cutoff = datetime.utcnow() - timedelta(minutes=settings.arq_stale_processing_minutes)
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=settings.arq_stale_processing_minutes)
 
     async with AsyncSessionLocal() as db:
         stmt = (

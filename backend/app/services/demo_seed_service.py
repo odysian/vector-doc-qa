@@ -10,7 +10,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -217,7 +217,7 @@ async def _seed_documents(
             filename=filename,
             file_path=file_path,
             file_size=fixture_file_size if fixture_file_size > 0 else resolved_file_size,
-            processed_at=datetime.utcnow(),
+            processed_at=datetime.now(timezone.utc),
         )
 
         chunks_payload = doc_payload.get("chunks", [])

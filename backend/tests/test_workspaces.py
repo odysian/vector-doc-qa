@@ -2,7 +2,7 @@
 Tests for workspace endpoints: CRUD, membership, query, and workspace chat history.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import select
@@ -34,7 +34,7 @@ async def _create_completed_document(
         file_size=2048,
         status=DocumentStatus.COMPLETED,
         user_id=user_id,
-        processed_at=datetime.utcnow(),
+        processed_at=datetime.now(timezone.utc),
     )
     db_session.add(document)
     await db_session.flush()

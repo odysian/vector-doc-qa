@@ -9,7 +9,7 @@ keeping tests isolated without recreating tables per test.
 import asyncio
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -270,7 +270,7 @@ async def processed_document(db_session: AsyncSession, test_user: User) -> Docum
         file_size=2048,
         status=DocumentStatus.COMPLETED,
         user_id=test_user.id,
-        processed_at=datetime.utcnow(),
+        processed_at=datetime.now(timezone.utc),
     )
     db_session.add(doc)
     await db_session.flush()
