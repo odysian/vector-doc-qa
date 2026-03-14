@@ -5,7 +5,7 @@
 
 "use client";
 
-import { KeyboardEvent, SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
+import { KeyboardEvent, SyntheticEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, Send, Square } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { Document } from "@/lib/api";
@@ -63,6 +63,7 @@ export function ChatWindow({
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const hasLoadedHistoryRef = useRef(false);
+  const skipPostHistoryScrollRef = useRef(false);
   const { messages, loadingHistory, isStreaming, canStopStream, submitQuery, stopActiveStream } = useChatState({
     document,
     workspaceId,
@@ -104,27 +105,43 @@ export function ChatWindow({
     });
   };
 
-  useEffect(() => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const container = scrollRef.current;
+    if (!container) return;
+    if (typeof container.scrollTo === "function") {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior,
+      });
+      return;
+    }
+    container.scrollTop = container.scrollHeight;
+  }, []);
+
+  useLayoutEffect(() => {
     if (loadingHistory) {
       hasLoadedHistoryRef.current = false;
+      skipPostHistoryScrollRef.current = false;
       return;
     }
 
     if (!hasLoadedHistoryRef.current) {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
+      scrollToBottom("auto");
       hasLoadedHistoryRef.current = true;
+      // Skip the next generic message-driven auto-scroll run so initial render doesn't jump twice.
+      skipPostHistoryScrollRef.current = true;
     }
   }, [loadingHistory]);
 
-  // Auto-scroll to bottom for messages added after history has finished loading.
-  useEffect(() => {
+  // Keep chat at bottom for live updates after initial history load.
+  useLayoutEffect(() => {
     if (!hasLoadedHistoryRef.current) return;
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (skipPostHistoryScrollRef.current) {
+      skipPostHistoryScrollRef.current = false;
+      return;
     }
-  }, [messages, loadingHistory]);
+    scrollToBottom("auto");
+  }, [messages, loadingHistory, scrollToBottom]);
 
   const submitCurrentInput = () => {
     const trimmed = input.trim();
@@ -211,7 +228,7 @@ export function ChatWindow({
       {/* Messages Area */}
       <div
         ref={scrollRef}
-        className="messages-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3 space-y-4 scroll-smooth"
+        className="messages-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3 space-y-4"
       >
         {loadingHistory && (
           <div className="h-full flex items-center justify-center">

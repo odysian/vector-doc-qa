@@ -459,7 +459,7 @@ export function PdfViewer({
             <p className="truncate text-meta">{formatDate(uploadedAt)}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <div className="inline-flex items-center rounded-md border border-zinc-700 bg-zinc-950/70">
             <button
               type="button"
@@ -471,7 +471,9 @@ export function PdfViewer({
             >
               <ZoomOut className="h-4 w-4" />
             </button>
-            <span className="min-w-14 px-2 text-center text-xs text-zinc-300">{zoomPercent}%</span>
+            <span className="min-w-14 px-2 text-center text-xs text-zinc-300 whitespace-nowrap">
+              {zoomPercent}%
+            </span>
             <button
               type="button"
               onClick={handleZoomIn}
@@ -494,7 +496,7 @@ export function PdfViewer({
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="px-1.5 text-center text-xs text-zinc-300">
+            <span className="px-1.5 text-center text-xs text-zinc-300 whitespace-nowrap">
               {currentPage || 1} / {numPages}
             </span>
             <button

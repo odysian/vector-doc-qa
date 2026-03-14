@@ -150,6 +150,7 @@ describe("PdfViewer citation highlight behavior", () => {
     await waitFor(() => {
       expect(screen.getByText("1 / 3")).toBeInTheDocument();
     });
+    expect(screen.getByText("1 / 3")).toHaveClass("whitespace-nowrap");
 
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
 
