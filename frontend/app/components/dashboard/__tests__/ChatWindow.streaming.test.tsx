@@ -25,6 +25,13 @@ const getWorkspaceMessagesMock = vi.mocked(chatService.getWorkspaceMessages);
 const queryWorkspaceMock = vi.mocked(chatService.queryWorkspace);
 const queryDocumentStreamMock = vi.mocked(chatService.queryDocumentStream);
 
+const setComposerScrollHeight = (element: HTMLTextAreaElement, scrollHeight: number) => {
+  Object.defineProperty(element, "scrollHeight", {
+    configurable: true,
+    value: scrollHeight,
+  });
+};
+
 interface StreamCallbacks {
   onSources: (sources: QueryResponse["sources"]) => void;
   onToken: (token: string) => void;
@@ -77,6 +84,7 @@ describe("ChatWindow streaming lifecycle", () => {
     const sendButton = screen.getByRole("button", { name: "Send message" });
     expect(sendButton).toHaveAttribute("title", "Send message");
     expect(sendButton).toHaveAttribute("aria-label", "Send message");
+    expect(sendButton.textContent).toBe("");
     fireEvent.click(sendButton);
 
     await waitFor(() => expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1));
@@ -129,6 +137,37 @@ describe("ChatWindow streaming lifecycle", () => {
     const imeEnterEvent = createEvent.keyDown(input, { key: "Enter", isComposing: true });
     fireEvent(input, imeEnterEvent);
     expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("auto-resizes composer textarea up to max height and downscales when text is removed", async () => {
+    render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.queryByText("Loading conversation...")).not.toBeInTheDocument();
+    });
+
+    const composer = screen.getByPlaceholderText("Ask a question about this document...");
+
+    setComposerScrollHeight(composer as HTMLTextAreaElement, 72);
+    fireEvent.change(composer, { target: { value: "Short text." } });
+    await waitFor(() => {
+      expect((composer as HTMLTextAreaElement).style.height).toBe("72px");
+    });
+    expect((composer as HTMLTextAreaElement).style.overflowY).toBe("hidden");
+    expect((composer as HTMLTextAreaElement).style.height).not.toBe("144px");
+
+    setComposerScrollHeight(composer as HTMLTextAreaElement, 220);
+    fireEvent.change(composer, { target: { value: "A\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM" } });
+    await waitFor(() => {
+      expect((composer as HTMLTextAreaElement).style.height).toBe("144px");
+    });
+    expect((composer as HTMLTextAreaElement).style.overflowY).toBe("auto");
+
+    setComposerScrollHeight(composer as HTMLTextAreaElement, 90);
+    fireEvent.change(composer, { target: { value: "Back to short." } });
+    await waitFor(() => {
+      expect((composer as HTMLTextAreaElement).style.height).toBe("90px");
+    });
+    expect((composer as HTMLTextAreaElement).style.overflowY).toBe("hidden");
   });
 
   it("appends streaming errors without duplicating assistant bubbles", async () => {
