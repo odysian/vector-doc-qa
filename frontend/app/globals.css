@@ -350,9 +350,9 @@ body {
 /* Lapis radial gradient overlay*/
 .quaero-gradient-overlay {
   background-image: radial-gradient(
-    ellipse 100% 60% at 50% 0%,
-    rgba(84, 123, 243, 0.4) 0%,
-    rgba(9, 9, 11, 0.4) 50%,
+    ellipse 80% 55% at 30% -5%,
+    rgba(57, 91, 234, 0.30) 0%,
+    rgba(84, 123, 243, 0.12) 40%,
     transparent 70%
   );
 }
