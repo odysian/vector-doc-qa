@@ -46,8 +46,8 @@ class Document(Base):
     )
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
-    processed_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
     error_message: Mapped[str | None] = mapped_column(Text, default=None)
 
@@ -84,7 +84,7 @@ class Chunk(Base):
     # Vector embedding (nullable - added after chunk creation)
     embedding: Mapped[Vector | None] = mapped_column(Vector(1536), default=None)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     document: Mapped["Document"] = relationship(back_populates="chunks")
 
