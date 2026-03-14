@@ -114,16 +114,24 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA quaero
 4. If tests pass, CI builds and pushes image to GHCR.
 5. CI renders `backend.env` from `BACKEND_ENV_B64` and uploads it to VM.
 6. CI uploads `ops/deploy_backend.sh` to VM.
-7. CI executes deploy script on VM:
+7. CI executes deploy script on VM (blue-green):
    - pulls image
    - runs migrations
-   - restarts container
-   - health-checks
-   - rolls back on failure
+   - starts new-color container on standby port
+   - health-checks new container
+   - atomically switches NGINX upstream to new color
+   - records new color + image in state files
+   - stops old-color container
+   - rolls back NGINX and removes new container on any failure
 
-Expected running container name:
+Expected running container name: `quaero-backend-blue` or `quaero-backend-green` (alternates each deploy).
 
-- `quaero-backend`
+Active color and port:
+
+```bash
+cat /opt/quaero/deploy/active_color        # "blue" or "green"
+cat /opt/quaero/nginx/upstream.conf        # which port NGINX is routing to
+```
 
 ---
 
@@ -142,8 +150,12 @@ This ensures PR merges are blocked until backend checks pass. Deploy still runs 
 ## Check running container
 
 ```bash
-docker ps --filter "name=quaero-backend"
-docker logs quaero-backend --tail 200
+# Determine active color and port first
+ACTIVE=$(cat /opt/quaero/deploy/active_color)    # "blue" or "green"
+ACTIVE_PORT=$(grep -oP '(?<=server 127.0.0.1:)\d+' /opt/quaero/nginx/upstream.conf)
+
+docker ps --filter "name=quaero-backend-${ACTIVE}"
+docker logs "quaero-backend-${ACTIVE}" --tail 200
 ```
 
 ## Check health
@@ -151,7 +163,8 @@ docker logs quaero-backend --tail 200
 From VM:
 
 ```bash
-curl -f http://127.0.0.1:8000/health
+ACTIVE_PORT=$(grep -oP '(?<=server 127.0.0.1:)\d+' /opt/quaero/nginx/upstream.conf)
+curl -f "http://127.0.0.1:${ACTIVE_PORT}/health"
 ```
 
 Externally:
@@ -318,19 +331,41 @@ Actions:
 Symptoms:
 
 - CI deploy step reports failed health checks
-- rollback attempted
+- deploy script removes new container and leaves old container untouched
+- NGINX upstream unchanged (old color still serving)
 
 Actions:
 
-1. Check logs:
-   - `docker logs quaero-backend --tail 300`
-2. Verify env file values (`DATABASE_URL`, `REDIS_URL`, API keys).
-3. Validate upstream dependencies:
+1. Check logs of the failed new-color container (it is removed after rollback, so check CI output):
+   - CI log output includes `docker logs <new_container> --tail 200` automatically on health failure
+2. If you need to reproduce locally, run the new container manually and inspect:
+   - `docker logs quaero-backend-green --tail 300` (or blue, whichever was new)
+3. Verify env file values (`DATABASE_URL`, `REDIS_URL`, API keys).
+4. Validate upstream dependencies:
    - DB reachable
    - Redis reachable
-4. Confirm rollback image:
+5. Confirm rollback image:
    - `cat /opt/quaero/deploy/last_successful_image`
-5. Re-run deploy after fix.
+6. Re-run deploy after fix.
+
+## VM replaced via `terraform apply -replace` — app stays down after Terraform completes
+
+Symptoms:
+
+- Terraform successfully recreated the VM
+- NGINX is running and serving (startup script ran)
+- No backend container is running — `docker ps` shows nothing
+- All API requests return 502
+
+Cause: The startup script provisions infrastructure (NGINX, Docker, dirs, certs) but does not start the application container. A successful run of the deploy workflow is required after VM creation.
+
+Actions:
+
+1. Confirm VM is SSH-accessible.
+2. Trigger deploy manually:
+   - GitHub Actions → **Deploy Backend** → **Run workflow** (from `main`)
+3. Watch deploy logs to confirm green container starts and health checks pass.
+4. Run post-deploy health gate (section 10.2) to confirm recovery.
 
 ## Frontend auth suddenly fails after cutover
 
@@ -402,9 +437,9 @@ Minimum diagnostics during incidents:
    - `top`
 3. Container lifecycle:
    - `docker ps -a --filter "name=quaero-backend"`
-   - `docker inspect quaero-backend --format '{{.State.Restarting}} {{.State.ExitCode}}'`
+   - `ACTIVE=$(cat /opt/quaero/deploy/active_color); docker inspect "quaero-backend-${ACTIVE}" --format '{{.State.Restarting}} {{.State.ExitCode}}'`
 4. App logs:
-   - `docker logs quaero-backend --tail 500`
+   - `ACTIVE=$(cat /opt/quaero/deploy/active_color); docker logs "quaero-backend-${ACTIVE}" --tail 500`
 5. NGINX logs:
    - `/var/log/nginx/access.log`
    - `/var/log/nginx/error.log`
@@ -462,6 +497,18 @@ Run after each production deploy once traffic is live:
 ## 10. Infrastructure Rollout + Rollback (Current Baseline)
 
 This section defines the active production process after retiring golden-image and reconcile-tuple flows.
+
+### 10.0 Blue-green deploy (routine code deploys)
+
+Routine application deploys (code changes pushed to `main`) are zero-downtime via the blue-green script in `ops/deploy_backend.sh`. No Terraform involvement. The deploy workflow handles everything automatically.
+
+**Post-`terraform apply -replace` requirement:** When the VM is recreated by Terraform, no application container is running after boot. A deploy must be triggered manually:
+
+1. Wait for VM to be SSH-accessible (startup script takes ~2–3 min).
+2. Trigger: GitHub Actions → **Deploy Backend** → **Run workflow** (from `main`).
+3. Run post-deploy health gates from section 10.2.
+
+This is a known operational step, not a bug. The startup script is intentionally infrastructure-only; the deploy workflow owns container lifecycle.
 
 ### 10.1 Manual-first Terraform rollout (default)
 
@@ -546,6 +593,7 @@ Safety gates:
 
 - Initial runbook created during Step 1 (container + CI/CD foundation).
 - Update this file after each completed migration milestone.
+- Task #219: Updated for blue-green deploy. Container names are now `quaero-backend-blue` / `quaero-backend-green`. Added section 10.0 (blue-green operational notes including post-terraform-replace deploy requirement). Updated manual commands and failure scenarios to use active-color pattern.
 
 ---
 
@@ -589,6 +637,7 @@ EOF
 Debug checks:
 
 ```bash
-docker logs quaero-backend --tail 300
+ACTIVE=$(cat /opt/quaero/deploy/active_color)
+docker logs "quaero-backend-${ACTIVE}" --tail 300
 gcloud storage ls gs://quaero-pdf-storage/uploads/
 ```
