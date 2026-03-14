@@ -2,13 +2,22 @@ name: Backend CI
 
 on:
   workflow_call:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-test.yml"
   pull_request:
     paths:
       - "backend/**"
       - ".github/workflows/backend-test.yml"
 
+# Deduplicate: push and pull_request:synchronize both fire on a PR commit.
+# Using head SHA as the group key means both events land in the same bucket
+# and cancel-in-progress drops whichever started first.
 concurrency:
-  group: backend-ci-${{ github.ref }}
+  group: backend-ci-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 permissions:
