@@ -260,7 +260,7 @@ export default function DashboardPage() {
   return (
     <div className="h-screen overflow-hidden bg-zinc-950 flex flex-col">
       {/* Header */}
-      <header className="shrink-0 border-b border-zinc-800 bg-zinc-900/50">
+      <header className="shrink-0 border-b border-zinc-800 bg-zinc-900/50 quaero-header-bg">
         <div className="flex items-center justify-between h-14 px-4">
           <div className="flex items-center gap-3">
             <button

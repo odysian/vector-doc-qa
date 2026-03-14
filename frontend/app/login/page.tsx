@@ -66,16 +66,17 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 p-4 sm:p-6">
+      <div className="absolute inset-0 quaero-bg-grid" aria-hidden />
       <div className="absolute inset-0 quaero-gradient-overlay" aria-hidden />
 
       <main className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-5xl items-center py-6 sm:py-8">
         <section className="grid w-full items-center gap-8 lg:grid-cols-[1fr_0.95fr] lg:gap-10">
-          <h1 className="lg:hidden font-cormorant text-5xl font-bold italic text-lapis-300 text-center">
+          <h1 className="lg:hidden font-cormorant text-5xl font-bold italic text-lapis-400 text-center pb-2">
             Quaero
           </h1>
 
           <div className="hidden lg:block w-full space-y-5">
-            <h1 className="font-cormorant text-5xl font-bold italic text-lapis-300 sm:text-6xl">
+            <h1 className="font-cormorant text-5xl font-bold italic text-lapis-400 sm:text-6xl pb-2">
               Quaero
             </h1>
             <p className="mt-2 text-sm text-zinc-400">
