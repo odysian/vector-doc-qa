@@ -14,14 +14,19 @@ LAST_GOOD_FILE="${LAST_GOOD_FILE:-$DEPLOY_DIR/last_successful_image}"
 ACTIVE_COLOR_FILE="${ACTIVE_COLOR_FILE:-$DEPLOY_DIR/active_color}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
 HEALTH_SLEEP_SECONDS="${HEALTH_SLEEP_SECONDS:-2}"
-# Internal port the container process binds; must match PORT in ENV_FILE (default 8000).
-CONTAINER_PORT="${CONTAINER_PORT:-8000}"
 
 mkdir -p "$DEPLOY_DIR"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "Missing env file: $ENV_FILE"
   exit 1
+fi
+
+# Derive container port from ENV_FILE's PORT setting so the docker port mapping and
+# health check stay in sync with what the app actually binds to. Explicit override wins.
+if [[ -z "${CONTAINER_PORT:-}" ]]; then
+  CONTAINER_PORT="$(grep -E '^PORT=[0-9]+$' "$ENV_FILE" | cut -d= -f2 | head -1 || true)"
+  CONTAINER_PORT="${CONTAINER_PORT:-8000}"
 fi
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -114,14 +119,15 @@ fi
 # Order matters: reload before writing state so a reload failure leaves state unchanged.
 printf 'upstream quaero_backend {\n    server 127.0.0.1:%d;\n}\n' "$new_port" > "$NGINX_UPSTREAM_FILE"
 sudo /usr/sbin/nginx -s reload
+# NGINX is now serving the new container — disarm the cleanup trap here.
+# Removing the new container after this point would cause 502s; state file writes below
+# are best-effort observability records, not service-critical.
+trap - EXIT
 echo "NGINX upstream switched to ${new_color} (port ${new_port})"
 
 echo "$new_color" > "$ACTIVE_COLOR_FILE"
 echo "$IMAGE_TAG" > "$LAST_GOOD_FILE"
 echo "Deployment successful. Recorded last good image in $LAST_GOOD_FILE"
-
-# Disarm the failure trap — we're past the point of no return.
-trap - EXIT
 
 # Stop old blue-green container (safe no-op if it doesn't exist yet).
 docker stop "$old_container" >/dev/null 2>&1 || true
