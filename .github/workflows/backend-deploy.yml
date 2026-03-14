@@ -112,7 +112,9 @@ jobs:
       - name: Run deploy script on VM
         run: |
           IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
-          ssh -i vm_key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "${{ secrets.GCP_VM_USER }}@${{ secrets.GCP_VM_HOST }}" \
+          ssh -i vm_key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+            "${{ secrets.GCP_VM_USER }}@${{ secrets.GCP_VM_HOST }}" \
             "chmod +x '${{ env.VM_DEPLOY_SCRIPT_PATH }}' && \
              GHCR_USERNAME='${{ secrets.GHCR_USERNAME }}' \
              GHCR_TOKEN='${{ secrets.GHCR_TOKEN }}' \

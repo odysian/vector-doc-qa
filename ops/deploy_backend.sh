@@ -14,6 +14,7 @@ LAST_GOOD_FILE="${LAST_GOOD_FILE:-$DEPLOY_DIR/last_successful_image}"
 ACTIVE_COLOR_FILE="${ACTIVE_COLOR_FILE:-$DEPLOY_DIR/active_color}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
 HEALTH_SLEEP_SECONDS="${HEALTH_SLEEP_SECONDS:-2}"
+CONTAINER_PORT="${CONTAINER_PORT:-}"
 
 mkdir -p "$DEPLOY_DIR"
 
@@ -25,8 +26,12 @@ fi
 # Derive container port from ENV_FILE's PORT setting so the docker port mapping and
 # health check stay in sync with what the app actually binds to. Explicit override wins.
 if [[ -z "${CONTAINER_PORT:-}" ]]; then
-  CONTAINER_PORT="$(grep -E '^PORT=[0-9]+$' "$ENV_FILE" | cut -d= -f2 | head -1 || true)"
+  CONTAINER_PORT="$(grep -E '^PORT=[0-9]+$' "$ENV_FILE" | cut -d= -f2 | head -n 1 || true)"
   CONTAINER_PORT="${CONTAINER_PORT:-8000}"
+fi
+if ! [[ "$CONTAINER_PORT" =~ ^[0-9]+$ ]] || ((CONTAINER_PORT < 1 || CONTAINER_PORT > 65535)); then
+  echo "Invalid container port extracted from $ENV_FILE: $CONTAINER_PORT"
+  exit 1
 fi
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -53,7 +58,15 @@ docker run --rm --env-file "$ENV_FILE" "$IMAGE_TAG" alembic upgrade head
 # Determine active color; default to blue when state file is absent (first deploy or legacy single-container).
 active_color="blue"
 if [[ -f "$ACTIVE_COLOR_FILE" ]]; then
-  active_color="$(cat "$ACTIVE_COLOR_FILE")"
+  _color_raw="$(cat "$ACTIVE_COLOR_FILE")"
+  case "$_color_raw" in
+    blue|green)
+      active_color="$_color_raw"
+      ;;
+    *)
+      echo "Invalid active color in $ACTIVE_COLOR_FILE; defaulting to blue"
+      ;;
+  esac
 fi
 
 # Derive new color and host ports. The container process binds to CONTAINER_PORT internally;
@@ -74,6 +87,11 @@ new_health_url="http://127.0.0.1:${new_port}/health"
 
 echo "Active: ${active_color} (port ${old_port}). Deploying ${new_color} on port ${new_port}."
 
+# Stop and remove any stale container with this name before starting fresh.
+# No-op on clean systems; self-heals a prior crash after state was written but before old container cleanup.
+docker stop "$new_container" 2>/dev/null || true
+docker rm   "$new_container" 2>/dev/null || true
+
 echo "Starting container: $new_container ($IMAGE_TAG)"
 if ! docker run -d \
     --name "$new_container" \
@@ -85,11 +103,33 @@ if ! docker run -d \
   exit 1
 fi
 
+switched_upstream="false"
+_tmp_upstream=""
+write_state_file() {
+  local target="$1"
+  local value="$2"
+  local tmp_file="${target}.tmp.$$"
+  printf '%s\n' "$value" > "$tmp_file"
+  mv "$tmp_file" "$target"
+}
+
 # Any failure from here to success recording must stop the new container so it doesn't
 # run orphaned while the old container continues to serve live traffic.
 _cleanup_on_failure() {
   local rc=$?
+  # Clean up any upstream tmp file leaked by a failed write on the main path.
+  rm -f "${_tmp_upstream:-}" 2>/dev/null || true
   if [[ $rc -ne 0 ]]; then
+    if [[ "$switched_upstream" == "true" ]]; then
+      _tmp_upstream="$(mktemp "${NGINX_UPSTREAM_FILE}.tmp.XXXXXX" 2>/dev/null)" || _tmp_upstream=""
+      if [[ -n "$_tmp_upstream" ]]; then
+        printf 'upstream quaero_backend {\n    server 127.0.0.1:%d;\n}\n' "$old_port" > "$_tmp_upstream" \
+          && mv "$_tmp_upstream" "$NGINX_UPSTREAM_FILE" \
+          || rm -f "$_tmp_upstream"
+      fi
+      sudo /usr/sbin/nginx -s reload || true
+    fi
+
     echo "Deploy failed (exit $rc); removing $new_container. Old container $old_container is untouched."
     docker stop "$new_container" >/dev/null 2>&1 || true
     docker rm   "$new_container" >/dev/null 2>&1 || true
@@ -117,17 +157,20 @@ fi
 
 # Switch NGINX upstream to new container then record state.
 # Order matters: reload before writing state so a reload failure leaves state unchanged.
-printf 'upstream quaero_backend {\n    server 127.0.0.1:%d;\n}\n' "$new_port" > "$NGINX_UPSTREAM_FILE"
+# Atomic write (tmp+mv) so a mid-write crash cannot leave upstream.conf empty/corrupt.
+_tmp_upstream="$(mktemp "${NGINX_UPSTREAM_FILE}.tmp.XXXXXX")"
+printf 'upstream quaero_backend {\n    server 127.0.0.1:%d;\n}\n' "$new_port" > "$_tmp_upstream"
+mv "$_tmp_upstream" "$NGINX_UPSTREAM_FILE"
 sudo /usr/sbin/nginx -s reload
-# NGINX is now serving the new container — disarm the cleanup trap here.
-# Removing the new container after this point would cause 502s; state file writes below
-# are best-effort observability records, not service-critical.
-trap - EXIT
+switched_upstream="true"
 echo "NGINX upstream switched to ${new_color} (port ${new_port})"
 
-echo "$new_color" > "$ACTIVE_COLOR_FILE"
-echo "$IMAGE_TAG" > "$LAST_GOOD_FILE"
+write_state_file "$ACTIVE_COLOR_FILE" "$new_color"
+write_state_file "$LAST_GOOD_FILE" "$IMAGE_TAG"
 echo "Deployment successful. Recorded last good image in $LAST_GOOD_FILE"
+
+# State is now durable; remove cleanup trap.
+trap - EXIT
 
 # Stop old blue-green container (safe no-op if it doesn't exist yet).
 docker stop "$old_container" >/dev/null 2>&1 || true
