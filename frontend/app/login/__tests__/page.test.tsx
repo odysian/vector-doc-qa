@@ -112,14 +112,7 @@ describe("LoginPage form behavior", () => {
     const heroTitle = screen.getByRole("heading", { name: "Quaero" });
     const heroColumn = heroTitle.parentElement;
     expect(heroColumn).not.toBeNull();
-    expect(heroColumn!).toHaveClass(
-      "max-w-md",
-      "mx-auto",
-      "text-center",
-      "lg:max-w-none",
-      "lg:mx-0",
-      "lg:text-left"
-    );
+    expect(heroColumn!).toHaveClass("hidden", "lg:block", "w-full", "space-y-5");
 
     const signInButton = screen.getByRole("button", { name: "Sign In" });
     const form = signInButton.closest("form");

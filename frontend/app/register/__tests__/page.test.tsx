@@ -106,14 +106,7 @@ describe("RegisterPage form behavior", () => {
     const heroTitle = screen.getByRole("heading", { name: "Quaero" });
     const heroColumn = heroTitle.parentElement;
     expect(heroColumn).not.toBeNull();
-    expect(heroColumn!).toHaveClass(
-      "max-w-md",
-      "mx-auto",
-      "text-center",
-      "lg:max-w-none",
-      "lg:mx-0",
-      "lg:text-left"
-    );
+    expect(heroColumn!).toHaveClass("hidden", "lg:block", "w-full", "space-y-5");
 
     const registerButton = screen.getByRole("button", { name: "Register" });
     const form = registerButton.closest("form");
