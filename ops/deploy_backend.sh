@@ -7,14 +7,13 @@ if [[ -z "$IMAGE_TAG" ]]; then
   exit 1
 fi
 
-CONTAINER_NAME="${CONTAINER_NAME:-quaero-backend}"
 ENV_FILE="${ENV_FILE:-/opt/quaero/env/backend.env}"
 DEPLOY_DIR="${DEPLOY_DIR:-/opt/quaero/deploy}"
+NGINX_UPSTREAM_FILE="${NGINX_UPSTREAM_FILE:-/opt/quaero/nginx/upstream.conf}"
 LAST_GOOD_FILE="${LAST_GOOD_FILE:-$DEPLOY_DIR/last_successful_image}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8000/health}"
+ACTIVE_COLOR_FILE="${ACTIVE_COLOR_FILE:-$DEPLOY_DIR/active_color}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
 HEALTH_SLEEP_SECONDS="${HEALTH_SLEEP_SECONDS:-2}"
-PORT_MAPPING="${PORT_MAPPING:-127.0.0.1:8000:8000}"
 
 mkdir -p "$DEPLOY_DIR"
 
@@ -44,37 +43,45 @@ docker pull "$IMAGE_TAG"
 echo "Running migrations"
 docker run --rm --env-file "$ENV_FILE" "$IMAGE_TAG" alembic upgrade head
 
-previous_image=""
-if docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
-  previous_image="$(docker inspect --format '{{.Config.Image}}' "$CONTAINER_NAME")"
-  echo "Current container image: $previous_image"
-  docker stop "$CONTAINER_NAME" >/dev/null || true
-  docker rm "$CONTAINER_NAME" >/dev/null || true
+# Determine active color; default to blue when state file is absent (first deploy or legacy single-container).
+active_color="blue"
+if [[ -f "$ACTIVE_COLOR_FILE" ]]; then
+  active_color="$(cat "$ACTIVE_COLOR_FILE")"
 fi
 
-start_container() {
-  local image="$1"
-  docker run -d \
-    --name "$CONTAINER_NAME" \
-    -p "$PORT_MAPPING" \
+# Derive new color and host ports. Containers always listen on internal port 8000;
+# host ports 8000 (blue) and 8001 (green) keep the active slot consistent across restarts.
+if [[ "$active_color" == "blue" ]]; then
+  new_color="green"
+  new_port=8001
+  old_port=8000
+else
+  new_color="blue"
+  new_port=8000
+  old_port=8001
+fi
+
+old_container="quaero-backend-${active_color}"
+new_container="quaero-backend-${new_color}"
+new_health_url="http://127.0.0.1:${new_port}/health"
+
+echo "Active: ${active_color} (port ${old_port}). Deploying ${new_color} on port ${new_port}."
+
+echo "Starting container: $new_container ($IMAGE_TAG)"
+if ! docker run -d \
+    --name "$new_container" \
+    -p "127.0.0.1:${new_port}:8000" \
     --env-file "$ENV_FILE" \
     --restart unless-stopped \
-    "$image" >/dev/null
-}
-
-echo "Starting container: $IMAGE_TAG"
-if ! start_container "$IMAGE_TAG"; then
-  echo "Failed to start new container"
-  if [[ -n "$previous_image" ]]; then
-    echo "Attempting rollback start: $previous_image"
-    start_container "$previous_image"
-  fi
+    "$IMAGE_TAG" >/dev/null; then
+  echo "Failed to start new container $new_container"
   exit 1
 fi
 
+# Health-check the new container before touching the live NGINX upstream.
 healthy=false
 for ((attempt = 1; attempt <= HEALTH_RETRIES; attempt++)); do
-  if curl -fsS "$HEALTH_URL" >/dev/null; then
+  if curl -fsS "$new_health_url" >/dev/null; then
     healthy=true
     break
   fi
@@ -83,19 +90,33 @@ for ((attempt = 1; attempt <= HEALTH_RETRIES; attempt++)); do
 done
 
 if [[ "$healthy" != "true" ]]; then
-  echo "New container failed health checks"
-  docker logs "$CONTAINER_NAME" --tail 200 || true
-  docker stop "$CONTAINER_NAME" >/dev/null || true
-  docker rm "$CONTAINER_NAME" >/dev/null || true
-
-  if [[ -n "$previous_image" ]]; then
-    echo "Rolling back to: $previous_image"
-    start_container "$previous_image"
-  fi
+  echo "New container $new_container failed health checks"
+  docker logs "$new_container" --tail 200 || true
+  docker stop "$new_container" >/dev/null || true
+  docker rm "$new_container" >/dev/null || true
+  echo "Old container $old_container is untouched. Deploy aborted."
   exit 1
 fi
 
+# Switch NGINX upstream to new container then record state.
+# Order matters: reload before writing state so a reload failure leaves state unchanged.
+printf 'upstream quaero_backend {\n    server 127.0.0.1:%d;\n}\n' "$new_port" > "$NGINX_UPSTREAM_FILE"
+sudo /usr/sbin/nginx -s reload
+echo "NGINX upstream switched to ${new_color} (port ${new_port})"
+
+echo "$new_color" > "$ACTIVE_COLOR_FILE"
 echo "$IMAGE_TAG" > "$LAST_GOOD_FILE"
 echo "Deployment successful. Recorded last good image in $LAST_GOOD_FILE"
+
+# Stop old blue-green container (safe no-op if it doesn't exist yet).
+docker stop "$old_container" >/dev/null 2>&1 || true
+docker rm   "$old_container" >/dev/null 2>&1 || true
+
+# On first cutover from legacy single-container, stop it too (idempotent: no-op afterwards).
+if docker container inspect "quaero-backend" >/dev/null 2>&1; then
+  echo "Stopping legacy container: quaero-backend"
+  docker stop "quaero-backend" >/dev/null || true
+  docker rm   "quaero-backend" >/dev/null || true
+fi
 
 docker image prune -f >/dev/null || true
