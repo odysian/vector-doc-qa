@@ -7,8 +7,9 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Document as ReactPdfDocument, Page, pdfjs } from "react-pdf";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
 import { api, ApiError, SessionExpiredError } from "@/lib/api";
+import { formatDate } from "@/lib/utils";
 import { findCitationSpanMatch, normalizeCitationText } from "./pdfCitationMatch";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -18,6 +19,10 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 interface PdfViewerProps {
   documentId: number;
+  filename: string;
+  uploadedAt: string;
+  onBack: () => void;
+  backLabel: string;
   highlightPage?: number | null;
   highlightSnippet?: string | null;
   onSessionExpired?: () => void;
@@ -45,6 +50,10 @@ const MIN_FALLBACK_UNIQUE_TOKEN_MATCHES = 3;
  */
 export function PdfViewer({
   documentId,
+  filename,
+  uploadedAt,
+  onBack,
+  backLabel,
   highlightPage,
   highlightSnippet,
   onSessionExpired,
@@ -438,7 +447,23 @@ export function PdfViewer({
   return (
     <div className="ui-panel flex h-full min-h-0 w-full flex-1 flex-col shadow-xl overflow-hidden">
       <div className="shrink-0 border-b border-zinc-800 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-sm font-medium text-zinc-200">PDF Viewer</h3>
+        <div className="min-w-0 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="ui-btn ui-btn-ghost ui-btn-sm shrink-0"
+            aria-label={backLabel}
+            title={backLabel}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-medium text-lapis-400 italic">
+              {filename}
+            </h3>
+            <p className="truncate text-meta">{formatDate(uploadedAt)}</p>
+          </div>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex items-center rounded-md border border-zinc-700 bg-zinc-950/70">
             <button

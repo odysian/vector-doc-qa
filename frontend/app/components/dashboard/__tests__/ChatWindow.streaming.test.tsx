@@ -516,8 +516,7 @@ describe("ChatWindow streaming lifecycle", () => {
     }
   });
 
-  it("toggles debug mode and shows pipeline metadata/similarity from history", async () => {
-    localStorage.removeItem("quaero_debug_mode");
+  it("shows pipeline metadata/similarity only when debug mode prop is enabled", async () => {
     getMessagesMock.mockResolvedValueOnce({
       messages: [
         {
@@ -552,17 +551,27 @@ describe("ChatWindow streaming lifecycle", () => {
       total: 1,
     });
 
-    render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
+    const { rerender } = render(
+      <ChatWindow
+        document={documentFixture}
+        debugMode={false}
+        onBack={vi.fn()}
+      />
+    );
     await screen.findByText("Debuggable answer.");
 
     fireEvent.click(screen.getByRole("button", { name: "Sources (1)" }));
     expect(screen.queryByText("91.0%")).not.toBeInTheDocument();
     expect(screen.queryByText(/confidence/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Debug off" }));
+    rerender(
+      <ChatWindow
+        document={documentFixture}
+        debugMode
+        onBack={vi.fn()}
+      />
+    );
 
-    expect(screen.getByRole("button", { name: "Debug on" })).toBeInTheDocument();
-    expect(localStorage.getItem("quaero_debug_mode")).toBe("true");
     expect(screen.getByText(/confidence/)).toBeInTheDocument();
     expect(screen.getByText("91.0%")).toBeInTheDocument();
   });
