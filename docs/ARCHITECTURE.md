@@ -397,8 +397,8 @@ back to socket peer IP to prevent header spoofing.
 #### GET /api/documents/{document_id}/messages
 - **Auth:** Required
 - **Rate Limit:** 30/hour per user/IP
-- **Success (200):** `{ "messages": [{ "id": 1, "role": "assistant", "content": "...", "sources": [...], "pipeline_meta": { ... }, "created_at": "..." }] }`
-- **Notes:** Returns chat history for a specific document
+- **Success (200):** `{ "messages": [{ "id": 1, "role": "assistant", "content": "...", "sources": [...], "pipeline_meta": { ... }, "created_at": "..." }], "total": N, "truncated": false }`
+- **Notes:** Returns chat history for a specific document. Response is capped at 500 rows (most recent messages). When the ceiling is reached, `truncated: true` is included in the response.
 
 ### Workspaces
 
@@ -473,8 +473,8 @@ back to socket peer IP to prevent header spoofing.
 #### GET /api/workspaces/{workspace_id}/messages
 - **Auth:** Required
 - **Rate Limit:** 30/hour per user/IP
-- **Success (200):** `{ "messages": [{ "workspace_id": 1, "document_id": null, ... }], "total": N }`
-- **Notes:** Returns workspace-scoped chat history with optional `pipeline_meta` payload.
+- **Success (200):** `{ "messages": [{ "workspace_id": 1, "document_id": null, ... }], "total": N, "truncated": false }`
+- **Notes:** Returns workspace-scoped chat history with optional `pipeline_meta` payload. Response is capped at 500 rows (most recent messages). When the ceiling is reached, `truncated: true` is included in the response.
 - **Errors:**
   - 404: Workspace not found or belongs to another user
 

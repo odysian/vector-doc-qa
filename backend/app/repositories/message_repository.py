@@ -53,13 +53,17 @@ async def list_messages_for_document_user(
     db: AsyncSession,
     document_id: int,
     user_id: int,
+    limit: int | None = None,
 ) -> list[Message]:
+    # DESC + limit selects the most recent N rows; callers reverse for display order.
     stmt = (
         select(Message)
         .where(Message.document_id == document_id)
         .where(Message.user_id == user_id)
-        .order_by(Message.created_at.asc())
+        .order_by(Message.created_at.desc(), Message.id.desc())
     )
+    if limit is not None:
+        stmt = stmt.limit(limit)
     return list((await db.scalars(stmt)).all())
 
 
@@ -86,11 +90,15 @@ async def list_messages_for_workspace_user(
     db: AsyncSession,
     workspace_id: int,
     user_id: int,
+    limit: int | None = None,
 ) -> list[Message]:
+    # DESC + limit selects the most recent N rows; callers reverse for display order.
     stmt = (
         select(Message)
         .where(Message.workspace_id == workspace_id)
         .where(Message.user_id == user_id)
-        .order_by(Message.created_at.asc())
+        .order_by(Message.created_at.desc(), Message.id.desc())
     )
+    if limit is not None:
+        stmt = stmt.limit(limit)
     return list((await db.scalars(stmt)).all())

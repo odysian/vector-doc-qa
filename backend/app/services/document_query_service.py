@@ -14,6 +14,7 @@ from fastapi.sse import ServerSentEvent
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import MESSAGE_HISTORY_DISPLAY_LIMIT
 from app.database import AsyncSessionLocal
 from app.models.base import Document, DocumentStatus
 from app.models.user import User
@@ -705,11 +706,15 @@ async def get_document_messages_command(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    messages = await list_messages_for_document_user(
+    raw_messages = await list_messages_for_document_user(
         db=db,
         document_id=document_id,
         user_id=current_user.id,
+        limit=MESSAGE_HISTORY_DISPLAY_LIMIT,
     )
+    # Repository returns DESC order (newest first); reverse for chronological display.
+    truncated = len(raw_messages) == MESSAGE_HISTORY_DISPLAY_LIMIT
+    messages = list(reversed(raw_messages))
 
     response_messages: list[MessageResponse] = []
     for message in messages:
@@ -729,5 +734,6 @@ async def get_document_messages_command(
 
     return MessageListResponse(
         messages=response_messages,
-        total=len(messages),
+        total=len(response_messages),
+        truncated=truncated,
     )

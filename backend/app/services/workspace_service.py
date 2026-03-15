@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.constants import MAX_DOCUMENTS_PER_WORKSPACE
+from app.constants import MAX_DOCUMENTS_PER_WORKSPACE, MESSAGE_HISTORY_DISPLAY_LIMIT
 from app.models.base import DocumentStatus
 from app.models.user import User
 from app.models.workspace import Workspace
@@ -569,11 +569,15 @@ async def list_workspace_messages_command(
         user_id=current_user.id,
     )
 
-    messages = await list_messages_for_workspace_user(
+    raw_messages = await list_messages_for_workspace_user(
         db=db,
         workspace_id=workspace_id,
         user_id=current_user.id,
+        limit=MESSAGE_HISTORY_DISPLAY_LIMIT,
     )
+    # Repository returns DESC order (newest first); reverse for chronological display.
+    truncated = len(raw_messages) == MESSAGE_HISTORY_DISPLAY_LIMIT
+    messages = list(reversed(raw_messages))
 
     response_messages: list[MessageResponse] = []
     for message in messages:
@@ -592,4 +596,8 @@ async def list_workspace_messages_command(
             )
         )
 
-    return MessageListResponse(messages=response_messages, total=len(response_messages))
+    return MessageListResponse(
+        messages=response_messages,
+        total=len(response_messages),
+        truncated=truncated,
+    )
