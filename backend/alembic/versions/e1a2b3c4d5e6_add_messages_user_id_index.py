@@ -1,7 +1,7 @@
 """add messages user_id index
 
 Revision ID: e1a2b3c4d5e6
-Revises: 9d3c7d8ee4b2
+Revises: 4e6a1ee7ab3c
 Create Date: 2026-03-14 00:00:00.000000
 
 """
