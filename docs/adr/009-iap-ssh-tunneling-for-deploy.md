@@ -40,20 +40,20 @@ Run the deploy job on a self-hosted GCP runner with a fixed internal IP. Rejecte
 1. Enable `iap.googleapis.com` in the project via Terraform.
 2. Create a dedicated `quaero-github-deploy-sa` service account (separation of duties from `terraform-ops-sa`).
 3. Bind `roles/iap.tunnelResourceAccessor` to the deploy SA at project level so it can open IAP TCP tunnels to any VM in the project.
-4. Bind `roles/compute.osAdminLogin` (OS Login with sudo) to the deploy SA so it can authenticate without a static SSH key and run privileged commands (Docker) on the VM.
+4. Bind `roles/compute.instanceAdmin.v1` to the deploy SA scoped to the specific VM instance (not project-wide). This grants `compute.instances.setMetadata`, which `gcloud compute ssh` uses to inject a temporary ephemeral SSH key for the connection. OS Login is intentionally not used — see Consequences.
 5. Bind `roles/iam.workloadIdentityUser` on the deploy SA to the existing GitHub Actions OIDC principal set, reusing the existing WIF pool and provider from `github_actions_oidc.tf`.
-6. Add `enable-oslogin: "true"` to the VM instance metadata so OS Login key management is active on the VM.
-7. In the deploy workflow, replace `ssh`/`scp` steps with `gcloud compute ssh --tunnel-through-iap` and `gcloud compute scp --tunnel-through-iap`. Use OIDC auth (`google-github-actions/auth@v2`) to obtain a short-lived credential for the deploy SA on each run.
-8. Remove `GCP_VM_SSH_KEY` and `GCP_VM_HOST` from the workflow; add `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA_EMAIL`, `GCP_VM_NAME`, `GCP_PROJECT_ID`, `GCP_VM_ZONE`.
+6. In the deploy workflow, replace `ssh`/`scp` steps with `gcloud compute ssh --tunnel-through-iap` and `gcloud compute scp --tunnel-through-iap`, connecting as `odys@INSTANCE`. Use OIDC auth (`google-github-actions/auth@v2`) to obtain a short-lived credential for the deploy SA on each run.
+7. Remove `GCP_VM_SSH_KEY` and `GCP_VM_HOST` from the workflow; add `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA_EMAIL`, `GCP_VM_NAME`, `GCP_PROJECT_ID`, `GCP_VM_ZONE`.
 
 ---
 
 ## Consequences
 
 - **Port 22 no longer needs to be reachable from runner IPs.** The IAP range (`35.235.240.0/20`) already in `ssh_source_ranges` is sufficient. The personal admin CIDR can remain for manual access.
-- **Static SSH key is eliminated.** No `GCP_VM_SSH_KEY` to rotate or leak. OS Login manages ephemeral key injection.
+- **Static SSH key is eliminated.** No `GCP_VM_SSH_KEY` to rotate or leak. `gcloud compute ssh` generates a fresh ephemeral key pair per run, injects the public key into the VM's instance metadata, and removes it when the session ends.
 - **Short-lived credentials only.** The deploy SA token is scoped to each workflow run and expires automatically; no long-lived credential stored in GitHub Secrets.
-- **Separation of duties is maintained.** `quaero-github-deploy-sa` can only tunnel to VMs and log in; it has no Terraform state or IAM admin access.
-- **osAdminLogin over osLogin.** The issue spec listed `roles/compute.osLogin`, but `compute.osAdminLogin` is used to allow the deploy script to run Docker commands via sudo. If the startup script were updated to add the OS Login user to the docker group, `osLogin` could be used instead.
+- **Separation of duties is maintained.** `quaero-github-deploy-sa` can only tunnel to VMs and write instance metadata; it has no Terraform state or project-wide IAM admin access.
+- **OS Login not used — ephemeral key injection instead.** `deploy_backend.sh` calls `docker` directly (no `sudo` prefix). An OS Login SA user (`sa_<uid>`) has no docker group membership; even with `compute.osAdminLogin` granting passwordless sudo, bare `docker` calls fail. Using ephemeral key injection and connecting as `odys` (who is in the docker group) avoids this entirely with no script changes.
+- **`compute.instanceAdmin.v1` scoped to instance, not project.** Broader than the minimum needed (`compute.instances.setMetadata` + `compute.instances.get`) but there is no predefined narrow role for just metadata writes. Scoping to the specific instance limits the blast radius.
 - **Same WIF pool/provider reused.** No new OIDC infrastructure required; only a new IAM binding on the deploy SA.
 - **ops/deploy_backend.sh is unchanged.** The deploy script runs inside the SSH session as before; only the transport layer changed.

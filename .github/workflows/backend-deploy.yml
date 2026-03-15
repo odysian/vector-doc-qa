@@ -98,7 +98,7 @@ jobs:
 
       - name: Ensure deploy/env dirs exist on VM
         run: |
-          gcloud compute ssh "${{ secrets.GCP_VM_NAME }}" \
+          gcloud compute ssh "odys@${{ secrets.GCP_VM_NAME }}" \
             --project="${{ secrets.GCP_PROJECT_ID }}" \
             --zone="${{ secrets.GCP_VM_ZONE }}" \
             --tunnel-through-iap \
@@ -113,9 +113,9 @@ jobs:
             --tunnel-through-iap \
             --strict-host-key-checking=no \
             ./backend.env \
-            "${{ secrets.GCP_VM_NAME }}":/opt/quaero/env/backend.env
+            "odys@${{ secrets.GCP_VM_NAME }}":/opt/quaero/env/backend.env
 
-          gcloud compute ssh "${{ secrets.GCP_VM_NAME }}" \
+          gcloud compute ssh "odys@${{ secrets.GCP_VM_NAME }}" \
             --project="${{ secrets.GCP_PROJECT_ID }}" \
             --zone="${{ secrets.GCP_VM_ZONE }}" \
             --tunnel-through-iap \
@@ -130,12 +130,12 @@ jobs:
             --tunnel-through-iap \
             --strict-host-key-checking=no \
             ./ops/deploy_backend.sh \
-            "${{ secrets.GCP_VM_NAME }}":"${{ env.VM_DEPLOY_SCRIPT_PATH }}"
+            "odys@${{ secrets.GCP_VM_NAME }}":"${{ env.VM_DEPLOY_SCRIPT_PATH }}"
 
       - name: Run deploy script on VM
         run: |
           IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
-          gcloud compute ssh "${{ secrets.GCP_VM_NAME }}" \
+          gcloud compute ssh "odys@${{ secrets.GCP_VM_NAME }}" \
             --project="${{ secrets.GCP_PROJECT_ID }}" \
             --zone="${{ secrets.GCP_VM_ZONE }}" \
             --tunnel-through-iap \
