@@ -192,13 +192,17 @@ if [[ "$${ENABLE_TLS_BOOTSTRAP}" == "true" ]] && [[ -n "$${CERTBOT_EMAIL}" ]]; t
     certbot --nginx --non-interactive --agree-tos \
       --email "$${CERTBOT_EMAIL}" \
       --domains "$${API_DOMAIN}" \
-      --redirect || true
+      --redirect
   else
     # Cert exists but config was just rewritten above (port 80 only).
     # Re-inject the SSL blocks and redirect without re-issuing the cert.
     certbot install --nginx --cert-name "$${API_DOMAIN}" \
-      --non-interactive --redirect || true
+      --non-interactive --redirect
   fi
+
+  # Re-validate TLS rewrite immediately after certbot syncs the HTTPS server blocks.
+  nginx -t
+  systemctl reload nginx
 fi
 
 if [[ ! -f "$${ENV_FILE}" ]]; then

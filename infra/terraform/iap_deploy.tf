@@ -35,6 +35,11 @@ resource "google_compute_instance_iam_member" "github_deploy_instance_admin" {
   zone          = var.zone
   role          = "roles/compute.instanceAdmin.v1"
   member        = "serviceAccount:${google_service_account.github_deploy.email}"
+
+  # Ensure the IAM binding is (re)applied in relation to the VM resource lifecycle.
+  # Routine instance updates (including stop/start) have shown to reorder operations
+  # and can briefly remove/recreate this binding on first apply.
+  depends_on = [google_compute_instance.backend]
 }
 
 # gcloud compute ssh calls projects.get at the project level before key injection.
