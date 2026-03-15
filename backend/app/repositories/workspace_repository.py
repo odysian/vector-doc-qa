@@ -139,21 +139,15 @@ async def remove_workspace_document(
     workspace_id: int,
     document_id: int,
 ) -> bool:
-    existing_row = await db.scalar(
-        select(WorkspaceDocument.id)
-        .where(WorkspaceDocument.workspace_id == workspace_id)
-        .where(WorkspaceDocument.document_id == document_id)
-    )
-    if existing_row is None:
-        return False
-
+    # Single DELETE…RETURNING avoids a SELECT + DELETE round trip (see refresh_token_repository pattern).
     stmt = (
         delete(WorkspaceDocument)
         .where(WorkspaceDocument.workspace_id == workspace_id)
         .where(WorkspaceDocument.document_id == document_id)
+        .returning(WorkspaceDocument.id)
     )
-    await db.execute(stmt)
-    return True
+    deleted_id = await db.scalar(stmt)
+    return deleted_id is not None
 
 
 async def workspace_has_searchable_chunks(
