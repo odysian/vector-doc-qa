@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.constants import MAX_DOCUMENTS_PER_WORKSPACE
+from app.constants import MAX_DOCUMENTS_PER_WORKSPACE, MESSAGE_HISTORY_DISPLAY_LIMIT
 from app.models.base import DocumentStatus
 from app.models.user import User
 from app.models.workspace import Workspace
@@ -573,6 +573,7 @@ async def list_workspace_messages_command(
         db=db,
         workspace_id=workspace_id,
         user_id=current_user.id,
+        limit=MESSAGE_HISTORY_DISPLAY_LIMIT,
     )
 
     response_messages: list[MessageResponse] = []

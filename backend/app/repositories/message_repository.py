@@ -53,6 +53,7 @@ async def list_messages_for_document_user(
     db: AsyncSession,
     document_id: int,
     user_id: int,
+    limit: int | None = None,
 ) -> list[Message]:
     stmt = (
         select(Message)
@@ -60,6 +61,8 @@ async def list_messages_for_document_user(
         .where(Message.user_id == user_id)
         .order_by(Message.created_at.asc())
     )
+    if limit is not None:
+        stmt = stmt.limit(limit)
     return list((await db.scalars(stmt)).all())
 
 
@@ -86,6 +89,7 @@ async def list_messages_for_workspace_user(
     db: AsyncSession,
     workspace_id: int,
     user_id: int,
+    limit: int | None = None,
 ) -> list[Message]:
     stmt = (
         select(Message)
@@ -93,4 +97,6 @@ async def list_messages_for_workspace_user(
         .where(Message.user_id == user_id)
         .order_by(Message.created_at.asc())
     )
+    if limit is not None:
+        stmt = stmt.limit(limit)
     return list((await db.scalars(stmt)).all())

@@ -1116,6 +1116,38 @@ class TestMessages:
         )
         assert response.status_code == 404
 
+    async def test_get_messages_respects_display_limit(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        db_session: AsyncSession,
+        test_user: User,
+    ):
+        # Create 3 messages and patch the display limit to 2 to verify truncation
+        for i in range(3):
+            db_session.add(
+                Message(
+                    document_id=processed_document.id,
+                    user_id=test_user.id,
+                    role="user",
+                    content=f"Message {i}",
+                )
+            )
+        await db_session.flush()
+
+        with patch(
+            "app.services.document_query_service.MESSAGE_HISTORY_DISPLAY_LIMIT", 2
+        ):
+            response = await client.get(
+                f"/api/documents/{processed_document.id}/messages",
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+
 
 class TestQueryPipelineTokenFields:
     async def test_query_response_includes_token_fields_when_available(

@@ -14,6 +14,7 @@ from fastapi.sse import ServerSentEvent
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import MESSAGE_HISTORY_DISPLAY_LIMIT
 from app.database import AsyncSessionLocal
 from app.models.base import Document, DocumentStatus
 from app.models.user import User
@@ -709,6 +710,7 @@ async def get_document_messages_command(
         db=db,
         document_id=document_id,
         user_id=current_user.id,
+        limit=MESSAGE_HISTORY_DISPLAY_LIMIT,
     )
 
     response_messages: list[MessageResponse] = []
