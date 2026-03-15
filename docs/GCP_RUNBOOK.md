@@ -41,12 +41,24 @@ Terraform startup bootstrap now handles Docker + NGINX + Certbot + env file stub
 
 ## GitHub repository secrets
 
-- `GCP_VM_HOST`
-- `GCP_VM_USER`
-- `GCP_VM_SSH_KEY`
+Deploy workflow (IAP tunnel — see ADR-009):
+- `GCP_WIF_PROVIDER` — full WIF provider resource name (from `terraform output github_actions_workload_identity_provider`)
+- `GCP_DEPLOY_SA_EMAIL` — deploy service account email (from `terraform output github_deploy_service_account_email`)
+- `GCP_VM_NAME` — VM instance name (e.g. `quaero-backend`)
+- `GCP_PROJECT_ID` — GCP project ID (e.g. `portfolio-488721`)
+- `GCP_VM_ZONE` — VM zone (e.g. `us-east1-b`)
+
+Container registry:
 - `GHCR_USERNAME`
 - `GHCR_TOKEN`
+
+Application config:
 - `BACKEND_ENV_B64` (base64-encoded contents of production `backend.env`)
+
+Removed (no longer used):
+- ~~`GCP_VM_HOST`~~ — replaced by IAP tunnel; VM host not needed
+- ~~`GCP_VM_USER`~~ — replaced by OS Login; username injected by IAM
+- ~~`GCP_VM_SSH_KEY`~~ — replaced by OS Login; no static key required
 
 ## Backend env source of truth
 

@@ -27,3 +27,8 @@ output "terraform_ops_service_account_email_effective" {
   description = "Service account email bound to GitHub OIDC for Terraform ops."
   value       = local.terraform_ops_service_account_email_effective
 }
+
+output "github_deploy_service_account_email" {
+  description = "Service account email for the GitHub Actions deploy workflow to impersonate via WIF."
+  value       = google_service_account.github_deploy.email
+}
