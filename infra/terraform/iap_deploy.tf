@@ -46,6 +46,16 @@ resource "google_project_iam_member" "github_deploy_compute_viewer" {
   member  = "serviceAccount:${google_service_account.github_deploy.email}"
 }
 
+# GCP requires iam.serviceAccountUser on the VM's attached SA when modifying instance
+# metadata on a VM that has a service account. Without this, setMetadata is denied
+# (privilege-escalation guard: metadata writer could otherwise inject a startup script
+# that acts as the VM SA).
+resource "google_service_account_iam_member" "github_deploy_backend_vm_sa_user" {
+  service_account_id = google_service_account.backend_vm.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.github_deploy.email}"
+}
+
 # Allow the GitHub Actions OIDC principal set to impersonate the deploy SA.
 # Uses the same WIF pool/provider and local already defined in github_actions_oidc.tf.
 resource "google_service_account_iam_member" "github_deploy_wif_user" {
