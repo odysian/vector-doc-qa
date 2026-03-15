@@ -127,9 +127,11 @@ resource "google_compute_instance" "backend" {
   }
 
   # Restrict SSH keys to the Terraform-managed list instead of project-wide metadata keys.
+  # enable-oslogin allows OS Login identity management (used by IAP tunnel deploy SA).
   metadata = {
     "ssh-keys"               = local.ssh_keys_metadata
     "block-project-ssh-keys" = "true"
+    "enable-oslogin"         = "true"
   }
 
   metadata_startup_script = templatefile("${path.module}/scripts/startup.sh.tftpl", {
