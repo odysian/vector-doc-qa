@@ -28,15 +28,22 @@ resource "google_project_iam_member" "github_deploy_iap_tunnel" {
   member  = "serviceAccount:${google_service_account.github_deploy.email}"
 }
 
-# Allow deploy SA to inject a temporary SSH key into the VM's instance metadata and read
-# instance details. Scoped to the specific VM instance (not project-wide) to minimize blast
-# radius. compute.instanceAdmin.v1 is the narrowest predefined role that includes
-# compute.instances.setMetadata, which gcloud needs for ephemeral key injection.
+# Allow deploy SA to inject a temporary SSH key into the VM's instance metadata.
+# Scoped to the specific VM instance to minimize blast radius.
 resource "google_compute_instance_iam_member" "github_deploy_instance_admin" {
   instance_name = var.vm_name
   zone          = var.zone
   role          = "roles/compute.instanceAdmin.v1"
   member        = "serviceAccount:${google_service_account.github_deploy.email}"
+}
+
+# gcloud compute ssh calls projects.get at the project level before key injection.
+# compute.instanceAdmin.v1 scoped to the instance does not include this project-level
+# read permission, so we add the read-only compute.viewer role at project scope.
+resource "google_project_iam_member" "github_deploy_compute_viewer" {
+  project = var.project_id
+  role    = "roles/compute.viewer"
+  member  = "serviceAccount:${google_service_account.github_deploy.email}"
 }
 
 # Allow the GitHub Actions OIDC principal set to impersonate the deploy SA.
