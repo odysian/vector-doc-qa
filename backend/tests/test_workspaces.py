@@ -618,7 +618,7 @@ class TestWorkspaceMessages:
         test_user: User,
         db_session: AsyncSession,
     ):
-        # Create 3 messages and patch the display limit to 2 to verify truncation
+        # Create 3 messages; limit=2 should return the two newest in chronological order
         workspace = Workspace(name="Limit test", user_id=test_user.id)
         db_session.add(workspace)
         await db_session.flush()
@@ -643,3 +643,39 @@ class TestWorkspaceMessages:
         assert response.status_code == 200
         payload = response.json()
         assert payload["total"] == 2
+        assert payload["truncated"] is True
+        # Most recent 2 messages returned in chronological order (oldest-of-the-two first)
+        assert payload["messages"][0]["content"] == "Message 1"
+        assert payload["messages"][1]["content"] == "Message 2"
+
+    async def test_get_workspace_messages_not_truncated_when_under_limit(
+        self,
+        client,
+        auth_headers,
+        test_user: User,
+        db_session: AsyncSession,
+    ):
+        workspace = Workspace(name="Under limit", user_id=test_user.id)
+        db_session.add(workspace)
+        await db_session.flush()
+
+        db_session.add(
+            Message(
+                workspace_id=workspace.id,
+                user_id=test_user.id,
+                role="user",
+                content="Only message",
+            )
+        )
+        await db_session.flush()
+
+        with patch("app.services.workspace_service.MESSAGE_HISTORY_DISPLAY_LIMIT", 2):
+            response = await client.get(
+                f"/api/workspaces/{workspace.id}/messages",
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["total"] == 1
+        assert payload["truncated"] is False

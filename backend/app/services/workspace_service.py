@@ -569,12 +569,15 @@ async def list_workspace_messages_command(
         user_id=current_user.id,
     )
 
-    messages = await list_messages_for_workspace_user(
+    raw_messages = await list_messages_for_workspace_user(
         db=db,
         workspace_id=workspace_id,
         user_id=current_user.id,
         limit=MESSAGE_HISTORY_DISPLAY_LIMIT,
     )
+    # Repository returns DESC order (newest first); reverse for chronological display.
+    truncated = len(raw_messages) == MESSAGE_HISTORY_DISPLAY_LIMIT
+    messages = list(reversed(raw_messages))
 
     response_messages: list[MessageResponse] = []
     for message in messages:
@@ -593,4 +596,8 @@ async def list_workspace_messages_command(
             )
         )
 
-    return MessageListResponse(messages=response_messages, total=len(response_messages))
+    return MessageListResponse(
+        messages=response_messages,
+        total=len(response_messages),
+        truncated=truncated,
+    )

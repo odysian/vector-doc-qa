@@ -53,3 +53,5 @@ class MessageListResponse(BaseModel):
 
     messages: List[MessageResponse]
     total: int
+    # True when the response was capped by MESSAGE_HISTORY_DISPLAY_LIMIT
+    truncated: bool = False

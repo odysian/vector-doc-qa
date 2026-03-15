@@ -1124,7 +1124,7 @@ class TestMessages:
         db_session: AsyncSession,
         test_user: User,
     ):
-        # Create 3 messages and patch the display limit to 2 to verify truncation
+        # Create 3 messages; limit=2 should return the two newest in chronological order
         for i in range(3):
             db_session.add(
                 Message(
@@ -1147,6 +1147,41 @@ class TestMessages:
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 2
+        assert data["truncated"] is True
+        # Most recent 2 messages returned in chronological order (oldest-of-the-two first)
+        assert data["messages"][0]["content"] == "Message 1"
+        assert data["messages"][1]["content"] == "Message 2"
+
+    async def test_get_messages_not_truncated_when_under_limit(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        db_session: AsyncSession,
+        test_user: User,
+    ):
+        db_session.add(
+            Message(
+                document_id=processed_document.id,
+                user_id=test_user.id,
+                role="user",
+                content="Only message",
+            )
+        )
+        await db_session.flush()
+
+        with patch(
+            "app.services.document_query_service.MESSAGE_HISTORY_DISPLAY_LIMIT", 2
+        ):
+            response = await client.get(
+                f"/api/documents/{processed_document.id}/messages",
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["truncated"] is False
 
 
 class TestQueryPipelineTokenFields:
