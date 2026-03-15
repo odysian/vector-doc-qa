@@ -186,11 +186,19 @@ nginx -t
 systemctl enable --now nginx
 systemctl restart nginx
 
-if [[ "$${ENABLE_TLS_BOOTSTRAP}" == "true" ]] && [[ -n "$${CERTBOT_EMAIL}" ]] && [[ ! -f "/etc/letsencrypt/live/$${API_DOMAIN}/fullchain.pem" ]]; then
-  certbot --nginx --non-interactive --agree-tos \
-    --email "$${CERTBOT_EMAIL}" \
-    --domains "$${API_DOMAIN}" \
-    --redirect || true
+if [[ "$${ENABLE_TLS_BOOTSTRAP}" == "true" ]] && [[ -n "$${CERTBOT_EMAIL}" ]]; then
+  if [[ ! -f "/etc/letsencrypt/live/$${API_DOMAIN}/fullchain.pem" ]]; then
+    # First run: obtain certificate and configure NGINX for HTTPS.
+    certbot --nginx --non-interactive --agree-tos \
+      --email "$${CERTBOT_EMAIL}" \
+      --domains "$${API_DOMAIN}" \
+      --redirect || true
+  else
+    # Cert exists but config was just rewritten above (port 80 only).
+    # Re-inject the SSL blocks and redirect without re-issuing the cert.
+    certbot install --nginx --cert-name "$${API_DOMAIN}" \
+      --non-interactive --redirect || true
+  fi
 fi
 
 if [[ ! -f "$${ENV_FILE}" ]]; then
