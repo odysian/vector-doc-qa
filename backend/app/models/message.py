@@ -59,6 +59,8 @@ class Message(Base):
             created_at.desc(),
             id.desc(),
         ),
+        # Standalone index on user_id to accelerate CASCADE delete scans.
+        Index("ix_quaero_messages_user_id", user_id),
     )
 
     def __repr__(self) -> str:
