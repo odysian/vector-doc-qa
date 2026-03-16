@@ -48,6 +48,14 @@ Deploy workflow (IAP tunnel — see ADR-009):
 - `GCP_PROJECT_ID` — GCP project ID (e.g. `portfolio-488721`)
 - `GCP_VM_ZONE` — VM zone (e.g. `us-east1-b`)
 
+### IAP deploy hardening notes
+
+- The deploy SA must have all three IAM conditions at deploy time:
+  - `google_compute_instance_iam_member.github_deploy_instance_admin` (`roles/compute.instanceAdmin.v1`) on the backend VM instance.
+  - `google_project_iam_member.github_deploy_compute_viewer` (`roles/compute.viewer`) at project scope.
+  - `google_service_account_iam_member.github_deploy_backend_vm_sa_user` (`roles/iam.serviceAccountUser`) on `backend_vm`.
+- If deploy fails with `setMetadata` or key-injection errors, rerun Terraform apply and verify `terraform state` shows the above resources plus the new `depends_on` ordering on the instance IAM binding (commit `8e036c8`).
+
 Container registry:
 - `GHCR_USERNAME`
 - `GHCR_TOKEN`
@@ -57,8 +65,8 @@ Application config:
 
 Removed (no longer used):
 - ~~`GCP_VM_HOST`~~ — replaced by IAP tunnel; VM host not needed
-- ~~`GCP_VM_USER`~~ — replaced by OS Login; username injected by IAM
-- ~~`GCP_VM_SSH_KEY`~~ — replaced by OS Login; no static key required
+- ~~`GCP_VM_USER`~~ — removed; workflow connects as `odys@INSTANCE`
+- ~~`GCP_VM_SSH_KEY`~~ — replaced by ephemeral key generation via `gcloud compute ssh` / `scp`
 
 ## Backend env source of truth
 

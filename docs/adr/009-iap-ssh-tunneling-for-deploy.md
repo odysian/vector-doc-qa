@@ -27,8 +27,8 @@ The firewall rule `quaero-allow-ssh` restricts SSH to declared `ssh_source_range
 ### Option A: Whitelist all GitHub Actions Azure CIDR ranges
 Add all GitHub-published Azure CIDRs to `ssh_source_ranges`. Rejected: the ranges span `/18`–`/20` blocks, change with each release, and expanding them would effectively open SSH to a large fraction of Azure's address space.
 
-### Option B: IAP TCP tunneling + OS Login (chosen)
-Route SSH through Google Identity-Aware Proxy. The runner authenticates to GCP via Workload Identity Federation, impersonates a dedicated deploy service account, and `gcloud compute ssh --tunnel-through-iap` opens the tunnel over HTTPS. No direct port-22 exposure needed from the runner's IP. Accepted.
+### Option B: IAP TCP tunneling with ephemeral key injection (chosen)
+Route SSH through Google Identity-Aware Proxy. The runner authenticates to GCP via Workload Identity Federation, impersonates a dedicated deploy service account, and `gcloud compute ssh --tunnel-through-iap` opens the tunnel over HTTPS with a per-run ephemeral SSH key injected for user `odys`. No direct port-22 exposure needed from the runner's IP. Accepted.
 
 ### Option C: Self-hosted runner on GCP
 Run the deploy job on a self-hosted GCP runner with a fixed internal IP. Rejected: introduces a persistent runner VM to manage and monitor, increasing operational overhead. The project has no other need for a self-hosted runner.
@@ -57,3 +57,10 @@ Run the deploy job on a self-hosted GCP runner with a fixed internal IP. Rejecte
 - **`compute.instanceAdmin.v1` scoped to instance, not project.** Broader than the minimum needed (`compute.instances.setMetadata` + `compute.instances.get`) but there is no predefined narrow role for just metadata writes. Scoping to the specific instance limits the blast radius.
 - **Same WIF pool/provider reused.** No new OIDC infrastructure required; only a new IAM binding on the deploy SA.
 - **ops/deploy_backend.sh is unchanged.** The deploy script runs inside the SSH session as before; only the transport layer changed.
+
+## Follow-up stability fixes
+
+- Added `google_project_iam_member.github_deploy_compute_viewer` after finding that `gcloud compute ssh` performs a project-level `projects.get` call even for instance-scoped key injection.
+- Added `google_service_account_iam_member.github_deploy_backend_vm_sa_user` to satisfy `compute.instances.setMetadata` checks when the VM service account is attached.
+- Added ordering guard (`depends_on`) to keep the instance-level IAM binding stable across VM updates (`allow_stopping_for_update` cases).
+- Startup bootstrap now re-injects certbot HTTPS config after each boot and stops masking certbot errors, so tunnel/deploy failures are easier to diagnose.
