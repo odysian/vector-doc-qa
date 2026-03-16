@@ -133,17 +133,20 @@ resource "google_compute_instance" "backend" {
   }
 
   metadata_startup_script = templatefile("${path.module}/scripts/startup.sh.tftpl", {
-    ssh_user             = var.ssh_user
-    api_domain           = var.api_domain
-    frontend_url         = var.frontend_url
-    backend_port         = var.backend_port
-    certbot_email        = var.certbot_email
-    enable_tls_bootstrap = var.enable_tls_bootstrap
-    bucket_name          = var.bucket_name
-    project_id           = var.project_id
-    enable_ops_agent     = var.enable_ops_agent
-    ops_agent_version    = trimspace(var.ops_agent_version)
-    ops_agent_config_b64 = base64encode(local.ops_agent_config)
+    ssh_user              = var.ssh_user
+    api_domain            = var.api_domain
+    frontend_url          = var.frontend_url
+    backend_port          = var.backend_port
+    certbot_email         = var.certbot_email
+    enable_tls_bootstrap  = var.enable_tls_bootstrap
+    bucket_name           = var.bucket_name
+    project_id            = var.project_id
+    enable_ops_agent      = var.enable_ops_agent
+    ops_agent_version     = trimspace(var.ops_agent_version)
+    ops_agent_config_b64  = base64encode(local.ops_agent_config)
+    github_runner_pat     = var.github_runner_pat
+    github_runner_version = var.github_runner_version
+    github_repository     = var.github_repository
   })
 
   service_account {

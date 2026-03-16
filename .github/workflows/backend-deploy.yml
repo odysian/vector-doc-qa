@@ -13,7 +13,6 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/quaero-backend
-  VM_DEPLOY_SCRIPT_PATH: /opt/quaero/deploy/deploy_backend.sh
 
 jobs:
   enforce-main-branch:
@@ -64,24 +63,14 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: build-and-push
     permissions:
       contents: read
-      id-token: write  # required for OIDC token exchange with GCP WIF
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud (OIDC)
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOY_SA_EMAIL }}
-
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
 
       - name: Render backend env file from GitHub secret
         run: |
@@ -96,57 +85,15 @@ jobs:
           echo "APP_VERSION=sha-${GITHUB_SHA}" >> backend.env
           chmod 600 backend.env
 
-      - name: Ensure deploy/env dirs exist on VM
+      - name: Deploy
         run: |
-          gcloud compute ssh "odys@${{ secrets.GCP_VM_NAME }}" \
-            --project="${{ secrets.GCP_PROJECT_ID }}" \
-            --zone="${{ secrets.GCP_VM_ZONE }}" \
-            --tunnel-through-iap \
-            --strict-host-key-checking=no \
-            -- "mkdir -p /opt/quaero/deploy /opt/quaero/env"
-
-      - name: Upload backend env file to VM
-        run: |
-          gcloud compute scp \
-            --project="${{ secrets.GCP_PROJECT_ID }}" \
-            --zone="${{ secrets.GCP_VM_ZONE }}" \
-            --tunnel-through-iap \
-            --strict-host-key-checking=no \
-            ./backend.env \
-            "odys@${{ secrets.GCP_VM_NAME }}":/opt/quaero/env/backend.env
-
-          gcloud compute ssh "odys@${{ secrets.GCP_VM_NAME }}" \
-            --project="${{ secrets.GCP_PROJECT_ID }}" \
-            --zone="${{ secrets.GCP_VM_ZONE }}" \
-            --tunnel-through-iap \
-            --strict-host-key-checking=no \
-            -- "chmod 600 /opt/quaero/env/backend.env"
-
-      - name: Upload deploy script to VM
-        run: |
-          gcloud compute scp \
-            --project="${{ secrets.GCP_PROJECT_ID }}" \
-            --zone="${{ secrets.GCP_VM_ZONE }}" \
-            --tunnel-through-iap \
-            --strict-host-key-checking=no \
-            ./ops/deploy_backend.sh \
-            "odys@${{ secrets.GCP_VM_NAME }}":"${{ env.VM_DEPLOY_SCRIPT_PATH }}"
-
-      - name: Run deploy script on VM
-        run: |
+          mkdir -p /opt/quaero/deploy /opt/quaero/env
+          cp backend.env /opt/quaero/env/backend.env
+          chmod 600 /opt/quaero/env/backend.env
           IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
-          gcloud compute ssh "odys@${{ secrets.GCP_VM_NAME }}" \
-            --project="${{ secrets.GCP_PROJECT_ID }}" \
-            --zone="${{ secrets.GCP_VM_ZONE }}" \
-            --tunnel-through-iap \
-            --strict-host-key-checking=no \
-            --ssh-flag="-o ServerAliveInterval=30" \
-            --ssh-flag="-o ServerAliveCountMax=20" \
-            -- \
-            "chmod +x '${{ env.VM_DEPLOY_SCRIPT_PATH }}' && \
-             GHCR_USERNAME='${{ secrets.GHCR_USERNAME }}' \
-             GHCR_TOKEN='${{ secrets.GHCR_TOKEN }}' \
-             '${{ env.VM_DEPLOY_SCRIPT_PATH }}' '$IMAGE_TAG'"
+          GHCR_USERNAME="${{ secrets.GHCR_USERNAME }}" \
+          GHCR_TOKEN="${{ secrets.GHCR_TOKEN }}" \
+          bash ops/deploy_backend.sh "$IMAGE_TAG"
 
       - name: Cleanup local env file
         if: always()

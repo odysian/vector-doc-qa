@@ -228,3 +228,41 @@ if id -u "$${SSH_USER}" >/dev/null 2>&1; then
   usermod -aG docker "$${SSH_USER}" || true
   chown -R "$${SSH_USER}:$${SSH_USER}" /opt/quaero
 fi
+
+# --- GitHub Actions self-hosted runner ---
+# Runs after usermod so the runner process has docker group membership on first start.
+# Idempotent: skipped on reboots once .runner config file is present.
+GH_RUNNER_PAT="${github_runner_pat}"
+if [[ -n "$${GH_RUNNER_PAT}" ]] && [[ ! -f "/opt/actions-runner/.runner" ]]; then
+  RUNNER_DIR="/opt/actions-runner"
+  RUNNER_ARCHIVE="actions-runner-linux-x64-${github_runner_version}.tar.gz"
+
+  install -d -m 755 "$${RUNNER_DIR}"
+  curl -fsSL \
+    "https://github.com/actions/runner/releases/download/v${github_runner_version}/$${RUNNER_ARCHIVE}" \
+    -o "/tmp/$${RUNNER_ARCHIVE}"
+  tar xzf "/tmp/$${RUNNER_ARCHIVE}" -C "$${RUNNER_DIR}"
+  rm -f "/tmp/$${RUNNER_ARCHIVE}"
+  chown -R "$${SSH_USER}:$${SSH_USER}" "$${RUNNER_DIR}"
+
+  # Exchange the PAT for a short-lived registration token via the GitHub API.
+  REG_TOKEN="$(curl -fsSL \
+    -X POST \
+    -H "Authorization: Bearer $${GH_RUNNER_PAT}" \
+    -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/${github_repository}/actions/runners/registration-token" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")"
+
+  # --replace handles stale registrations left over from a prior VM.
+  sudo -u "$${SSH_USER}" "$${RUNNER_DIR}/config.sh" \
+    --url "https://github.com/${github_repository}" \
+    --token "$${REG_TOKEN}" \
+    --name "quaero-vm" \
+    --labels "self-hosted" \
+    --unattended \
+    --replace
+
+  # Install and start the runner as a systemd service owned by the deploy user.
+  "$${RUNNER_DIR}/svc.sh" install "$${SSH_USER}"
+  "$${RUNNER_DIR}/svc.sh" start
+fi
