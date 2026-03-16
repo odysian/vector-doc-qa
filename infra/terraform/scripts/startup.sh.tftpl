@@ -262,7 +262,27 @@ if [[ -n "$${GH_RUNNER_PAT}" ]] && [[ ! -f "/opt/actions-runner/.runner" ]]; the
     --unattended \
     --replace
 
-  # Install and start the runner as a systemd service owned by the deploy user.
-  "$${RUNNER_DIR}/svc.sh" install "$${SSH_USER}"
-  "$${RUNNER_DIR}/svc.sh" start
+  # Write the systemd unit directly rather than using svc.sh, which behaves
+  # unpredictably when invoked from a root startup script with no TTY.
+  cat > /etc/systemd/system/actions-runner.service <<UNIT
+[Unit]
+Description=GitHub Actions Runner (quaero-vm)
+After=network.target
+
+[Service]
+Type=simple
+User=$${SSH_USER}
+WorkingDirectory=$${RUNNER_DIR}
+ExecStart=$${RUNNER_DIR}/run.sh
+Restart=always
+RestartSec=5
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+  systemctl daemon-reload
+  systemctl enable actions-runner.service
+  systemctl start actions-runner.service
 fi
