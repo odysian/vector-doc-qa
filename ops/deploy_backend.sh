@@ -12,7 +12,7 @@ DEPLOY_DIR="${DEPLOY_DIR:-/opt/quaero/deploy}"
 NGINX_UPSTREAM_FILE="${NGINX_UPSTREAM_FILE:-/opt/quaero/nginx/upstream.conf}"
 LAST_GOOD_FILE="${LAST_GOOD_FILE:-$DEPLOY_DIR/last_successful_image}"
 ACTIVE_COLOR_FILE="${ACTIVE_COLOR_FILE:-$DEPLOY_DIR/active_color}"
-HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
+HEALTH_RETRIES="${HEALTH_RETRIES:-20}"
 HEALTH_SLEEP_SECONDS="${HEALTH_SLEEP_SECONDS:-2}"
 CONTAINER_PORT="${CONTAINER_PORT:-}"
 
@@ -138,13 +138,16 @@ _cleanup_on_failure() {
 trap _cleanup_on_failure EXIT
 
 # Health-check the new container before touching the live NGINX upstream.
+# --connect-timeout 2: fail fast if the port isn't listening yet.
+# --max-time 5: bound each probe so a slow /health response never stalls the loop.
 healthy=false
 for ((attempt = 1; attempt <= HEALTH_RETRIES; attempt++)); do
-  if curl -fsS "$new_health_url" >/dev/null; then
+  _probe_start=$SECONDS
+  if curl --connect-timeout 2 --max-time 5 --retry 0 -fsS "$new_health_url" >/dev/null 2>&1; then
     healthy=true
     break
   fi
-  echo "Health check attempt ${attempt}/${HEALTH_RETRIES} failed"
+  echo "Health check attempt ${attempt}/${HEALTH_RETRIES} failed ($((SECONDS - _probe_start))s)"
   sleep "$HEALTH_SLEEP_SECONDS"
 done
 

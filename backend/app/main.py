@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from time import perf_counter
 from uuid import uuid4
@@ -194,24 +195,30 @@ async def health_check():
     """Detailed health check."""
     db_status = "disconnected"
     redis_status = "disconnected"
-    redis_pool = None
 
-    try:
+    # Each check is bounded so a hung DB or Redis connection never stalls the probe.
+    async def _check_db() -> None:
         async with async_engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
+
+    async def _check_redis() -> None:
+        pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+        try:
+            await pool.ping()
+        finally:
+            await pool.close()
+
+    try:
+        await asyncio.wait_for(_check_db(), timeout=2.0)
         db_status = "connected"
     except Exception:
         logger.warning("Health check: database unreachable")
 
     try:
-        redis_pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
-        await redis_pool.ping()
+        await asyncio.wait_for(_check_redis(), timeout=2.0)
         redis_status = "connected"
     except Exception:
         logger.warning("Health check: Redis unreachable")
-    finally:
-        if redis_pool is not None:
-            await redis_pool.close()
 
     if db_status == "connected" and redis_status == "connected":
         return {"status": "healthy", "database": db_status, "redis": redis_status}
