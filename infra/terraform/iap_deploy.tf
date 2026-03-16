@@ -51,6 +51,23 @@ resource "google_project_iam_member" "github_deploy_compute_viewer" {
   member  = "serviceAccount:${google_service_account.github_deploy.email}"
 }
 
+# gcloud compute ssh/scp with --tunnel-through-iap injects a temporary SSH key into
+# instance metadata. That write operation needs compute.instances.setMetadata permission.
+resource "google_project_iam_custom_role" "github_deploy_iap_metadata_writer" {
+  role_id     = "github_deploy_iap_metadata_writer"
+  title       = "GitHub Deploy IAP Metadata Writer"
+  description = "Least-privilege permission for metadata key injection used by gcloud IAP SSH."
+  project     = var.project_id
+  permissions = ["compute.instances.setMetadata"]
+  stage       = "GA"
+}
+
+resource "google_project_iam_member" "github_deploy_iap_metadata_writer" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.github_deploy_iap_metadata_writer.id
+  member  = "serviceAccount:${google_service_account.github_deploy.email}"
+}
+
 # GCP requires iam.serviceAccountUser on the VM's attached SA when modifying instance
 # metadata on a VM that has a service account. Without this, setMetadata is denied
 # (privilege-escalation guard: metadata writer could otherwise inject a startup script
