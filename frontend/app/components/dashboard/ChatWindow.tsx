@@ -10,6 +10,7 @@ import { ArrowLeft, Send, Square } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { Document } from "@/lib/api";
 import { useChatState } from "@/lib/hooks/useChatState";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 interface CitationTarget {
   page: number;
@@ -226,109 +227,110 @@ export function ChatWindow({
       )}
 
       {/* Messages Area */}
-      <div
-        ref={scrollRef}
-        className="messages-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3 space-y-4"
-      >
-        {loadingHistory && (
-          <div className="h-full flex items-center justify-center">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" />
-              <div
-                className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
-                style={{ animationDelay: "150ms" }}
-              />
-              <div
-                className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
-                style={{ animationDelay: "300ms" }}
-              />
-              <span className="ml-2 text-empty">Loading conversation...</span>
-            </div>
-          </div>
-        )}
-
-        {!loadingHistory && messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center space-y-4 px-4">
-            <div className="p-4 bg-zinc-800/50 rounded-full">
-              <svg
-                className="w-8 h-8 text-lapis-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+      <ErrorBoundary variant="inline">
+        <div
+          ref={scrollRef}
+          className="messages-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3 space-y-4"
+        >
+          {loadingHistory && (
+            <div className="h-full flex items-center justify-center">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" />
+                <div
+                  className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "150ms" }}
                 />
-              </svg>
+                <div
+                  className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "300ms" }}
+                />
+                <span className="ml-2 text-empty">Loading conversation...</span>
+              </div>
             </div>
-            <h3 className="text-body-sm font-medium text-zinc-200 text-center">
-              {isWorkspaceMode
-                ? "Ask a question across workspace documents"
-                : "Ask a question about this document"}
-            </h3>
-            <p className="text-meta text-center">
-              {isWorkspaceMode
-                ? "Your cross-document questions and answers will appear here."
-                : "Your questions and answers will appear here."}
-            </p>
-            <div className="flex flex-wrap gap-2 justify-center mt-2">
-              {SUGGESTED_PROMPTS.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  onClick={() => {
-                    void submitQuery(prompt);
-                  }}
-                  disabled={isStreaming}
-                  className="ui-btn ui-btn-neutral ui-btn-md"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+          )}
 
-        {!loadingHistory &&
-          messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`flex flex-col ${
-              msg.role === "user" ? "items-end" : "items-start"
-            }`}
-          >
-            {/* Message Bubble */}
+          {!loadingHistory && messages.length === 0 && (
+            <div className="h-full flex flex-col items-center justify-center space-y-4 px-4">
+              <div className="p-4 bg-zinc-800/50 rounded-full">
+                <svg
+                  className="w-8 h-8 text-lapis-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-body-sm font-medium text-zinc-200 text-center">
+                {isWorkspaceMode
+                  ? "Ask a question across workspace documents"
+                  : "Ask a question about this document"}
+              </h3>
+              <p className="text-meta text-center">
+                {isWorkspaceMode
+                  ? "Your cross-document questions and answers will appear here."
+                  : "Your questions and answers will appear here."}
+              </p>
+              <div className="flex flex-wrap gap-2 justify-center mt-2">
+                {SUGGESTED_PROMPTS.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => {
+                      void submitQuery(prompt);
+                    }}
+                    disabled={isStreaming}
+                    className="ui-btn ui-btn-neutral ui-btn-md"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!loadingHistory &&
+            messages.map((msg, i) => (
             <div
-              className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-sm ${
-                msg.role === "user"
-                  ? "bg-lapis-600 text-white rounded-tr-none"
-                  : "bg-zinc-800 text-zinc-100 rounded-tl-none border border-zinc-700"
+              key={i}
+              className={`flex flex-col ${
+                msg.role === "user" ? "items-end" : "items-start"
               }`}
             >
-              {msg.role === "assistant" && msg.streaming && !msg.content ? (
-                <div className="flex items-center gap-2 text-zinc-400">
-                  <div
-                    className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
-                    style={{ animationDelay: "0ms" }}
-                  />
-                  <div
-                    className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
-                    style={{ animationDelay: "150ms" }}
-                  />
-                  <div
-                    className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
-                    style={{ animationDelay: "300ms" }}
-                  />
-                </div>
-              ) : (
-                <p className="whitespace-pre-wrap text-body-sm leading-relaxed">
-                  {msg.content}
-                </p>
-              )}
-            </div>
+              {/* Message Bubble */}
+              <div
+                className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-sm ${
+                  msg.role === "user"
+                    ? "bg-lapis-600 text-white rounded-tr-none"
+                    : "bg-zinc-800 text-zinc-100 rounded-tl-none border border-zinc-700"
+                }`}
+              >
+                {msg.role === "assistant" && msg.streaming && !msg.content ? (
+                  <div className="flex items-center gap-2 text-zinc-400">
+                    <div
+                      className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
+                      style={{ animationDelay: "0ms" }}
+                    />
+                    <div
+                      className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
+                      style={{ animationDelay: "150ms" }}
+                    />
+                    <div
+                      className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
+                      style={{ animationDelay: "300ms" }}
+                    />
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap text-body-sm leading-relaxed">
+                    {msg.content}
+                  </p>
+                )}
+              </div>
 
             {debugMode && msg.role === "assistant" && msg.pipeline_meta && (
               <details className="mt-2 ml-2 max-w-[85%] text-xs text-zinc-400 group">
@@ -511,6 +513,7 @@ export function ChatWindow({
         ))}
 
       </div>
+    </ErrorBoundary>
 
       {/* Input Area */}
       <div className="shrink-0 px-3 py-3 border-t border-zinc-800 bg-zinc-900">
