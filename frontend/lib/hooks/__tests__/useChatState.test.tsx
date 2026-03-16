@@ -81,6 +81,7 @@ describe("useChatState", () => {
       {
         role: "assistant",
         content: "History answer",
+        created_at: "2026-03-02T12:03:00Z",
       },
     ]);
   });

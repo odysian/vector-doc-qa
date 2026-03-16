@@ -6,6 +6,8 @@
 "use client";
 
 import { KeyboardEvent, SyntheticEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { ArrowLeft, Send, Square } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { Document } from "@/lib/api";
@@ -214,6 +216,7 @@ export function ChatWindow({
             ? "bg-lapis-600 text-white rounded-tr-none"
             : "bg-zinc-800 text-zinc-100 rounded-tl-none border border-zinc-700"
         }`}
+        title={msg.created_at ? formatDate(msg.created_at) : undefined}
       >
         {msg.role === "assistant" && msg.streaming && !msg.content ? (
           <div className="flex items-center gap-2 text-zinc-400">
@@ -221,6 +224,17 @@ export function ChatWindow({
             <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
             <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
           </div>
+        ) : msg.role === "assistant" ? (
+          <>
+            <div className="chat-prose text-body-sm leading-relaxed">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {msg.content}
+              </ReactMarkdown>
+            </div>
+            {msg.streaming && msg.content && (
+              <span className="streaming-cursor" aria-hidden />
+            )}
+          </>
         ) : (
           <p className="whitespace-pre-wrap text-body-sm leading-relaxed">
             {msg.content}
