@@ -1,8 +1,6 @@
 """Tests for the /health endpoint response contract."""
 
-from unittest.mock import patch
-
-from app.config import settings
+from unittest.mock import AsyncMock, patch
 
 
 class _HealthyConnection:
@@ -46,27 +44,63 @@ class _FailingEngine:
         return _FailingConnectionContext()
 
 
+class _HealthyPool:
+    """Redis pool double that returns a healthy connection."""
+
+    async def ping(self):
+        return None
+
+    async def close(self):
+        return None
+
+
+class _FailingPool:
+    """Redis pool double that fails ping."""
+
+    async def ping(self):
+        raise RuntimeError("redis unavailable")
+
+    async def close(self):
+        return None
+
+
 class TestHealthCheck:
     """GET /health"""
 
     async def test_health_success_redacts_upload_directory(self, client) -> None:
-        with patch("app.main.async_engine", new=_HealthyEngine()):
+        with patch("app.main.async_engine", new=_HealthyEngine()), patch(
+            "app.main.create_pool", new=AsyncMock(return_value=_HealthyPool())
+        ):
             response = await client.get("/health")
 
         assert response.status_code == 200
         payload = response.json()
         assert payload["status"] == "healthy"
         assert payload["database"] == "connected"
-        assert payload["max_file_size_mb"] == settings.max_file_size / 1024 / 1024
+        assert payload["redis"] == "connected"
         assert "upload_dir" not in payload
 
     async def test_health_failure_redacts_upload_directory(self, client) -> None:
-        with patch("app.main.async_engine", new=_FailingEngine()):
+        with patch("app.main.async_engine", new=_FailingEngine()), patch(
+            "app.main.create_pool", new=AsyncMock(return_value=_HealthyPool())
+        ):
             response = await client.get("/health")
 
         assert response.status_code == 503
         payload = response.json()
         assert payload["status"] == "unhealthy"
-        assert payload["database"] == "error"
-        assert payload["max_file_size_mb"] == settings.max_file_size / 1024 / 1024
+        assert payload["database"] == "disconnected"
+        assert payload["redis"] == "connected"
         assert "upload_dir" not in payload
+
+    async def test_health_returns_degraded_when_redis_is_down(self, client) -> None:
+        with patch("app.main.async_engine", new=_HealthyEngine()), patch(
+            "app.main.create_pool", new=AsyncMock(return_value=_FailingPool())
+        ):
+            response = await client.get("/health")
+
+        assert response.status_code == 503
+        payload = response.json()
+        assert payload["status"] == "degraded"
+        assert payload["database"] == "connected"
+        assert payload["redis"] == "disconnected"

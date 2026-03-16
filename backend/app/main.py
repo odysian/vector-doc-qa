@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from time import perf_counter
 from uuid import uuid4
 
+from arq.connections import RedisSettings, create_pool
 from app.api import auth, documents, workspaces
 from app.api.dependencies import csrf_header_for_docs, verify_csrf
 from app.config import settings
@@ -191,28 +192,45 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Detailed health check."""
+    db_status = "disconnected"
+    redis_status = "disconnected"
+    redis_pool = None
 
-    async def _check_database() -> bool:
-        """Return True if database is reachable, False otherwise."""
-        try:
-            async with async_engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
-            return True
-        except Exception:
-            return False
+    try:
+        async with async_engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception:
+        logger.warning("Health check: database unreachable")
 
-    if await _check_database():
-        return {
-            "status": "healthy",
-            "database": "connected",
-            "max_file_size_mb": settings.max_file_size / 1024 / 1024,
-        }
-    else:
+    try:
+        redis_pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+        await redis_pool.ping()
+        redis_status = "connected"
+    except Exception:
+        logger.warning("Health check: Redis unreachable")
+    finally:
+        if redis_pool is not None:
+            await redis_pool.close()
+
+    if db_status == "connected" and redis_status == "connected":
+        return {"status": "healthy", "database": db_status, "redis": redis_status}
+
+    if db_status == "connected":
         return JSONResponse(
             status_code=503,
             content={
-                "status": "unhealthy",
-                "database": "error",
-                "max_file_size_mb": settings.max_file_size / 1024 / 1024,
+                "status": "degraded",
+                "database": db_status,
+                "redis": redis_status,
             },
         )
+
+    return JSONResponse(
+        status_code=503,
+        content={
+            "status": "unhealthy",
+            "database": db_status,
+            "redis": redis_status,
+        },
+    )

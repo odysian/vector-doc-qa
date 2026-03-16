@@ -259,8 +259,8 @@ All tables live in the `quaero` schema for isolation on shared PostgreSQL.
 
 #### GET /health
 - **Auth:** None
-- **Response (200):** `{ "status": "healthy", "database": "connected" }`
-- **Response (503):** `{ "status": "unhealthy", "database": "disconnected", "error": "..." }`
+- **Response (200):** `{ "status": "healthy", "database": "connected", "redis": "connected" }`
+- **Response (503):** `{ "status": "degraded", "database": "connected", "redis": "disconnected" }` or `{ "status": "unhealthy", "database": "disconnected", "redis": "..." }`
 
 ### Authentication
 
