@@ -5,7 +5,7 @@
 
 "use client";
 
-import { KeyboardEvent, SyntheticEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ComponentPropsWithoutRef, KeyboardEvent, SyntheticEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArrowLeft, Send, Square } from "lucide-react";
@@ -42,6 +42,19 @@ const SUGGESTED_PROMPTS = [
 ];
 const HIGH_CONFIDENCE_THRESHOLD = 0.5864;
 const MEDIUM_CONFIDENCE_THRESHOLD = 0.3699;
+
+// Only allow http/https/mailto links; unsafe protocols (javascript:, data:, etc.)
+// are rendered as plain spans so assistant content can never produce clickable injection payloads.
+const markdownComponents = {
+  a({ href, children }: ComponentPropsWithoutRef<"a">) {
+    const isSafe = href != null && /^(https?:\/\/|mailto:)/i.test(href);
+    return isSafe ? (
+      <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
+    ) : (
+      <span>{children}</span>
+    );
+  },
+};
 
 /**
  * Renders the pop up window with query input and message history.
@@ -227,7 +240,7 @@ export function ChatWindow({
         ) : msg.role === "assistant" ? (
           <>
             <div className="chat-prose text-body-sm leading-relaxed">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                 {msg.content}
               </ReactMarkdown>
             </div>
