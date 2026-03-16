@@ -14,6 +14,53 @@ ENV_FILE="/opt/quaero/env/backend.env"
 NGINX_SITE="/etc/nginx/sites-available/quaero-backend"
 LE_LIVE_DIR="/etc/letsencrypt/live/$${API_DOMAIN}"
 ACME_WEBROOT="/var/www/acme-challenge"
+CERTBOT_RETRY_ATTEMPTS=3
+CERTBOT_CMD="/opt/certbot-venv/bin/certbot"
+
+log() {
+  echo "startup: $${1}"
+}
+
+has_valid_certificate() {
+  [[ -f "$${LE_LIVE_DIR}/fullchain.pem" ]] && [[ -f "$${LE_LIVE_DIR}/privkey.pem" ]]
+}
+
+ensure_certbot() {
+  if [[ -x "$${CERTBOT_CMD}" ]]; then
+    ln -sf "$${CERTBOT_CMD}" /usr/bin/certbot
+    return 0
+  fi
+
+  # Ensure certbot is always available even when bootstrap metadata is stale.
+  if ! dpkg -s python3-venv >/dev/null 2>&1; then
+    apt-get update
+    apt-get install -y python3-venv
+  fi
+
+  if [[ ! -x /opt/certbot-venv/bin/pip ]]; then
+    python3 -m venv /opt/certbot-venv
+  fi
+  /opt/certbot-venv/bin/pip install --quiet certbot
+  ln -sf "$${CERTBOT_CMD}" /usr/bin/certbot
+}
+
+provision_tls_certificate() {
+  local attempt=1
+  while [[ "$${attempt}" -le "$${CERTBOT_RETRY_ATTEMPTS}" ]]; do
+    if certbot certonly --non-interactive --agree-tos \
+      --email "$${CERTBOT_EMAIL}" \
+      --domains "$${API_DOMAIN}" \
+      --webroot -w "$${ACME_WEBROOT}"; then
+      return 0
+    fi
+
+    log "certbot attempt $${attempt}/${CERTBOT_RETRY_ATTEMPTS} failed for $${API_DOMAIN}; retrying in 8s"
+    sleep 8
+    attempt=$((attempt + 1))
+  done
+
+  return 1
+}
 
 write_http_nginx_config() {
   cat > "$${NGINX_SITE}" <<EOF
@@ -115,18 +162,13 @@ install -d -m 755 /opt/quaero/nginx
 
 if [[ ! -f "$${BOOTSTRAP_MARKER}" ]]; then
   apt-get update
-  apt-get install -y ca-certificates curl nginx python3-venv
-
-  # Install certbot from PyPI and use webroot mode for TLS setup.
-  python3 -m venv /opt/certbot-venv
-  /opt/certbot-venv/bin/pip install --quiet certbot
-  ln -sf /opt/certbot-venv/bin/certbot /usr/bin/certbot
+  apt-get install -y ca-certificates curl nginx
 
   # Renew twice daily (replaces certbot.timer from apt package).
-  echo "0 0,12 * * * root /opt/certbot-venv/bin/certbot renew --webroot -w $${ACME_WEBROOT} --quiet --post-hook '/usr/sbin/nginx -s reload'" \
+  echo "0 0,12 * * * root $${CERTBOT_CMD} renew --webroot -w $${ACME_WEBROOT} --quiet --post-hook '/usr/sbin/nginx -s reload'" \
     > /etc/cron.d/certbot-renew
 
-  install -d -m 755 "$${ACME_WEBROOT}"
+  chmod 644 /etc/cron.d/certbot-renew
 
   if ! command -v docker >/dev/null 2>&1; then
     curl -fsSL https://get.docker.com | sh
@@ -140,6 +182,13 @@ fi
 # The upstream block lives in /opt/quaero/nginx/upstream.conf so the deploy
 # script can atomically switch ports without root access to /etc/nginx.
 write_http_nginx_config
+install -d -m 755 "$${ACME_WEBROOT}"
+
+ensure_certbot
+cat > /etc/cron.d/certbot-renew <<EOF
+0 0,12 * * * root $${CERTBOT_CMD} renew --webroot -w $${ACME_WEBROOT} --quiet --post-hook '/usr/sbin/nginx -s reload'
+EOF
+chmod 644 /etc/cron.d/certbot-renew
 
 # Write upstream.conf only when absent so it persists across reboots.
 if [[ ! -f "/opt/quaero/nginx/upstream.conf" ]]; then
@@ -163,17 +212,14 @@ systemctl enable --now nginx
 systemctl reload nginx
 
 if [[ "$${ENABLE_TLS_BOOTSTRAP}" == "true" ]] && [[ -n "$${CERTBOT_EMAIL}" ]]; then
-  if [[ -f "$${LE_LIVE_DIR}/fullchain.pem" ]] && [[ -f "$${LE_LIVE_DIR}/privkey.pem" ]]; then
+  if has_valid_certificate; then
     # Certificate already exists: switch to HTTPS and reload cleanly.
     write_https_nginx_config
   else
-    if certbot certonly --non-interactive --agree-tos \
-      --email "$${CERTBOT_EMAIL}" \
-      --domains "$${API_DOMAIN}" \
-      --webroot -w "$${ACME_WEBROOT}"; then
+    if provision_tls_certificate; then
       write_https_nginx_config
     else
-      echo "WARNING: certbot webroot issuance failed for $${API_DOMAIN}; keeping HTTP-only config."
+      log "WARNING: certbot webroot issuance failed for $${API_DOMAIN}; keeping HTTP-only config."
     fi
   fi
 
