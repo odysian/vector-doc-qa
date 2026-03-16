@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import DashboardPage from "@/app/dashboard/page";
 import { useDashboardState } from "@/lib/hooks/useDashboardState";
+import type { Document } from "@/lib/api";
 
 const pushMock = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -20,7 +21,7 @@ vi.mock("@/app/components/dashboard/ChatWindow", () => ({
 
 const useDashboardStateMock = vi.mocked(useDashboardState);
 
-const documentFixture = {
+const documentFixture: Document = {
   id: 101,
   user_id: 1,
   filename: "alpha.pdf",
@@ -42,6 +43,7 @@ describe("DashboardPage page-level ErrorBoundary", () => {
       loading: false,
       error: "",
       dashboardMode: "documents",
+      hasActiveDocuments: true,
       workspaces: [],
       selectedWorkspace: null,
       viewerDocumentId: null,
