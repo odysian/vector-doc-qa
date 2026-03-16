@@ -31,3 +31,10 @@ ssh_source_ranges = ["203.0.113.10/32", "35.235.240.0/20"]
 
 # Keep false except for temporary break-glass rollout.
 allow_insecure_ssh_from_anywhere = false
+
+# GitHub Actions self-hosted runner auto-registration.
+# PAT requires: repository → Administration → Read and write (fine-grained)
+# or classic PAT with repo scope.
+# Leave empty to skip runner setup.
+github_runner_pat     = ""
+github_runner_version = "2.323.0"
