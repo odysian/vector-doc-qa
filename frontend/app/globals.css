@@ -422,6 +422,8 @@ body {
 .chat-prose ol {
   padding-left: 1.25rem;
   margin-bottom: 0.5rem;
+  /* inside keeps markers in the box so they survive any parent overflow */
+  list-style-position: inside;
 }
 .chat-prose ul {
   list-style-type: disc;
