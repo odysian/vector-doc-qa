@@ -1,257 +1,66 @@
 #!/usr/bin/env bash
+# VM startup script (runs on every boot).
+# Responsibility: install dependencies and write infra config.
+# NGINX config and TLS are handled by the deploy script on every deploy.
 set -euo pipefail
 
 SSH_USER="${ssh_user}"
-API_DOMAIN="${api_domain}"
-FRONTEND_URL="${frontend_url}"
-BACKEND_PORT="${backend_port}"
-CERTBOT_EMAIL="${certbot_email}"
-ENABLE_TLS_BOOTSTRAP="${enable_tls_bootstrap}"
-BUCKET_NAME="${bucket_name}"
-PROJECT_ID="${project_id}"
 BOOTSTRAP_MARKER="/opt/quaero/.bootstrap_v2_done"
-ENV_FILE="/opt/quaero/env/backend.env"
-NGINX_SITE="/etc/nginx/sites-available/quaero-backend"
-LE_LIVE_DIR="/etc/letsencrypt/live/$${API_DOMAIN}"
-ACME_WEBROOT="/var/www/acme-challenge"
-CERTBOT_RETRY_ATTEMPTS=3
-CERTBOT_CMD="/opt/certbot-venv/bin/certbot"
-
-log() {
-  echo "startup: $${1}"
-}
-
-has_valid_certificate() {
-  [[ -f "$${LE_LIVE_DIR}/fullchain.pem" ]] && [[ -f "$${LE_LIVE_DIR}/privkey.pem" ]]
-}
-
-ensure_certbot() {
-  if [[ -x "$${CERTBOT_CMD}" ]]; then
-    ln -sf "$${CERTBOT_CMD}" /usr/bin/certbot
-    return 0
-  fi
-
-  # Ensure certbot is always available even when bootstrap metadata is stale.
-  if ! dpkg -s python3-venv >/dev/null 2>&1; then
-    apt-get update
-    apt-get install -y python3-venv
-  fi
-
-  if [[ ! -x /opt/certbot-venv/bin/pip ]]; then
-    python3 -m venv /opt/certbot-venv
-  fi
-  /opt/certbot-venv/bin/pip install --quiet certbot
-  ln -sf "$${CERTBOT_CMD}" /usr/bin/certbot
-}
-
-provision_tls_certificate() {
-  local attempt=1
-  while [[ "$${attempt}" -le "$${CERTBOT_RETRY_ATTEMPTS}" ]]; do
-    if certbot certonly --non-interactive --agree-tos \
-      --email "$${CERTBOT_EMAIL}" \
-      --domains "$${API_DOMAIN}" \
-      --webroot -w "$${ACME_WEBROOT}"; then
-      return 0
-    fi
-
-    log "certbot attempt $${attempt}/$${CERTBOT_RETRY_ATTEMPTS} failed for $${API_DOMAIN}; retrying in 8s"
-    sleep 8
-    attempt=$((attempt + 1))
-  done
-
-  return 1
-}
-
-write_http_nginx_config() {
-  cat > "$${NGINX_SITE}" <<EOF
-include /opt/quaero/nginx/upstream.conf;
-
-server {
-    listen 80;
-    server_name $${API_DOMAIN};
-
-    location ^~ /.well-known/acme-challenge/ {
-        alias $${ACME_WEBROOT}/;
-    }
-
-    # Keep SSE responses truly streaming for the query stream endpoint.
-    location ~ ^/api/documents/[0-9]+/query/stream$ {
-        proxy_pass http://quaero_backend;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_buffering off;
-        proxy_cache off;
-        gzip off;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-        send_timeout 3600s;
-        add_header X-Accel-Buffering "no" always;
-    }
-
-    location / {
-        proxy_pass http://quaero_backend;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOF
-}
-
-write_https_nginx_config() {
-  cat > "$${NGINX_SITE}" <<EOF
-include /opt/quaero/nginx/upstream.conf;
-
-server {
-    listen 80;
-    server_name $${API_DOMAIN};
-    return 301 https://\$host\$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    server_name $${API_DOMAIN};
-    ssl_certificate $${LE_LIVE_DIR}/fullchain.pem;
-    ssl_certificate_key $${LE_LIVE_DIR}/privkey.pem;
-
-    # Keep SSE responses truly streaming for the query stream endpoint.
-    location ~ ^/api/documents/[0-9]+/query/stream$ {
-        proxy_pass http://quaero_backend;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_buffering off;
-        proxy_cache off;
-        gzip off;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-        send_timeout 3600s;
-        add_header X-Accel-Buffering "no" always;
-    }
-
-    location / {
-        proxy_pass http://quaero_backend;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOF
-}
 
 export DEBIAN_FRONTEND=noninteractive
 
-if ! id -u "$${SSH_USER}" >/dev/null 2>&1; then
-  useradd -m -s /bin/bash "$${SSH_USER}"
+# ── Directories (idempotent on every boot) ────────────────────────────────────
+install -d -m 755 /opt/quaero
+install -d -m 755 /opt/quaero/env
+install -d -m 755 /opt/quaero/nginx
+install -d -m 755 /opt/quaero/logs
+install -d -m 755 /var/www/acme-challenge
+
+# ── Ensure deploy user exists ─────────────────────────────────────────────────
+if ! id -u "$SSH_USER" >/dev/null 2>&1; then
+  useradd -m -s /bin/bash "$SSH_USER"
 fi
 
-install -d -m 755 /opt/quaero
-install -d -m 755 /opt/quaero/deploy
-install -d -m 755 /opt/quaero/env
-install -d -m 755 /opt/quaero/logs
-install -d -m 755 /opt/quaero/nginx
+# ── Infra config for deploy script ───────────────────────────────────────────
+# Written on every boot so it stays current if Terraform variables change.
+# The deploy script sources this to get domain/email for NGINX and certbot.
+cat > /opt/quaero/env/infra.env <<EOF
+API_DOMAIN=${api_domain}
+CERTBOT_EMAIL=${certbot_email}
+FRONTEND_URL=${frontend_url}
+EOF
+chmod 644 /opt/quaero/env/infra.env
 
-if [[ ! -f "$${BOOTSTRAP_MARKER}" ]]; then
+# ── Sudo: deploy user needs root for docker ops, NGINX, and certbot ──────────
+echo "$${SSH_USER} ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/quaero-deploy
+chmod 440 /etc/sudoers.d/quaero-deploy
+
+# ── Bootstrap: install packages once ─────────────────────────────────────────
+if [[ ! -f "$BOOTSTRAP_MARKER" ]]; then
   apt-get update
-  apt-get install -y ca-certificates curl nginx
-
-  # Renew twice daily (replaces certbot.timer from apt package).
-  echo "0 0,12 * * * root $${CERTBOT_CMD} renew --webroot -w $${ACME_WEBROOT} --quiet --post-hook '/usr/sbin/nginx -s reload'" \
-    > /etc/cron.d/certbot-renew
-
-  chmod 644 /etc/cron.d/certbot-renew
+  apt-get install -y ca-certificates curl nginx python3-venv
 
   if ! command -v docker >/dev/null 2>&1; then
     curl -fsSL https://get.docker.com | sh
   fi
-
   systemctl enable --now docker
-  touch "$${BOOTSTRAP_MARKER}"
+
+  # Certbot in a venv — survives distro upgrades.
+  python3 -m venv /opt/certbot-venv
+  /opt/certbot-venv/bin/pip install --quiet certbot
+
+  # Certbot auto-renewal twice daily.
+  cat > /etc/cron.d/certbot-renew <<'CRON'
+0 0,12 * * * root /opt/certbot-venv/bin/certbot renew --webroot -w /var/www/acme-challenge --quiet --post-hook "systemctl reload nginx"
+CRON
+  chmod 644 /etc/cron.d/certbot-renew
+
+  touch "$BOOTSTRAP_MARKER"
 fi
 
-# Always render the HTTP-only NGINX site first so boot succeeds even without TLS.
-# The upstream block lives in /opt/quaero/nginx/upstream.conf so the deploy
-# script can atomically switch ports without root access to /etc/nginx.
-write_http_nginx_config
-install -d -m 755 "$${ACME_WEBROOT}"
+# ── Final user setup ──────────────────────────────────────────────────────────
+usermod -aG docker "$SSH_USER" || true
+chown -R "$SSH_USER:$SSH_USER" /opt/quaero
 
-ensure_certbot
-cat > /etc/cron.d/certbot-renew <<EOF
-0 0,12 * * * root $${CERTBOT_CMD} renew --webroot -w $${ACME_WEBROOT} --quiet --post-hook '/usr/sbin/nginx -s reload'
-EOF
-chmod 644 /etc/cron.d/certbot-renew
-
-# Write upstream.conf only when absent so it persists across reboots.
-if [[ ! -f "/opt/quaero/nginx/upstream.conf" ]]; then
-  cat > /opt/quaero/nginx/upstream.conf <<'UPSTREAM_EOF'
-upstream quaero_backend {
-    server 127.0.0.1:8000;
-}
-UPSTREAM_EOF
-fi
-
-# Grant the deploy user minimum sudo privilege to reload NGINX gracefully.
-# nginx -s reload performs a live upstream switch with no dropped connections.
-echo "$${SSH_USER} ALL=(ALL) NOPASSWD: /usr/sbin/nginx -s reload" \
-  > /etc/sudoers.d/quaero-nginx-reload
-chmod 440 /etc/sudoers.d/quaero-nginx-reload
-
-ln -sf "$${NGINX_SITE}" /etc/nginx/sites-enabled/quaero-backend
-rm -f /etc/nginx/sites-enabled/default
-nginx -t
-systemctl enable --now nginx
-systemctl reload nginx
-
-if [[ "$${ENABLE_TLS_BOOTSTRAP}" == "true" ]] && [[ -n "$${CERTBOT_EMAIL}" ]]; then
-  if has_valid_certificate; then
-    # Certificate already exists: switch to HTTPS and reload cleanly.
-    write_https_nginx_config
-  else
-    if provision_tls_certificate; then
-      write_https_nginx_config
-    else
-      log "WARNING: certbot webroot issuance failed for $${API_DOMAIN}; keeping HTTP-only config."
-    fi
-  fi
-
-  if [[ -f "$${LE_LIVE_DIR}/fullchain.pem" ]] && [[ -f "$${LE_LIVE_DIR}/privkey.pem" ]]; then
-    nginx -t
-    systemctl reload nginx || systemctl restart nginx
-  else
-    nginx -t
-    systemctl reload nginx || systemctl restart nginx
-  fi
-fi
-
-if [[ ! -f "$${ENV_FILE}" ]]; then
-  cat > "$${ENV_FILE}" <<EOF
-# Fill in all placeholder values before first deploy.
-DATABASE_URL=postgresql://postgres:<password>@<cloud-sql-ip>:5432/postgres?options=-c%20search_path=quaero,public
-APP_ENV=production
-SECRET_KEY=<strong-random-secret>
-OPENAI_API_KEY=<openai-key>
-ANTHROPIC_API_KEY=<anthropic-key>
-REDIS_URL=<upstash-redis-url>
-FRONTEND_URL=$${FRONTEND_URL}
-PORT=$${BACKEND_PORT}
-STORAGE_BACKEND=gcs
-GCS_BUCKET_NAME=$${BUCKET_NAME}
-GCP_PROJECT_ID=$${PROJECT_ID}
-EOF
-  chown "$${SSH_USER}:$${SSH_USER}" "$${ENV_FILE}"
-  chmod 600 "$${ENV_FILE}"
-fi
-
-if id -u "$${SSH_USER}" >/dev/null 2>&1; then
-  usermod -aG docker "$${SSH_USER}" || true
-  chown -R "$${SSH_USER}:$${SSH_USER}" /opt/quaero
-fi
+# NGINX must be enabled so the deploy script can reload it.
+systemctl enable nginx
