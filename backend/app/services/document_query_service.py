@@ -5,6 +5,8 @@ Owns validation, retrieval/LLM pipeline timing, message persistence, and SSE
 event semantics used by query endpoints.
 """
 
+import asyncio
+import contextlib
 import json
 import time
 from collections.abc import AsyncGenerator
@@ -14,7 +16,7 @@ from fastapi.sse import ServerSentEvent
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.constants import MESSAGE_HISTORY_DISPLAY_LIMIT
+from app.constants import SSE_HEARTBEAT_INTERVAL_SECONDS, MESSAGE_HISTORY_DISPLAY_LIMIT
 from app.database import AsyncSessionLocal
 from app.models.base import Document, DocumentStatus
 from app.models.user import User
@@ -685,9 +687,43 @@ async def query_document_stream_events_command(
         yield ServerSentEvent(
             event="done",
             raw_data=json.dumps({"message_id": assistant_message_id}),
-        )
+            )
 
-    return _stream_events()
+    # Bounded queue to prevent unbounded buffering if the downstream client stalls.
+    event_queue: asyncio.Queue[ServerSentEvent | None] = asyncio.Queue(maxsize=16)
+
+    async def _produce_events() -> None:
+        """Emit SSE events into a queue for consumer-side heartbeat control."""
+        try:
+            async for event in _stream_events():
+                await event_queue.put(event)
+        finally:
+            await event_queue.put(None)
+
+    producer_task = asyncio.create_task(_produce_events())
+
+    async def _drain_events() -> AsyncGenerator[ServerSentEvent, None]:
+        """Drain queued SSE events and emit keep-alive comments while idle."""
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(
+                        event_queue.get(),
+                        timeout=SSE_HEARTBEAT_INTERVAL_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    yield ServerSentEvent(comment="keep-alive")
+                    continue
+
+                if event is None:
+                    break
+                yield event
+        finally:
+            producer_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await producer_task
+
+    return _drain_events()
 
 
 async def get_document_messages_command(

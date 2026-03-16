@@ -6,6 +6,7 @@ and "Chat History".
 """
 
 import json
+import asyncio
 from collections.abc import AsyncGenerator
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -57,7 +58,11 @@ class _FailingSessionContext:
         return False
 
 
-async def _read_sse_events(response) -> list[tuple[str, str]]:  # type: ignore[no-untyped-def]
+async def _read_sse_events(
+    response,
+    *,
+    include_comment: bool = False,
+) -> list[tuple[str, str]]:  # type: ignore[no-untyped-def]
     """Collect SSE events until a terminal done/error event is reached."""
     events: list[tuple[str, str]] = []
     event_name: str | None = None
@@ -72,6 +77,11 @@ async def _read_sse_events(response) -> list[tuple[str, str]]:  # type: ignore[n
                     break
             event_name = None
             data_lines = []
+            continue
+
+        if line.startswith(":"):
+            if include_comment:
+                events.append(("comment", line[1:].strip()))
             continue
 
         if line.startswith("event:"):
@@ -530,6 +540,55 @@ class TestQueryStream:
 
         done_payload = json.loads(events[5][1])
         assert isinstance(done_payload["message_id"], int)
+
+    async def test_stream_query_emits_keep_alive_comments_when_idle(
+        self,
+        client,
+        auth_headers,
+        processed_document,
+        mock_embeddings,
+        db_session: AsyncSession,
+    ):
+        async def _slow_generate_answer_stream(
+            query: str,
+            chunks: list[dict],
+            conversation_history: list[dict[str, str]] | None = None,
+        ) -> AsyncGenerator[str, None]:
+            del query, chunks, conversation_history
+            await asyncio.sleep(0.06)
+            yield "first "
+            await asyncio.sleep(0.06)
+            yield "part"
+
+        with (
+            patch(
+                "app.services.document_query_service.SSE_HEARTBEAT_INTERVAL_SECONDS",
+                new=0.02,
+            ),
+            patch(
+                "app.services.document_query_service.generate_answer_stream",
+                new=_slow_generate_answer_stream,
+            ),
+            patch(
+                "app.services.document_query_service.AsyncSessionLocal",
+                new=lambda: _NoCloseSessionContext(db_session),
+            ),
+        ):
+            async with client.stream(
+                "POST",
+                f"/api/documents/{processed_document.id}/query/stream",
+                headers=auth_headers,
+                json={"query": "Summarize this document"},
+            ) as response:
+                assert response.status_code == 200
+                events = await _read_sse_events(response, include_comment=True)
+
+        event_types = [event for event, _ in events]
+        assert event_types[0] == "sources"
+        assert "comment" in event_types
+        assert event_types[-1] == "done"
+        assert any(payload == "keep-alive" for event, payload in events if event == "comment")
+        assert event_types.index("meta") < event_types.index("done")
 
     async def test_stream_query_returns_404_for_other_users_document(
         self, client, second_user_headers, processed_document
