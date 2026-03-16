@@ -11,10 +11,6 @@ locals {
   ]
   # Keep minimum runtime scopes even when callers pass a custom scope list.
   vm_service_account_scopes = distinct(concat(var.vm_service_account_scopes, local.vm_required_scopes))
-  ops_agent_config = templatefile("${path.module}/scripts/ops-agent-config.yaml.tftpl", {
-    ops_agent_collect_docker_logs  = var.ops_agent_collect_docker_logs
-    ops_agent_collect_host_metrics = var.ops_agent_collect_host_metrics
-  })
 }
 
 resource "google_compute_address" "backend" {
@@ -141,9 +137,6 @@ resource "google_compute_instance" "backend" {
     enable_tls_bootstrap  = var.enable_tls_bootstrap
     bucket_name           = var.bucket_name
     project_id            = var.project_id
-    enable_ops_agent      = var.enable_ops_agent
-    ops_agent_version     = trimspace(var.ops_agent_version)
-    ops_agent_config_b64  = base64encode(local.ops_agent_config)
     github_runner_pat     = var.github_runner_pat
     github_runner_version = var.github_runner_version
     github_repository     = var.github_repository
