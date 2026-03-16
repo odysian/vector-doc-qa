@@ -14,6 +14,7 @@ export interface ChatMessage {
   pipeline_meta?: PipelineMeta;
   streaming?: boolean;
   retry_query?: string;
+  created_at?: string; // populated from history load; undefined for streamed messages
 }
 
 interface QueryStreamCallbacks {
@@ -298,6 +299,7 @@ export function useChatState({
           content: msg.content,
           sources: msg.sources,
           pipeline_meta: msg.pipeline_meta,
+          created_at: msg.created_at,
         }));
         setMessages(loadedMessages);
       } catch (err) {
