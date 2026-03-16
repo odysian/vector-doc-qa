@@ -689,7 +689,8 @@ async def query_document_stream_events_command(
             raw_data=json.dumps({"message_id": assistant_message_id}),
             )
 
-    event_queue: asyncio.Queue[ServerSentEvent | None] = asyncio.Queue()
+    # Bounded queue to prevent unbounded buffering if the downstream client stalls.
+    event_queue: asyncio.Queue[ServerSentEvent | None] = asyncio.Queue(maxsize=16)
 
     async def _produce_events() -> None:
         """Emit SSE events into a queue for consumer-side heartbeat control."""
