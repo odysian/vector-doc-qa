@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ChatWindow } from "@/app/components/dashboard/ChatWindow";
 import { chatService } from "@/lib/services/chatService";
+import * as useChatStateModule from "@/lib/hooks/useChatState";
 import type { Document, PipelineMeta, QueryResponse } from "@/lib/api";
 
 vi.mock("@/lib/services/chatService", async () => {
@@ -676,6 +677,49 @@ describe("ChatWindow streaming lifecycle", () => {
 
     expect(screen.getByText(/confidence/)).toBeInTheDocument();
     expect(screen.getByText("91.0%")).toBeInTheDocument();
+  });
+
+  it("renders inline boundary fallback and reload control when message rendering throws", async () => {
+    const reloadSpy = vi.fn();
+    vi.stubGlobal("location", {
+      ...(window.location as Location),
+      reload: reloadSpy,
+    });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const useChatStateSpy = vi.spyOn(useChatStateModule, "useChatState").mockReturnValue({
+      messages: [
+        {
+          id: 999,
+          role: "assistant",
+          user_id: documentFixture.user_id,
+          created_at: "2026-03-02T12:20:00Z",
+          get content(): string {
+            throw new Error("message render failure");
+          },
+        } as { id: number; role: "assistant" | "user"; user_id: number; created_at: string; content: string },
+      ],
+      loadingHistory: false,
+      isStreaming: false,
+      canStopStream: false,
+      submitQuery: vi.fn(),
+      stopActiveStream: vi.fn(),
+    } as ReturnType<typeof useChatStateModule.useChatState>);
+
+    render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
+
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(
+      screen.getByText("An unexpected error occurred. Reload the page to continue.")
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    expect(reloadSpy).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+
+    useChatStateSpy.mockRestore();
+    vi.unstubAllGlobals();
+    consoleErrorSpy.mockRestore();
   });
 
   it("submits workspace queries through non-streaming workspace endpoint", async () => {

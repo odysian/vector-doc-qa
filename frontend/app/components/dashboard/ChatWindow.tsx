@@ -197,6 +197,217 @@ export function ChatWindow({
     return "low";
   };
 
+  const MessageRow = ({
+    msg,
+    index,
+  }: {
+    msg: (typeof messages)[number];
+    index: number;
+  }) => (
+    <div
+      className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
+    >
+      {/* Message Bubble */}
+      <div
+        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-sm ${
+          msg.role === "user"
+            ? "bg-lapis-600 text-white rounded-tr-none"
+            : "bg-zinc-800 text-zinc-100 rounded-tl-none border border-zinc-700"
+        }`}
+      >
+        {msg.role === "assistant" && msg.streaming && !msg.content ? (
+          <div className="flex items-center gap-2 text-zinc-400">
+            <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+            <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+            <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+          </div>
+        ) : (
+          <p className="whitespace-pre-wrap text-body-sm leading-relaxed">
+            {msg.content}
+          </p>
+        )}
+      </div>
+
+      {debugMode && msg.role === "assistant" && msg.pipeline_meta && (
+        <details className="mt-2 ml-2 max-w-[85%] text-xs text-zinc-400 group">
+          <summary className="cursor-pointer list-none flex items-center gap-2 hover:text-zinc-200 transition-colors">
+            <svg
+              className="w-3 h-3 shrink-0 transition-transform group-open:rotate-90"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+            <span>
+              {(msg.pipeline_meta.total_ms / 1000).toFixed(1)}s ·{" "}
+              {(msg.pipeline_meta.avg_similarity * 100).toFixed(0)}% retrieval ·{" "}
+              {msg.pipeline_meta.chunks_retrieved}{" "}
+              {msg.pipeline_meta.chunks_retrieved === 1 ? "source" : "sources"} ·{" "}
+              {getConfidence(msg.pipeline_meta.top_similarity)} confidence
+            </span>
+          </summary>
+          <div className="mt-2 ml-5 space-y-1">
+            <p>Embedding: {msg.pipeline_meta.embed_ms}ms</p>
+            <p>Retrieval: {msg.pipeline_meta.retrieval_ms}ms</p>
+            <p>Generation: {msg.pipeline_meta.llm_ms}ms</p>
+            <p>Top similarity: {(msg.pipeline_meta.top_similarity * 100).toFixed(1)}%</p>
+            <p>Average similarity: {(msg.pipeline_meta.avg_similarity * 100).toFixed(1)}%</p>
+            <p>Chunks above retrieval threshold: {msg.pipeline_meta.chunks_above_threshold}</p>
+            <p>Similarity spread: {(msg.pipeline_meta.similarity_spread * 100).toFixed(1)}%</p>
+            <p>History turns included: {msg.pipeline_meta.chat_history_turns_included}</p>
+            <div className="border-t border-zinc-700/50 pt-1 mt-1">
+              <p>Total: {msg.pipeline_meta.total_ms}ms</p>
+            </div>
+          </div>
+        </details>
+      )}
+
+      {msg.role === "assistant" && msg.retry_query && !msg.streaming && (
+        <button
+          type="button"
+          onClick={() => handleRetry(msg.retry_query!)}
+          disabled={isStreaming}
+          className="ui-btn ui-btn-ghost ui-btn-sm mt-2 ml-2"
+        >
+          Retry
+        </button>
+      )}
+
+      {/* Citations / Sources (collapsed by default, expand on click) */}
+      {msg.sources && msg.sources.length > 0 && (
+        <div className="mt-2 ml-2 max-w-[85%] pt-2 border-t border-zinc-700/50">
+          <button
+            type="button"
+            onClick={() => toggleSources(index)}
+            className="ui-btn ui-btn-ghost ui-btn-sm"
+          >
+            <svg
+              className={`w-3 h-3 shrink-0 transition-transform ${expandedSourceIndices.has(index) ? "rotate-90" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+            <span>Sources ({msg.sources.length})</span>
+          </button>
+          {expandedSourceIndices.has(index) && (
+            <div data-sources={index} className="mt-2 grid gap-1.5 max-h-[40vh] overflow-y-auto">
+              {msg.sources.map((source, sourceIndex) => {
+                const cardKey = `${index}-${sourceIndex}`;
+                const isExpanded = expandedSourceCards.has(cardKey);
+                const previewLength = 150;
+                const preview = source.content.substring(0, previewLength).trim();
+                const remainder = source.content.substring(previewLength).trim();
+                const hasPageStart = source.page_start !== null && source.page_start !== undefined;
+                const isWorkspaceSourcePresent = !isWorkspaceMode || (
+                  source.document_id !== undefined
+                  && workspaceDocumentIds?.includes(source.document_id) === true
+                );
+                const canJumpToPage = (
+                  hasPageStart
+                  && onCitationClick !== undefined
+                  && isWorkspaceSourcePresent
+                );
+                const isDisabledWorkspaceSource = isWorkspaceMode && hasPageStart && !isWorkspaceSourcePresent;
+                const pageLabel = getSourcePageLabel(source.page_start, source.page_end);
+
+                return (
+                  <div
+                    key={sourceIndex}
+                    onClick={() => {
+                      if (!canJumpToPage || source.page_start === null || source.page_start === undefined) return;
+                      onCitationClick({
+                        page: source.page_start,
+                        snippet: source.content,
+                        documentId: source.document_id,
+                      });
+                    }}
+                    onKeyDown={(event) => {
+                      if (!canJumpToPage || source.page_start === null || source.page_start === undefined) return;
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onCitationClick({
+                          page: source.page_start,
+                          snippet: source.content,
+                          documentId: source.document_id,
+                        });
+                      }
+                    }}
+                    role={canJumpToPage ? "button" : undefined}
+                    tabIndex={canJumpToPage ? 0 : undefined}
+                    aria-disabled={isDisabledWorkspaceSource || undefined}
+                    className={`bg-zinc-950/50 border border-zinc-800/50 px-2.5 py-2 rounded-lg transition-colors ${
+                      canJumpToPage
+                        ? "cursor-pointer hover:border-lapis-500/60 hover:bg-zinc-900/70"
+                        : isDisabledWorkspaceSource
+                          ? "cursor-not-allowed opacity-60"
+                          : "hover:border-lapis-500/30"
+                    }`}
+                  >
+                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className="badge-sm bg-lapis-600 text-white px-1.5 py-0.5 rounded">
+                        {sourceIndex + 1}
+                      </span>
+                      {source.document_filename && (
+                        <span className="text-meta-bright font-medium truncate max-w-full">
+                          {source.document_filename}
+                        </span>
+                      )}
+                      {pageLabel && (
+                        <span className="text-meta rounded border border-zinc-700/80 px-1.5 py-0.5">
+                          {pageLabel}
+                        </span>
+                      )}
+                      {debugMode && (
+                        <span className="text-meta rounded border border-zinc-700/80 px-1.5 py-0.5">
+                          {(source.similarity * 100).toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-caption">
+                      &quot;{preview}
+                      {!isExpanded && source.content.length > previewLength ? "..." : ""}
+                      {isExpanded && remainder ? " " : ""}
+                      {isExpanded && remainder ? remainder : ""}&quot;
+                    </p>
+
+                    {source.content.length > previewLength && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleSourceCard(index, sourceIndex);
+                        }}
+                        className="ui-btn ui-btn-ghost ui-btn-sm mt-2"
+                      >
+                        {isExpanded ? "Show less ▲" : "Show full context ▼"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   const resolvedContextTitle = contextTitle
     || (isWorkspaceMode ? (workspaceName || "Workspace") : (document?.filename || "Document"));
   const resolvedContextDate = contextDate || document?.uploaded_at || "";
@@ -295,222 +506,11 @@ export function ChatWindow({
           )}
 
           {!loadingHistory &&
-            messages.map((msg, i) => (
-            <div
-              key={i}
-              className={`flex flex-col ${
-                msg.role === "user" ? "items-end" : "items-start"
-              }`}
-            >
-              {/* Message Bubble */}
-              <div
-                className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-sm ${
-                  msg.role === "user"
-                    ? "bg-lapis-600 text-white rounded-tr-none"
-                    : "bg-zinc-800 text-zinc-100 rounded-tl-none border border-zinc-700"
-                }`}
-              >
-                {msg.role === "assistant" && msg.streaming && !msg.content ? (
-                  <div className="flex items-center gap-2 text-zinc-400">
-                    <div
-                      className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
-                      style={{ animationDelay: "0ms" }}
-                    />
-                    <div
-                      className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
-                      style={{ animationDelay: "150ms" }}
-                    />
-                    <div
-                      className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce"
-                      style={{ animationDelay: "300ms" }}
-                    />
-                  </div>
-                ) : (
-                  <p className="whitespace-pre-wrap text-body-sm leading-relaxed">
-                    {msg.content}
-                  </p>
-                )}
-              </div>
-
-            {debugMode && msg.role === "assistant" && msg.pipeline_meta && (
-              <details className="mt-2 ml-2 max-w-[85%] text-xs text-zinc-400 group">
-                <summary className="cursor-pointer list-none flex items-center gap-2 hover:text-zinc-200 transition-colors">
-                  <svg
-                    className="w-3 h-3 shrink-0 transition-transform group-open:rotate-90"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    aria-hidden
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
-                  <span>
-                    {(msg.pipeline_meta.total_ms / 1000).toFixed(1)}s ·{" "}
-                    {(msg.pipeline_meta.avg_similarity * 100).toFixed(0)}% retrieval ·{" "}
-                    {msg.pipeline_meta.chunks_retrieved} {" "}
-                    {msg.pipeline_meta.chunks_retrieved === 1 ? "source" : "sources"} ·{" "}
-                    {getConfidence(msg.pipeline_meta.top_similarity)} confidence
-                  </span>
-                </summary>
-                <div className="mt-2 ml-5 space-y-1">
-                  <p>Embedding: {msg.pipeline_meta.embed_ms}ms</p>
-                  <p>Retrieval: {msg.pipeline_meta.retrieval_ms}ms</p>
-                  <p>Generation: {msg.pipeline_meta.llm_ms}ms</p>
-                  <p>Top similarity: {(msg.pipeline_meta.top_similarity * 100).toFixed(1)}%</p>
-                  <p>Average similarity: {(msg.pipeline_meta.avg_similarity * 100).toFixed(1)}%</p>
-                  <p>Chunks above retrieval threshold: {msg.pipeline_meta.chunks_above_threshold}</p>
-                  <p>Similarity spread: {(msg.pipeline_meta.similarity_spread * 100).toFixed(1)}%</p>
-                  <p>History turns included: {msg.pipeline_meta.chat_history_turns_included}</p>
-                  <div className="border-t border-zinc-700/50 pt-1 mt-1">
-                    <p>Total: {msg.pipeline_meta.total_ms}ms</p>
-                  </div>
-                </div>
-              </details>
-            )}
-
-            {msg.role === "assistant" && msg.retry_query && !msg.streaming && (
-              <button
-                type="button"
-                onClick={() => handleRetry(msg.retry_query!)}
-                disabled={isStreaming}
-                className="ui-btn ui-btn-ghost ui-btn-sm mt-2 ml-2"
-              >
-                Retry
-              </button>
-            )}
-
-            {/* Citations / Sources (collapsed by default, expand on click) */}
-            {msg.sources && msg.sources.length > 0 && (
-              <div className="mt-2 ml-2 max-w-[85%] pt-2 border-t border-zinc-700/50">
-                <button
-                  type="button"
-                  onClick={() => toggleSources(i)}
-                  className="ui-btn ui-btn-ghost ui-btn-sm"
-                >
-                  <svg
-                    className={`w-3 h-3 shrink-0 transition-transform ${expandedSourceIndices.has(i) ? "rotate-90" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    aria-hidden
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
-                  <span>Sources ({msg.sources.length})</span>
-                </button>
-                {expandedSourceIndices.has(i) && (
-                  <div data-sources={i} className="mt-2 grid gap-1.5 max-h-[40vh] overflow-y-auto">
-                    {msg.sources.map((source, idx) => {
-                      const cardKey = `${i}-${idx}`;
-                      const isExpanded = expandedSourceCards.has(cardKey);
-                      const previewLength = 150;
-                      const preview = source.content.substring(0, previewLength).trim();
-                      const remainder = source.content.substring(previewLength).trim();
-                      const hasPageStart = source.page_start !== null && source.page_start !== undefined;
-                      const isWorkspaceSourcePresent = !isWorkspaceMode || (
-                        source.document_id !== undefined
-                        && workspaceDocumentIds?.includes(source.document_id) === true
-                      );
-                      const canJumpToPage = (
-                        hasPageStart
-                        && onCitationClick !== undefined
-                        && isWorkspaceSourcePresent
-                      );
-                      const isDisabledWorkspaceSource = isWorkspaceMode && hasPageStart && !isWorkspaceSourcePresent;
-                      const pageLabel = getSourcePageLabel(source.page_start, source.page_end);
-
-                      return (
-                        <div
-                          key={idx}
-                          onClick={() => {
-                            if (!canJumpToPage || source.page_start === null || source.page_start === undefined) return;
-                            onCitationClick({
-                              page: source.page_start,
-                              snippet: source.content,
-                              documentId: source.document_id,
-                            });
-                          }}
-                          onKeyDown={(event) => {
-                            if (!canJumpToPage || source.page_start === null || source.page_start === undefined) return;
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              onCitationClick({
-                                page: source.page_start,
-                                snippet: source.content,
-                                documentId: source.document_id,
-                              });
-                            }
-                          }}
-                          role={canJumpToPage ? "button" : undefined}
-                          tabIndex={canJumpToPage ? 0 : undefined}
-                          aria-disabled={isDisabledWorkspaceSource || undefined}
-                          className={`bg-zinc-950/50 border border-zinc-800/50 px-2.5 py-2 rounded-lg transition-colors ${
-                            canJumpToPage
-                              ? "cursor-pointer hover:border-lapis-500/60 hover:bg-zinc-900/70"
-                              : isDisabledWorkspaceSource
-                                ? "cursor-not-allowed opacity-60"
-                                : "hover:border-lapis-500/30"
-                          }`}
-                        >
-                          <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                            <span className="badge-sm bg-lapis-600 text-white px-1.5 py-0.5 rounded">
-                              {idx + 1}
-                            </span>
-                            {source.document_filename && (
-                              <span className="text-meta-bright font-medium truncate max-w-full">
-                                {source.document_filename}
-                              </span>
-                            )}
-                            {pageLabel && (
-                              <span className="text-meta rounded border border-zinc-700/80 px-1.5 py-0.5">
-                                {pageLabel}
-                              </span>
-                            )}
-                            {debugMode && (
-                              <span className="text-meta rounded border border-zinc-700/80 px-1.5 py-0.5">
-                                {(source.similarity * 100).toFixed(1)}%
-                              </span>
-                            )}
-                          </div>
-
-                          <p className="text-caption">
-                            &quot;{preview}
-                            {!isExpanded && source.content.length > previewLength ? "..." : ""}
-                            {isExpanded && remainder ? " " : ""}
-                            {isExpanded && remainder ? remainder : ""}&quot;
-                          </p>
-
-                          {source.content.length > previewLength && (
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                toggleSourceCard(i, idx);
-                              }}
-                              className="ui-btn ui-btn-ghost ui-btn-sm mt-2"
-                            >
-                              {isExpanded ? "Show less ▲" : "Show full context ▼"}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
+            messages.map((msg, index) => (
+              <ErrorBoundary key={index} variant="inline">
+                <MessageRow msg={msg} index={index} />
+              </ErrorBoundary>
+            ))}
 
       </div>
     </ErrorBoundary>
