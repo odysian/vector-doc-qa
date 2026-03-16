@@ -15,6 +15,7 @@ frontend_url         = "https://app.example.com"
 backend_port         = 8000
 enable_tls_bootstrap = true
 certbot_email        = "you@example.com"
+github_repository    = "your-org/your-repo"
 
 ssh_public_keys = [
   "ssh-ed25519 AAAA... your-personal-key",

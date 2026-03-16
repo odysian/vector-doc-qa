@@ -150,6 +150,16 @@ variable "github_oidc_provider_id" {
   default     = "github-actions-provider"
 }
 
+variable "github_repository" {
+  description = "GitHub repository in owner/name format for OIDC repository lock and principal set."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[^/ ]+/[^/ ]+$", trimspace(var.github_repository)))
+    error_message = "github_repository must be in owner/repo format."
+  }
+}
+
 variable "terraform_ops_service_account_email" {
   description = "Service account email used by Terraform ops workflow. Leave empty to default to quaero-terraform-ops-sa@<project_id>.iam.gserviceaccount.com."
   type        = string

@@ -54,7 +54,7 @@ provision_tls_certificate() {
       return 0
     fi
 
-    log "certbot attempt $${attempt}/${CERTBOT_RETRY_ATTEMPTS} failed for $${API_DOMAIN}; retrying in 8s"
+    log "certbot attempt $${attempt}/$${CERTBOT_RETRY_ATTEMPTS} failed for $${API_DOMAIN}; retrying in 8s"
     sleep 8
     attempt=$((attempt + 1))
   done
