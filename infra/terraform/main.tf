@@ -137,9 +137,6 @@ resource "google_compute_instance" "backend" {
     enable_tls_bootstrap  = var.enable_tls_bootstrap
     bucket_name           = var.bucket_name
     project_id            = var.project_id
-    github_runner_pat     = var.github_runner_pat
-    github_runner_version = var.github_runner_version
-    github_repository     = var.github_repository
   })
 
   service_account {

@@ -191,7 +191,7 @@ base64 -w 0 /path/to/backend.env
 ```bash
 sudo nginx -t
 sudo systemctl status nginx --no-pager
-sudo systemctl status certbot.timer --no-pager
+sudo test -f /etc/cron.d/certbot-renew && cat /etc/cron.d/certbot-renew
 ```
 
 3. Confirm Ops Agent status (when enabled):

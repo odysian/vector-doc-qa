@@ -138,35 +138,6 @@ variable "enable_secure_boot" {
   default     = true
 }
 
-variable "github_runner_pat" {
-  description = "GitHub PAT used at startup to register the self-hosted Actions runner. Requires repository Administration write permission. Leave empty to skip runner setup."
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "github_runner_version" {
-  description = "Pinned GitHub Actions runner version (semver, no 'v' prefix). Must match an available release on github.com/actions/runner/releases."
-  type        = string
-  default     = "2.323.0"
-
-  validation {
-    condition     = can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.github_runner_version))
-    error_message = "github_runner_version must be a pinned semver string like '2.323.0'."
-  }
-}
-
-variable "github_repository" {
-  description = "GitHub repository allowed to use OIDC for Terraform ops (owner/repo)."
-  type        = string
-  default     = "odysian/vector-doc-qa"
-
-  validation {
-    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
-    error_message = "github_repository must be in owner/repo format."
-  }
-}
-
 variable "github_oidc_pool_id" {
   description = "Workload Identity Pool ID for GitHub Actions OIDC auth."
   type        = string

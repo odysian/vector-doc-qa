@@ -14,6 +14,13 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/quaero-backend
 
+  # Deploy auth (IAP over gcloud + OIDC).
+  GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+  GCP_DEPLOY_SA_EMAIL: ${{ vars.GCP_DEPLOY_SA_EMAIL }}
+  GCP_VM_NAME: ${{ vars.GCP_VM_NAME }}
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_VM_ZONE: ${{ vars.GCP_VM_ZONE }}
+
 jobs:
   enforce-main-branch:
     runs-on: ubuntu-latest
@@ -63,10 +70,11 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: build-and-push
     permissions:
       contents: read
+      id-token: write
 
     steps:
       - name: Checkout
@@ -85,15 +93,49 @@ jobs:
           echo "APP_VERSION=sha-${GITHUB_SHA}" >> backend.env
           chmod 600 backend.env
 
-      - name: Deploy
+      - name: Validate deploy runtime auth config
         run: |
-          mkdir -p /opt/quaero/deploy /opt/quaero/env
-          cp backend.env /opt/quaero/env/backend.env
-          chmod 600 /opt/quaero/env/backend.env
+          set -euo pipefail
+          [ -n "${GCP_WIF_PROVIDER}" ] || { echo "Missing repository variable: GCP_WIF_PROVIDER"; exit 1; }
+          [ -n "${GCP_DEPLOY_SA_EMAIL}" ] || { echo "Missing repository variable: GCP_DEPLOY_SA_EMAIL"; exit 1; }
+          [ -n "${GCP_VM_NAME}" ] || { echo "Missing repository variable: GCP_VM_NAME"; exit 1; }
+          [ -n "${GCP_PROJECT_ID}" ] || { echo "Missing repository variable: GCP_PROJECT_ID"; exit 1; }
+          [ -n "${GCP_VM_ZONE}" ] || { echo "Missing repository variable: GCP_VM_ZONE"; exit 1; }
+          [ -n "${{ secrets.GHCR_USERNAME }}" ] || { echo "Missing required secret: GHCR_USERNAME"; exit 1; }
+          [ -n "${{ secrets.GHCR_TOKEN }}" ] || { echo "Missing required secret: GHCR_TOKEN"; exit 1; }
+
+      - name: Authenticate to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_DEPLOY_SA_EMAIL }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Upload deploy payload
+        run: |
+          set -euo pipefail
           IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
-          GHCR_USERNAME="${{ secrets.GHCR_USERNAME }}" \
-          GHCR_TOKEN="${{ secrets.GHCR_TOKEN }}" \
-          bash ops/deploy_backend.sh "$IMAGE_TAG"
+          REMOTE_HOST="odys@${GCP_VM_NAME}"
+          REMOTE_DIR="/tmp/quaero-deploy"
+
+          gcloud config set project "${GCP_PROJECT_ID}"
+          gcloud compute ssh --zone "${GCP_VM_ZONE}" --project "${GCP_PROJECT_ID}" \
+            --tunnel-through-iap "${REMOTE_HOST}" --command "mkdir -p ${REMOTE_DIR}"
+          gcloud compute scp --zone "${GCP_VM_ZONE}" --project "${GCP_PROJECT_ID}" \
+            --tunnel-through-iap backend.env ops/deploy_backend.sh "${REMOTE_HOST}:${REMOTE_DIR}/"
+
+          gcloud compute ssh --zone "${GCP_VM_ZONE}" --project "${GCP_PROJECT_ID}" \
+            --tunnel-through-iap "${REMOTE_HOST}" --command "set -euo pipefail
+              mkdir -p /opt/quaero/deploy /opt/quaero/env
+              install -m 600 ${REMOTE_DIR}/backend.env /opt/quaero/env/backend.env
+              chmod 755 ${REMOTE_DIR}/deploy_backend.sh
+              GHCR_USERNAME="${{ secrets.GHCR_USERNAME }}" \
+              GHCR_TOKEN="${{ secrets.GHCR_TOKEN }}" \
+              bash ${REMOTE_DIR}/deploy_backend.sh "${IMAGE_TAG}"
+              rm -f ${REMOTE_DIR}/backend.env ${REMOTE_DIR}/deploy_backend.sh
+              "
 
       - name: Cleanup local env file
         if: always()

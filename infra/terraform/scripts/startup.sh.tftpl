@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+set -euo pipefail
 
 SSH_USER="${ssh_user}"
 API_DOMAIN="${api_domain}"
@@ -12,41 +12,20 @@ PROJECT_ID="${project_id}"
 BOOTSTRAP_MARKER="/opt/quaero/.bootstrap_v2_done"
 ENV_FILE="/opt/quaero/env/backend.env"
 NGINX_SITE="/etc/nginx/sites-available/quaero-backend"
+LE_LIVE_DIR="/etc/letsencrypt/live/$${API_DOMAIN}"
+ACME_WEBROOT="/var/www/acme-challenge"
 
-export DEBIAN_FRONTEND=noninteractive
-
-if ! id -u "$${SSH_USER}" >/dev/null 2>&1; then
-  useradd -m -s /bin/bash "$${SSH_USER}"
-fi
-
-install -d -m 755 /opt/quaero
-install -d -m 755 /opt/quaero/deploy
-install -d -m 755 /opt/quaero/env
-install -d -m 755 /opt/quaero/logs
-install -d -m 755 /opt/quaero/nginx
-
-if [[ ! -f "$${BOOTSTRAP_MARKER}" ]]; then
-  apt-get update
-  apt-get install -y ca-certificates curl nginx certbot python3-certbot-nginx
-
-  if ! command -v docker >/dev/null 2>&1; then
-    curl -fsSL https://get.docker.com | sh
-  fi
-
-  systemctl enable --now docker
-  systemctl enable --now certbot.timer || true
-  touch "$${BOOTSTRAP_MARKER}"
-fi
-
-# Always render the NGINX site so proxy updates apply to existing VMs too.
-# The upstream block lives in /opt/quaero/nginx/upstream.conf so the deploy
-# script can atomically switch ports without root access to /etc/nginx.
-cat > "$${NGINX_SITE}" <<EOF
+write_http_nginx_config() {
+  cat > "$${NGINX_SITE}" <<EOF
 include /opt/quaero/nginx/upstream.conf;
 
 server {
     listen 80;
     server_name $${API_DOMAIN};
+
+    location ^~ /.well-known/acme-challenge/ {
+        alias $${ACME_WEBROOT}/;
+    }
 
     # Keep SSE responses truly streaming for the query stream endpoint.
     location ~ ^/api/documents/[0-9]+/query/stream$ {
@@ -75,6 +54,92 @@ server {
     }
 }
 EOF
+}
+
+write_https_nginx_config() {
+  cat > "$${NGINX_SITE}" <<EOF
+include /opt/quaero/nginx/upstream.conf;
+
+server {
+    listen 80;
+    server_name $${API_DOMAIN};
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name $${API_DOMAIN};
+    ssl_certificate $${LE_LIVE_DIR}/fullchain.pem;
+    ssl_certificate_key $${LE_LIVE_DIR}/privkey.pem;
+
+    # Keep SSE responses truly streaming for the query stream endpoint.
+    location ~ ^/api/documents/[0-9]+/query/stream$ {
+        proxy_pass http://quaero_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        gzip off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        send_timeout 3600s;
+        add_header X-Accel-Buffering "no" always;
+    }
+
+    location / {
+        proxy_pass http://quaero_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+}
+
+export DEBIAN_FRONTEND=noninteractive
+
+if ! id -u "$${SSH_USER}" >/dev/null 2>&1; then
+  useradd -m -s /bin/bash "$${SSH_USER}"
+fi
+
+install -d -m 755 /opt/quaero
+install -d -m 755 /opt/quaero/deploy
+install -d -m 755 /opt/quaero/env
+install -d -m 755 /opt/quaero/logs
+install -d -m 755 /opt/quaero/nginx
+
+if [[ ! -f "$${BOOTSTRAP_MARKER}" ]]; then
+  apt-get update
+  apt-get install -y ca-certificates curl nginx python3-venv
+
+  # Install certbot from PyPI and use webroot mode for TLS setup.
+  python3 -m venv /opt/certbot-venv
+  /opt/certbot-venv/bin/pip install --quiet certbot
+  ln -sf /opt/certbot-venv/bin/certbot /usr/bin/certbot
+
+  # Renew twice daily (replaces certbot.timer from apt package).
+  echo "0 0,12 * * * root /opt/certbot-venv/bin/certbot renew --webroot -w $${ACME_WEBROOT} --quiet --post-hook '/usr/sbin/nginx -s reload'" \
+    > /etc/cron.d/certbot-renew
+
+  install -d -m 755 "$${ACME_WEBROOT}"
+
+  if ! command -v docker >/dev/null 2>&1; then
+    curl -fsSL https://get.docker.com | sh
+  fi
+
+  systemctl enable --now docker
+  touch "$${BOOTSTRAP_MARKER}"
+fi
+
+# Always render the HTTP-only NGINX site first so boot succeeds even without TLS.
+# The upstream block lives in /opt/quaero/nginx/upstream.conf so the deploy
+# script can atomically switch ports without root access to /etc/nginx.
+write_http_nginx_config
 
 # Write upstream.conf only when absent so it persists across reboots.
 if [[ ! -f "/opt/quaero/nginx/upstream.conf" ]]; then
@@ -95,25 +160,30 @@ ln -sf "$${NGINX_SITE}" /etc/nginx/sites-enabled/quaero-backend
 rm -f /etc/nginx/sites-enabled/default
 nginx -t
 systemctl enable --now nginx
-systemctl restart nginx
+systemctl reload nginx
 
 if [[ "$${ENABLE_TLS_BOOTSTRAP}" == "true" ]] && [[ -n "$${CERTBOT_EMAIL}" ]]; then
-  if [[ ! -f "/etc/letsencrypt/live/$${API_DOMAIN}/fullchain.pem" ]]; then
-    # First run: obtain certificate and configure NGINX for HTTPS.
-    certbot --nginx --non-interactive --agree-tos \
+  if [[ -f "$${LE_LIVE_DIR}/fullchain.pem" ]] && [[ -f "$${LE_LIVE_DIR}/privkey.pem" ]]; then
+    # Certificate already exists: switch to HTTPS and reload cleanly.
+    write_https_nginx_config
+  else
+    if certbot certonly --non-interactive --agree-tos \
       --email "$${CERTBOT_EMAIL}" \
       --domains "$${API_DOMAIN}" \
-      --redirect
-  else
-    # Cert exists but config was just rewritten above (port 80 only).
-    # Re-inject the SSL blocks and redirect without re-issuing the cert.
-    certbot install --nginx --cert-name "$${API_DOMAIN}" \
-      --non-interactive --redirect
+      --webroot -w "$${ACME_WEBROOT}"; then
+      write_https_nginx_config
+    else
+      echo "WARNING: certbot webroot issuance failed for $${API_DOMAIN}; keeping HTTP-only config."
+    fi
   fi
 
-  # Re-validate TLS rewrite immediately after certbot syncs the HTTPS server blocks.
-  nginx -t
-  systemctl reload nginx
+  if [[ -f "$${LE_LIVE_DIR}/fullchain.pem" ]] && [[ -f "$${LE_LIVE_DIR}/privkey.pem" ]]; then
+    nginx -t
+    systemctl reload nginx || systemctl restart nginx
+  else
+    nginx -t
+    systemctl reload nginx || systemctl restart nginx
+  fi
 fi
 
 if [[ ! -f "$${ENV_FILE}" ]]; then
@@ -138,62 +208,4 @@ fi
 if id -u "$${SSH_USER}" >/dev/null 2>&1; then
   usermod -aG docker "$${SSH_USER}" || true
   chown -R "$${SSH_USER}:$${SSH_USER}" /opt/quaero
-fi
-
-# --- GitHub Actions self-hosted runner ---
-# Runs after usermod so the runner process has docker group membership on first start.
-# Idempotent: skipped on reboots once .runner config file is present.
-GH_RUNNER_PAT="${github_runner_pat}"
-if [[ -n "$${GH_RUNNER_PAT}" ]] && [[ ! -f "/opt/actions-runner/.runner" ]]; then
-  RUNNER_DIR="/opt/actions-runner"
-  RUNNER_ARCHIVE="actions-runner-linux-x64-${github_runner_version}.tar.gz"
-
-  install -d -m 755 "$${RUNNER_DIR}"
-  curl -fsSL \
-    "https://github.com/actions/runner/releases/download/v${github_runner_version}/$${RUNNER_ARCHIVE}" \
-    -o "/tmp/$${RUNNER_ARCHIVE}"
-  tar xzf "/tmp/$${RUNNER_ARCHIVE}" -C "$${RUNNER_DIR}"
-  rm -f "/tmp/$${RUNNER_ARCHIVE}"
-  chown -R "$${SSH_USER}:$${SSH_USER}" "$${RUNNER_DIR}"
-
-  # Exchange the PAT for a short-lived registration token via the GitHub API.
-  REG_TOKEN="$(curl -fsSL \
-    -X POST \
-    -H "Authorization: Bearer $${GH_RUNNER_PAT}" \
-    -H "Accept: application/vnd.github+json" \
-    "https://api.github.com/repos/${github_repository}/actions/runners/registration-token" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")"
-
-  # --replace handles stale registrations left over from a prior VM.
-  sudo -u "$${SSH_USER}" "$${RUNNER_DIR}/config.sh" \
-    --url "https://github.com/${github_repository}" \
-    --token "$${REG_TOKEN}" \
-    --name "quaero-vm" \
-    --labels "self-hosted" \
-    --unattended \
-    --replace
-
-  # Write the systemd unit directly rather than using svc.sh, which behaves
-  # unpredictably when invoked from a root startup script with no TTY.
-  cat > /etc/systemd/system/actions-runner.service <<UNIT
-[Unit]
-Description=GitHub Actions Runner (quaero-vm)
-After=network.target
-
-[Service]
-Type=simple
-User=$${SSH_USER}
-WorkingDirectory=$${RUNNER_DIR}
-ExecStart=$${RUNNER_DIR}/run.sh
-Restart=always
-RestartSec=5
-KillMode=process
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-
-  systemctl daemon-reload
-  systemctl enable actions-runner.service
-  systemctl start actions-runner.service
 fi

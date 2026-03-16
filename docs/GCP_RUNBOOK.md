@@ -42,11 +42,16 @@ Terraform startup bootstrap now handles Docker + NGINX + Certbot + env file stub
 ## GitHub repository secrets
 
 Deploy workflow (IAP tunnel — see ADR-009):
+Repository variables:
 - `GCP_WIF_PROVIDER` — full WIF provider resource name (from `terraform output github_actions_workload_identity_provider`)
 - `GCP_DEPLOY_SA_EMAIL` — deploy service account email (from `terraform output github_deploy_service_account_email`)
 - `GCP_VM_NAME` — VM instance name (e.g. `quaero-backend`)
 - `GCP_PROJECT_ID` — GCP project ID (e.g. `portfolio-488721`)
 - `GCP_VM_ZONE` — VM zone (e.g. `us-east1-b`)
+
+Repository secrets:
+- `GHCR_USERNAME`
+- `GHCR_TOKEN`
 
 ### IAP deploy hardening notes
 
@@ -296,8 +301,8 @@ sudo nginx -t && sudo systemctl reload nginx
 ## Certbot status
 
 ```bash
-sudo systemctl status certbot.timer --no-pager
-sudo certbot renew --dry-run
+sudo test -f /etc/cron.d/certbot-renew && cat /etc/cron.d/certbot-renew
+sudo certbot renew --dry-run --webroot -w /var/www/acme-challenge
 ```
 
 ## Ops Agent status (Terraform-managed)
