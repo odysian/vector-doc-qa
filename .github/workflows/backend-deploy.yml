@@ -129,11 +129,10 @@ jobs:
           gcloud compute ssh --zone "${GCP_VM_ZONE}" --project "${GCP_PROJECT_ID}" \
             --tunnel-through-iap "${REMOTE_HOST}" --command "set -euo pipefail
               mkdir -p /opt/quaero/deploy /opt/quaero/env
-              install -m 600 ${REMOTE_DIR}/backend.env /opt/quaero/env/backend.env
+              sudo install -m 600 ${REMOTE_DIR}/backend.env /opt/quaero/env/backend.env
               chmod 755 ${REMOTE_DIR}/deploy_backend.sh
-              GHCR_USERNAME="${{ secrets.GHCR_USERNAME }}" \
-              GHCR_TOKEN="${{ secrets.GHCR_TOKEN }}" \
-              bash ${REMOTE_DIR}/deploy_backend.sh "${IMAGE_TAG}"
+              sudo GHCR_USERNAME="${{ secrets.GHCR_USERNAME }}" GHCR_TOKEN="${{ secrets.GHCR_TOKEN }}" \
+                bash ${REMOTE_DIR}/deploy_backend.sh "${IMAGE_TAG}"
               rm -f ${REMOTE_DIR}/backend.env ${REMOTE_DIR}/deploy_backend.sh
               "
 
