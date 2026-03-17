@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ChatWindow } from "@/app/components/dashboard/ChatWindow";
 import { chatService } from "@/lib/services/chatService";
 import * as useChatStateModule from "@/lib/hooks/useChatState";
@@ -624,7 +624,7 @@ describe("ChatWindow streaming lifecycle", () => {
     }
   });
 
-  it("shows pipeline details for assistant messages and keeps source similarity debug-only", async () => {
+  it("shows pipeline details only when debug mode is enabled and keeps source similarity debug-only", async () => {
     getMessagesMock.mockResolvedValueOnce({
       messages: [
         {
@@ -668,17 +668,7 @@ describe("ChatWindow streaming lifecycle", () => {
     );
     await screen.findByText("Debuggable answer.");
 
-    expect(screen.getByRole("button", { name: "Toggle pipeline details" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Toggle pipeline details" }));
-    expect(screen.getByText("Confidence")).toBeInTheDocument();
-    expect(screen.getByText("high")).toBeInTheDocument();
-    expect(screen.getByText("Top/Avg similarity")).toBeInTheDocument();
-    expect(screen.getByText("91.0% / 89.0%")).toBeInTheDocument();
-    expect(screen.getByText("Similarity spread")).toBeInTheDocument();
-    expect(screen.getByText("0.0%")).toBeInTheDocument();
-    expect(screen.getByText("1/1")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Toggle pipeline details" }));
-    expect(screen.queryByText("Top/Avg similarity")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Toggle pipeline details" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Sources (1)" }));
     expect(screen.queryByText("91.0%")).not.toBeInTheDocument();
@@ -690,6 +680,24 @@ describe("ChatWindow streaming lifecycle", () => {
         onBack={vi.fn()}
       />
     );
+
+    const copyButton = screen.getByRole("button", { name: "Copy response" });
+    const controlsRow = copyButton.parentElement;
+    expect(controlsRow).not.toBeNull();
+    expect(within(controlsRow!).getByRole("button", { name: "Toggle pipeline details" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle pipeline details" }));
+    expect(screen.getByText("Confidence")).toBeInTheDocument();
+    expect(screen.getByText("high")).toBeInTheDocument();
+    expect(screen.getByText("Top/Avg similarity")).toBeInTheDocument();
+    expect(screen.getByText("91.0% / 89.0%")).toBeInTheDocument();
+    expect(screen.getByText("Similarity spread")).toBeInTheDocument();
+    expect(screen.getByText("0.0%")).toBeInTheDocument();
+    expect(screen.getByText("1/1")).toBeInTheDocument();
+    expect(screen.getByText("Above threshold (cutoff)")).toBeInTheDocument();
+    expect(screen.getByText("History turns")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Toggle pipeline details" }));
+    expect(screen.queryByText("Top/Avg similarity")).not.toBeInTheDocument();
 
     expect(screen.getByText("91.0%")).toBeInTheDocument();
   });
@@ -728,7 +736,7 @@ describe("ChatWindow streaming lifecycle", () => {
       total: 1,
     });
 
-    render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
+    render(<ChatWindow document={documentFixture} debugMode onBack={vi.fn()} />);
     await screen.findByText("Answer with metadata.");
 
     const toggle = screen.getByRole("button", { name: "Toggle pipeline details" });

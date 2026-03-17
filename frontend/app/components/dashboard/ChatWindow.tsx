@@ -35,7 +35,7 @@ interface ChatWindowProps {
   onSessionExpired?: () => void;
 }
 
-function CopyButton({ content }: { content: string }) {
+function CopyButton({ content, className = "" }: { content: string; className?: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = async () => {
     // Guard: clipboard API unavailable in some browsers/contexts.
@@ -55,7 +55,7 @@ function CopyButton({ content }: { content: string }) {
       onClick={() => { void handleCopy(); }}
       title={copied ? "Copied!" : "Copy response"}
       aria-label="Copy response"
-      className="ui-btn ui-btn-ghost ui-btn-sm mt-1 ml-2"
+      className={`ui-btn ui-btn-ghost ui-btn-sm ${className}`.trim()}
     >
       {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
     </button>
@@ -261,13 +261,9 @@ export function ChatWindow({
   function PipelineDetailsPanel({
     meta,
     sourceCount,
-    open,
-    onToggle,
   }: {
     meta: PipelineMeta;
     sourceCount: number;
-    open: boolean;
-    onToggle: () => void;
   }) {
     const topSimilarity = normalizeSimilarity(meta.top_similarity);
     const avgSimilarity = normalizeSimilarity(meta.avg_similarity);
@@ -292,63 +288,58 @@ export function ChatWindow({
     );
 
     return (
-      <div className="mt-1 ml-2">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors"
-          aria-expanded={open}
-          aria-label="Toggle pipeline details"
-        >
-          <svg
-            className={`w-3 h-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 9l-7 7-7-7"
-            />
-          </svg>
-          Pipeline details
-        </button>
-        {open && (
-          <div className="mt-2 rounded-md border border-zinc-700 bg-zinc-900 p-3 text-xs text-zinc-400 space-y-1.5">
-            <StatRow label="Embed" value={`${normalizeCount(meta.embed_ms)} ms`} />
-            <StatRow label="Retrieval" value={`${normalizeCount(meta.retrieval_ms)} ms`} />
-            <StatRow label="LLM" value={`${normalizeCount(meta.llm_ms)} ms`} />
-            <StatRow label="Total" value={`${normalizeCount(meta.total_ms)} ms`} />
-            <StatRow label="Confidence" value={confidence} />
-            <StatRow
-              label="Top/Avg similarity"
-              value={`${(topSimilarity * 100).toFixed(1)}% / ${(avgSimilarity * 100).toFixed(1)}%`}
-            />
-            <StatRow
-              label="Similarity spread"
-              value={`${(normalizeSimilarity(meta.similarity_spread) * 100).toFixed(1)}%`}
-            />
-            <StatRow label="Chunks used" value={`${effectiveChunksUsed}/${chunksRetrieved}`} />
-            {debugMode && (
-              <>
-                <StatRow label="Above threshold (cutoff)" value={`${chunksAboveThreshold}`} />
-                <StatRow label="History turns" value={`${normalizeCount(meta.chat_history_turns_included)}`} />
-              </>
-            )}
-            {tokensIn !== null && (
-              <StatRow
-                label="Tokens in/out"
-                value={`${tokensIn} / ${tokensOut ?? "N/A"}`}
-              />
-            )}
-          </div>
+      <div className="rounded-md border border-zinc-700 bg-zinc-900 p-3 text-xs text-zinc-400 space-y-1.5">
+        <StatRow label="Embed" value={`${normalizeCount(meta.embed_ms)} ms`} />
+        <StatRow label="Retrieval" value={`${normalizeCount(meta.retrieval_ms)} ms`} />
+        <StatRow label="LLM" value={`${normalizeCount(meta.llm_ms)} ms`} />
+        <StatRow label="Total" value={`${normalizeCount(meta.total_ms)} ms`} />
+        <StatRow label="Confidence" value={confidence} />
+        <StatRow
+          label="Top/Avg similarity"
+          value={`${(topSimilarity * 100).toFixed(1)}% / ${(avgSimilarity * 100).toFixed(1)}%`}
+        />
+        <StatRow
+          label="Similarity spread"
+          value={`${(normalizeSimilarity(meta.similarity_spread) * 100).toFixed(1)}%`}
+        />
+        <StatRow label="Chunks used" value={`${effectiveChunksUsed}/${chunksRetrieved}`} />
+        <StatRow label="Above threshold (cutoff)" value={`${chunksAboveThreshold}`} />
+        <StatRow label="History turns" value={`${normalizeCount(meta.chat_history_turns_included)}`} />
+        {tokensIn !== null && (
+          <StatRow
+            label="Tokens in/out"
+            value={`${tokensIn} / ${tokensOut ?? "N/A"}`}
+          />
         )}
       </div>
     );
   }
+
+  const PipelineDetailsToggle = ({ open, onToggle }: { open: boolean; onToggle: () => void }) => (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors"
+      aria-expanded={open}
+      aria-label="Toggle pipeline details"
+    >
+      <svg
+        className={`w-3 h-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        aria-hidden
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M19 9l-7 7-7-7"
+        />
+      </svg>
+      Pipeline details
+    </button>
+  );
 
   const MessageRow = ({
     msg,
@@ -395,18 +386,24 @@ export function ChatWindow({
         </div>
       )}
 
-      {msg.role === "assistant" && !msg.streaming && (
-        <div className="flex items-start">
+      {msg.role === "assistant" && !msg.streaming && (msg.content || (debugMode && msg.pipeline_meta)) && (
+        <div className="mt-1 ml-2 flex items-center gap-2">
           {msg.content && <CopyButton content={msg.content} />}
+          {debugMode && msg.pipeline_meta && (
+            <PipelineDetailsToggle
+              open={expandedPipelineMetaIndices.has(index)}
+              onToggle={() => togglePipelineMeta(index)}
+            />
+          )}
         </div>
       )}
-      {msg.role === "assistant" && !msg.streaming && msg.pipeline_meta && (
-        <PipelineDetailsPanel
-          meta={msg.pipeline_meta}
-          sourceCount={msg.sources?.length ?? 0}
-          open={expandedPipelineMetaIndices.has(index)}
-          onToggle={() => togglePipelineMeta(index)}
-        />
+      {msg.role === "assistant" && !msg.streaming && debugMode && msg.pipeline_meta && expandedPipelineMetaIndices.has(index) && (
+        <div className="mt-2 ml-2">
+          <PipelineDetailsPanel
+            meta={msg.pipeline_meta}
+            sourceCount={msg.sources?.length ?? 0}
+          />
+        </div>
       )}
 
       {msg.role === "assistant" && msg.retry_query && !msg.streaming && (
