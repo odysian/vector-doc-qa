@@ -697,35 +697,22 @@ export function ChatWindow({
     </ErrorBoundary>
 
       {/* Input Area */}
-      <div className="shrink-0 px-3 py-3 border-t border-zinc-800 bg-zinc-900">
+      <div className="shrink-0 px-3 py-3 border-t border-zinc-800 bg-zinc-900 relative">
         <form onSubmit={handleSubmit} className="flex items-end gap-2">
-          <div className="relative flex-1">
-            <textarea
-              ref={composerRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleComposerKeyDown}
-              rows={1}
-              placeholder={
-                isWorkspaceMode
-                  ? "Ask a question across this workspace..."
-                  : "Ask a question about this document..."
-              }
-              className={`ui-input w-full resize-none overflow-y-hidden min-h-11 max-h-36 leading-relaxed${!isWorkspaceMode && messages.length > 0 ? " pr-8" : ""}`}
-              title="Enter to send, Shift+Enter for newline"
-            />
-            {!isWorkspaceMode && messages.length > 0 && (
-              <button
-                type="button"
-                onClick={handleExport}
-                title="Export conversation as Markdown"
-                aria-label="Export conversation"
-                className="absolute bottom-2 right-2 p-0.5 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
-              >
-                <Download size={14} strokeWidth={2} aria-hidden />
-              </button>
-            )}
-          </div>
+          <textarea
+            ref={composerRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleComposerKeyDown}
+            rows={1}
+            placeholder={
+              isWorkspaceMode
+                ? "Ask a question across this workspace..."
+                : "Ask a question about this document..."
+            }
+            className={`ui-input flex-1 resize-none overflow-y-hidden min-h-11 max-h-36 leading-relaxed${!isWorkspaceMode && messages.length > 0 ? " pr-10" : ""}`}
+            title="Enter to send, Shift+Enter for newline"
+          />
           {isStreaming && canStopStream ? (
             <button
               type="button"
@@ -748,6 +735,18 @@ export function ChatWindow({
             </button>
           )}
         </form>
+        {/* Positioned inside textarea's right padding; outside the form so it never affects flex layout */}
+        {!isWorkspaceMode && messages.length > 0 && (
+          <button
+            type="button"
+            onClick={handleExport}
+            title="Export conversation as Markdown"
+            aria-label="Export conversation"
+            className="absolute top-1/2 -translate-y-1/2 right-16 p-1.5 rounded text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+          >
+            <Download size={16} strokeWidth={2} aria-hidden />
+          </button>
+        )}
       </div>
     </div>
   );
