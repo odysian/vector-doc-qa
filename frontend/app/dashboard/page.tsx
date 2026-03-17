@@ -86,6 +86,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
+      if (e.repeat) return;
       const tag = (e.target as HTMLElement).tagName;
       if (e.shiftKey && e.key === "D" && tag !== "INPUT" && tag !== "TEXTAREA") {
         toggleDebugMode();

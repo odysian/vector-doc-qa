@@ -481,6 +481,81 @@ describe("DashboardPage regression behavior", () => {
     expect(localStorage.getItem("quaero_debug_mode")).toBe("true");
   });
 
+  it("Shift+D keyboard shortcut toggles debug mode", async () => {
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [],
+    });
+
+    render(<DashboardPage />);
+    await screen.findByRole("button", { name: "Debug mode (Shift+D)" });
+
+    const debugBtn = screen.getByRole("button", { name: "Debug mode (Shift+D)" });
+    expect(debugBtn).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.keyDown(window, { key: "D", shiftKey: true });
+    expect(debugBtn).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.keyDown(window, { key: "D", shiftKey: true });
+    expect(debugBtn).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("Shift+D shortcut does not fire when repeat or typed in an input", async () => {
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser(),
+      documents: [],
+    });
+
+    render(<DashboardPage />);
+    await screen.findByRole("button", { name: "Debug mode (Shift+D)" });
+
+    const debugBtn = screen.getByRole("button", { name: "Debug mode (Shift+D)" });
+
+    // Held-key repeat event should be ignored
+    fireEvent.keyDown(window, { key: "D", shiftKey: true, repeat: true });
+    expect(debugBtn).toHaveAttribute("aria-pressed", "false");
+
+    // Fired while an input has focus — guard by target tag
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    fireEvent.keyDown(input, { key: "D", shiftKey: true });
+    expect(debugBtn).toHaveAttribute("aria-pressed", "false");
+    document.body.removeChild(input);
+
+    // Fired while a textarea has focus
+    const textarea = document.createElement("textarea");
+    document.body.appendChild(textarea);
+    fireEvent.keyDown(textarea, { key: "D", shiftKey: true });
+    expect(debugBtn).toHaveAttribute("aria-pressed", "false");
+    document.body.removeChild(textarea);
+  });
+
+  it("renders username initial badge and name in header after load", async () => {
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser({ username: "chris" }),
+      documents: [],
+    });
+
+    render(<DashboardPage />);
+    await screen.findByText("chris");
+
+    expect(screen.getByText("C")).toBeInTheDocument();
+    expect(screen.getByText("chris")).toBeInTheDocument();
+  });
+
+  it("does not render username block while username is empty", async () => {
+    getDashboardContextMock.mockResolvedValueOnce({
+      user: makeUser({ username: "" }),
+      documents: [],
+    });
+
+    render(<DashboardPage />);
+    // Confirm page loaded (loading state has cleared) and username area is absent
+    await screen.findByRole("button", { name: "Logout" });
+    // No text that would represent an initials badge or username label
+    expect(screen.queryByTestId("username-badge")).not.toBeInTheDocument();
+  });
+
   it("keeps add-documents dialog open and shows workspace error when add fails", async () => {
     const availableDoc = makeDocument({ id: 901, filename: "workspace-source.pdf" });
     const workspace = makeWorkspace({ id: 21, name: "Roadmap", document_count: 0 });
