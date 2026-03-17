@@ -75,7 +75,6 @@ Quaero is an AI-powered PDF question-answering platform that uses Retrieval Augm
 - **Auth tokens in httpOnly cookies.** `access_token` and `refresh_token` are stored in httpOnly cookies (path-scoped: `/api/` and `/api/auth/` respectively). A readable `csrf_token` cookie is set at `/` and echoed as `X-CSRF-Token` on mutating requests (double-submit CSRF pattern). Because frontend and backend are on different domains, the frontend stores the `csrf_token` value from login/refresh JSON responses in `localStorage` (see ADR-001).
 - **INTEGER primary keys.** Models use `Integer` primary keys, not `BigInteger` as WORKFLOW.md specifies.
 - **Schema isolation.** Database uses `quaero` schema, not the default `public` schema.
-- **No token expiration.** `access_token_expire_minutes` is set to `0` (no expiration) in config.
 
 ---
 
