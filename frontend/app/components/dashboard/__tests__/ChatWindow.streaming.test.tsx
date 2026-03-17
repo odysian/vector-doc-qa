@@ -818,7 +818,7 @@ describe("ChatWindow streaming lifecycle", () => {
     releaseStreamRef.current?.();
   });
 
-  it("clicking copy button writes message content to clipboard", async () => {
+  it("clicking copy button writes message content to clipboard and shows Copied! title", async () => {
     const writeTextMock = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -845,5 +845,70 @@ describe("ChatWindow streaming lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy response" }));
 
     expect(writeTextMock).toHaveBeenCalledWith("Here is your answer.");
+    // Success path: title flips to "Copied!" only after write resolves.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Copy response" })).toHaveAttribute("title", "Copied!");
+    });
+  });
+
+  it("does not show success state when clipboard write is rejected", async () => {
+    const writeTextMock = vi.fn().mockRejectedValue(new Error("Permission denied"));
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: writeTextMock },
+    });
+
+    getMessagesMock.mockResolvedValueOnce({
+      messages: [
+        {
+          id: 6,
+          document_id: documentFixture.id,
+          user_id: documentFixture.user_id,
+          role: "assistant",
+          content: "Answer text.",
+          created_at: "2026-03-02T12:11:00Z",
+        },
+      ],
+      total: 1,
+    });
+
+    render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
+    await screen.findByText("Answer text.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy response" }));
+
+    // Wait for the rejected promise to settle, then confirm no false-success title.
+    await waitFor(() => expect(writeTextMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "Copy response" })).toHaveAttribute("title", "Copy response");
+  });
+
+  it("does not throw when navigator.clipboard is unavailable", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined,
+    });
+
+    getMessagesMock.mockResolvedValueOnce({
+      messages: [
+        {
+          id: 7,
+          document_id: documentFixture.id,
+          user_id: documentFixture.user_id,
+          role: "assistant",
+          content: "No clipboard context.",
+          created_at: "2026-03-02T12:12:00Z",
+        },
+      ],
+      total: 1,
+    });
+
+    render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
+    await screen.findByText("No clipboard context.");
+
+    // Should guard silently — no throw, button still present.
+    expect(() =>
+      fireEvent.click(screen.getByRole("button", { name: "Copy response" }))
+    ).not.toThrow();
+    expect(screen.getByRole("button", { name: "Copy response" })).toHaveAttribute("title", "Copy response");
   });
 });

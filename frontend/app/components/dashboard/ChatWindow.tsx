@@ -37,16 +37,23 @@ interface ChatWindowProps {
 
 function CopyButton({ content }: { content: string }) {
   const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    void navigator.clipboard.writeText(content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+  const handleCopy = async () => {
+    // Guard: clipboard API unavailable in some browsers/contexts.
+    if (!navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(content);
+      // Only show success after confirmed write.
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Write denied or failed — no false-success feedback.
+    }
   };
   return (
     <button
       type="button"
-      onClick={handleCopy}
-      title="Copy response"
+      onClick={() => { void handleCopy(); }}
+      title={copied ? "Copied!" : "Copy response"}
       aria-label="Copy response"
       className="ui-btn ui-btn-ghost ui-btn-sm mt-1 ml-2"
     >
