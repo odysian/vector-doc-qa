@@ -29,12 +29,12 @@ from app.repositories.workspace_repository import (
     create_workspace,
     get_documents_for_user_by_ids,
     get_workspace_for_user,
+    get_workspace_query_preflight,
     list_workspace_document_ids,
     list_workspace_documents,
     list_workspaces_for_user_with_counts,
     remove_workspace_document,
     search_workspace_chunks_by_embedding,
-    workspace_has_searchable_chunks,
 )
 from app.schemas.document import DocumentResponse
 from app.schemas.message import MessageListResponse, MessageResponse
@@ -431,17 +431,16 @@ async def query_workspace_command(
         len(body.query),
     )
 
-    await _get_workspace_for_user_or_404(
-        db=db,
-        workspace_id=workspace_id,
-        user_id=current_user.id,
+    # Single-query preflight: ownership + doc count + chunk existence in one round trip.
+    preflight = await get_workspace_query_preflight(
+        db=db, workspace_id=workspace_id, user_id=current_user.id
     )
-
-    document_count = await count_workspace_documents(db=db, workspace_id=workspace_id)
+    if preflight is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    workspace, document_count, has_chunks = preflight
     if document_count == 0:
         raise HTTPException(status_code=400, detail="Workspace has no documents")
-
-    if not await workspace_has_searchable_chunks(db=db, workspace_id=workspace_id):
+    if not has_chunks:
         raise HTTPException(status_code=400, detail="Workspace has no searchable chunks")
 
     try:
