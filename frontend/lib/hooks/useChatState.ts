@@ -68,6 +68,9 @@ export function useChatState({
   const tokenQueueRef = useRef<string[]>([]);
   const streamDoneRef = useRef(false);
   const drainIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Tracks the active query so stopActiveStream can produce the correct retry label
+  // when the network stream has already finished but the drain is still running.
+  const currentQueryRef = useRef<string>("");
   const canStopStream = !!document && messages.some((message) => message.role === "assistant" && message.streaming);
   const isStreaming = requestInFlight || messages.some((message) => message.role === "assistant" && message.streaming);
   const contextKey = document ? `document:${document.id}` : workspaceId ? `workspace:${workspaceId}` : "none";
@@ -135,8 +138,15 @@ export function useChatState({
 
   const stopActiveStream = useCallback(() => {
     if (!document) return;
-    activeStreamAbortRef.current?.abort();
-  }, [document]);
+    if (activeStreamAbortRef.current) {
+      // Network stream still live — abort it; the catch handler calls clearDrain + markStreamStopped.
+      activeStreamAbortRef.current.abort();
+    } else if (drainIntervalRef.current !== null) {
+      // Network stream done but drain still running — discard queue and finalise immediately.
+      clearDrain();
+      markStreamStopped(currentQueryRef.current);
+    }
+  }, [clearDrain, document, markStreamStopped]);
 
   const submitQuery = useCallback(async (query: string) => {
     const trimmed = query.trim();
@@ -146,6 +156,11 @@ export function useChatState({
     setRequestInFlight(true);
 
     if (document) {
+      // Reset drain state from any previous stream before starting a new one.
+      // Without this, a leftover streamDoneRef=true (e.g. from a zero-token response)
+      // would cause the drain interval to finalise the new stream prematurely.
+      clearDrain();
+      currentQueryRef.current = trimmed;
       const streamController = new AbortController();
       // Ensure only one live document stream at a time.
       activeStreamAbortRef.current?.abort();

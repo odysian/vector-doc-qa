@@ -298,4 +298,84 @@ describe("useChatState", () => {
     expect(hook.result.current.messages.at(-1)?.retry_query).toBeUndefined();
     expect(capturedSignal?.aborted).toBe(true);
   });
+
+  it("zero-token done does not cause premature finalisation on the next stream", async () => {
+    vi.useFakeTimers();
+
+    // Stream A: no tokens, done immediately — leaves streamDoneRef=true if not reset.
+    queryDocumentStreamMock.mockImplementationOnce(async (_documentId, _query, callbacks) => {
+      callbacks.onDone({ message_id: 10 });
+    });
+    // Stream B: one token, done — must complete normally, not be cut short by stale state.
+    queryDocumentStreamMock.mockImplementationOnce(async (_documentId, _query, callbacks) => {
+      callbacks.onToken("Full answer");
+      callbacks.onDone({ message_id: 11 });
+    });
+
+    const { hook } = setupHookHarness();
+    await act(async () => { await vi.runAllTimersAsync(); });
+
+    // Stream A
+    await act(async () => {
+      void hook.result.current.submitQuery("Q1");
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => { await vi.runAllTimersAsync(); });
+
+    // Stream B
+    await act(async () => {
+      void hook.result.current.submitQuery("Q2");
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Tick 1: render token; tick 2: queue empty + done → finalise.
+    await act(async () => { await vi.advanceTimersByTimeAsync(35 * 2); });
+
+    const assistantMessages = hook.result.current.messages.filter((m) => m.role === "assistant");
+    const lastAssistant = assistantMessages.at(-1);
+    expect(lastAssistant?.content).toBe("Full answer");
+    expect(lastAssistant?.streaming).toBe(false);
+    expect(hook.result.current.isStreaming).toBe(false);
+  });
+
+  it("stop during drain discards remaining queued tokens", async () => {
+    vi.useFakeTimers();
+
+    let capturedCallbacks: StreamCallbacks | undefined;
+
+    queryDocumentStreamMock.mockImplementationOnce(async (_documentId, _query, callbacks) => {
+      capturedCallbacks = callbacks as StreamCallbacks;
+      // Emit done immediately so activeStreamAbortRef gets nulled by finally.
+      callbacks.onToken("token-A");
+      callbacks.onToken("token-B");
+      callbacks.onDone({ message_id: 20 });
+    });
+
+    const { hook } = setupHookHarness();
+    await act(async () => { await vi.runAllTimersAsync(); });
+
+    await act(async () => {
+      void hook.result.current.submitQuery("Stop-drain test");
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(capturedCallbacks).toBeDefined();
+
+    // Drain one token so partial content is visible.
+    await act(async () => { await vi.advanceTimersByTimeAsync(35); });
+    const afterOneTick = hook.result.current.messages.find((m) => m.role === "assistant");
+    expect(afterOneTick?.content).toBe("token-A");
+    expect(afterOneTick?.streaming).toBe(true);
+
+    // Stop while token-B is still in the queue.
+    await act(async () => {
+      hook.result.current.stopActiveStream();
+    });
+
+    const stopped = hook.result.current.messages.find((m) => m.role === "assistant");
+    expect(stopped?.content).not.toContain("token-B");
+    expect(stopped?.streaming).toBe(false);
+    expect(stopped?.retry_query).toBe("Stop-drain test");
+    expect(hook.result.current.isStreaming).toBe(false);
+  });
 });
