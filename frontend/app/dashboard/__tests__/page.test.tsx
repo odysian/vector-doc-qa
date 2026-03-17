@@ -473,12 +473,12 @@ describe("DashboardPage regression behavior", () => {
     await screen.findByText("alpha.pdf");
     const debugBtn = screen.getByRole("button", { name: "Debug mode (Shift+D)" });
     expect(debugBtn).toBeInTheDocument();
-    expect(debugBtn).toHaveAttribute("aria-pressed", "false");
+    expect(debugBtn).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.click(debugBtn);
 
-    expect(debugBtn).toHaveAttribute("aria-pressed", "true");
-    expect(localStorage.getItem("quaero_debug_mode")).toBe("true");
+    expect(debugBtn).toHaveAttribute("aria-pressed", "false");
+    expect(localStorage.getItem("quaero_debug_mode")).toBe("false");
   });
 
   it("Shift+D keyboard shortcut toggles debug mode", async () => {
@@ -491,13 +491,13 @@ describe("DashboardPage regression behavior", () => {
     await screen.findByRole("button", { name: "Debug mode (Shift+D)" });
 
     const debugBtn = screen.getByRole("button", { name: "Debug mode (Shift+D)" });
-    expect(debugBtn).toHaveAttribute("aria-pressed", "false");
-
-    fireEvent.keyDown(window, { key: "D", shiftKey: true });
     expect(debugBtn).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.keyDown(window, { key: "D", shiftKey: true });
     expect(debugBtn).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.keyDown(window, { key: "D", shiftKey: true });
+    expect(debugBtn).toHaveAttribute("aria-pressed", "true");
   });
 
   it("Shift+D shortcut does not fire when repeat or typed in an input", async () => {
@@ -513,20 +513,20 @@ describe("DashboardPage regression behavior", () => {
 
     // Held-key repeat event should be ignored
     fireEvent.keyDown(window, { key: "D", shiftKey: true, repeat: true });
-    expect(debugBtn).toHaveAttribute("aria-pressed", "false");
+    expect(debugBtn).toHaveAttribute("aria-pressed", "true");
 
     // Fired while an input has focus — guard by target tag
     const input = document.createElement("input");
     document.body.appendChild(input);
     fireEvent.keyDown(input, { key: "D", shiftKey: true });
-    expect(debugBtn).toHaveAttribute("aria-pressed", "false");
+    expect(debugBtn).toHaveAttribute("aria-pressed", "true");
     document.body.removeChild(input);
 
     // Fired while a textarea has focus
     const textarea = document.createElement("textarea");
     document.body.appendChild(textarea);
     fireEvent.keyDown(textarea, { key: "D", shiftKey: true });
-    expect(debugBtn).toHaveAttribute("aria-pressed", "false");
+    expect(debugBtn).toHaveAttribute("aria-pressed", "true");
     document.body.removeChild(textarea);
   });
 

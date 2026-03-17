@@ -105,7 +105,7 @@ export function useDashboardState({
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("mobile");
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
-  const [debugMode, setDebugMode] = useState(false);
+  const [debugMode, setDebugMode] = useState(true);
   const [isDemoUser, setIsDemoUser] = useState(false);
   const [username, setUsername] = useState("");
   const documentsRef = useRef<Document[]>([]);
@@ -191,10 +191,12 @@ export function useDashboardState({
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      setDebugMode(window.localStorage.getItem(DEBUG_MODE_STORAGE_KEY) === "true");
+      const stored = window.localStorage.getItem(DEBUG_MODE_STORAGE_KEY);
+      // Portfolio default: debug mode is enabled unless user explicitly turned it off.
+      setDebugMode(stored === null ? true : stored === "true");
     } catch {
-      // Keep debug mode disabled if localStorage is unavailable or inaccessible.
-      setDebugMode(false);
+      // Keep debug mode enabled if localStorage is unavailable or inaccessible.
+      setDebugMode(true);
     }
   }, []);
 
