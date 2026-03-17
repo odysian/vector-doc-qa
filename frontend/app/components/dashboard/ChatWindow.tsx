@@ -609,23 +609,12 @@ export function ChatWindow({
           >
             <ArrowLeft size={18} strokeWidth={2} />
           </button>
-          <p className="min-w-0 flex-1 truncate text-sm text-zinc-200">
+          <p className="min-w-0 truncate text-sm text-zinc-200">
             <span className="font-medium text-lapis-400 italic">{resolvedContextTitle}</span>
             {resolvedContextDate && (
               <span className="text-meta"> · {formatDate(resolvedContextDate)}</span>
             )}
           </p>
-          {!isWorkspaceMode && messages.length > 0 && (
-            <button
-              type="button"
-              onClick={handleExport}
-              title="Export conversation as Markdown"
-              className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors shrink-0"
-              aria-label="Export conversation"
-            >
-              <Download className="w-4 h-4" aria-hidden />
-            </button>
-          )}
         </div>
       )}
 
@@ -724,6 +713,17 @@ export function ChatWindow({
             className="ui-input flex-1 resize-none overflow-y-hidden min-h-[44px] max-h-36 leading-relaxed"
             title="Enter to send, Shift+Enter for newline"
           />
+          {!isWorkspaceMode && messages.length > 0 && (
+            <button
+              type="button"
+              onClick={handleExport}
+              title="Export conversation as Markdown"
+              aria-label="Export conversation"
+              className="ui-btn ui-btn-ghost ui-btn-sm shrink-0 self-stretch px-2"
+            >
+              <Download size={16} strokeWidth={2} aria-hidden />
+            </button>
+          )}
           {isStreaming && canStopStream ? (
             <button
               type="button"
