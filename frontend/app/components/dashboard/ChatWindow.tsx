@@ -10,7 +10,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArrowLeft, Check, Copy, Send, Square } from "lucide-react";
 import { formatDate } from "@/lib/utils";
-import type { Document } from "@/lib/api";
+import type { Document, PipelineMeta } from "@/lib/api";
 import { useChatState } from "@/lib/hooks/useChatState";
 import { ErrorBoundary } from "./ErrorBoundary";
 
@@ -35,7 +35,7 @@ interface ChatWindowProps {
   onSessionExpired?: () => void;
 }
 
-function CopyButton({ content }: { content: string }) {
+function CopyButton({ content, className = "" }: { content: string; className?: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = async () => {
     // Guard: clipboard API unavailable in some browsers/contexts.
@@ -55,7 +55,7 @@ function CopyButton({ content }: { content: string }) {
       onClick={() => { void handleCopy(); }}
       title={copied ? "Copied!" : "Copy response"}
       aria-label="Copy response"
-      className="ui-btn ui-btn-ghost ui-btn-sm mt-1 ml-2"
+      className={`ui-btn ui-btn-ghost ui-btn-sm ${className}`.trim()}
     >
       {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
     </button>
@@ -69,6 +69,21 @@ const SUGGESTED_PROMPTS = [
 ];
 const HIGH_CONFIDENCE_THRESHOLD = 0.5864;
 const MEDIUM_CONFIDENCE_THRESHOLD = 0.3699;
+
+const normalizeCount = (value: number | null | undefined): number => {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+};
+
+const normalizeSimilarity = (value: number | null | undefined): number => {
+  const raw = typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return Math.min(1, Math.max(0, raw));
+};
+
+const getConfidence = (topSimilarity: number): "high" | "medium" | "low" => {
+  if (topSimilarity >= HIGH_CONFIDENCE_THRESHOLD) return "high";
+  if (topSimilarity >= MEDIUM_CONFIDENCE_THRESHOLD) return "medium";
+  return "low";
+};
 
 // Only allow http/https/mailto links; unsafe protocols (javascript:, data:, etc.)
 // are rendered as plain spans so assistant content can never produce clickable injection payloads.
@@ -103,6 +118,8 @@ export function ChatWindow({
   const [input, setInput] = useState("");
   const [expandedSourceIndices, setExpandedSourceIndices] = useState<Set<number>>(new Set());
   const [expandedSourceCards, setExpandedSourceCards] = useState<Set<string>>(new Set());
+  const [expandedPipelineMetaIndices, setExpandedPipelineMetaIndices] = useState<Set<string>>(new Set());
+  const contextKey = document ? `document:${document.id}` : workspaceId ? `workspace:${workspaceId}` : "none";
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const hasLoadedHistoryRef = useRef(false);
@@ -147,6 +164,20 @@ export function ChatWindow({
       return next;
     });
   };
+
+  const getPipelineMetaKey = useCallback((messageIndex: number): string => {
+    return `${contextKey}:${messageIndex}`;
+  }, [contextKey]);
+
+  const togglePipelineMeta = useCallback((messageIndex: number) => {
+    const panelKey = getPipelineMetaKey(messageIndex);
+    setExpandedPipelineMetaIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(panelKey)) next.delete(panelKey);
+      else next.add(panelKey);
+      return next;
+    });
+  }, [getPipelineMetaKey]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const container = scrollRef.current;
@@ -233,11 +264,88 @@ export function ChatWindow({
     return `Pages ${pageStart}-${pageEnd}`;
   };
 
-  const getConfidence = (topSimilarity: number): "high" | "medium" | "low" => {
-    if (topSimilarity >= HIGH_CONFIDENCE_THRESHOLD) return "high";
-    if (topSimilarity >= MEDIUM_CONFIDENCE_THRESHOLD) return "medium";
-    return "low";
-  };
+  function PipelineDetailsPanel({
+    meta,
+    sourceCount,
+  }: {
+    meta: PipelineMeta;
+    sourceCount: number;
+  }) {
+    const topSimilarity = normalizeSimilarity(meta.top_similarity);
+    const avgSimilarity = normalizeSimilarity(meta.avg_similarity);
+    const chunksRetrieved = normalizeCount(meta.chunks_retrieved);
+    const chunksAboveThreshold = normalizeCount(meta.chunks_above_threshold);
+    const effectiveChunksUsed = chunksAboveThreshold > 0
+      ? chunksAboveThreshold
+      : Math.min(chunksRetrieved, sourceCount);
+    const confidence = getConfidence(topSimilarity);
+    const tokensIn = meta.llm_input_tokens !== null && meta.llm_input_tokens !== undefined
+      ? normalizeCount(meta.llm_input_tokens)
+      : null;
+    const tokensOut = meta.llm_output_tokens !== null && meta.llm_output_tokens !== undefined
+      ? normalizeCount(meta.llm_output_tokens)
+      : null;
+
+    const StatRow = ({ label, value }: { label: string; value: string }) => (
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4">
+        <span className="text-zinc-500">{label}</span>
+        <span className="text-zinc-300">{value}</span>
+      </div>
+    );
+
+    return (
+      <div className="rounded-md border border-zinc-700 bg-zinc-900 p-3 text-xs text-zinc-400 space-y-1.5">
+        <StatRow label="Embed" value={`${normalizeCount(meta.embed_ms)} ms`} />
+        <StatRow label="Retrieval" value={`${normalizeCount(meta.retrieval_ms)} ms`} />
+        <StatRow label="LLM" value={`${normalizeCount(meta.llm_ms)} ms`} />
+        <StatRow label="Total" value={`${normalizeCount(meta.total_ms)} ms`} />
+        <StatRow label="Confidence" value={confidence} />
+        <StatRow
+          label="Top/Avg similarity"
+          value={`${(topSimilarity * 100).toFixed(1)}% / ${(avgSimilarity * 100).toFixed(1)}%`}
+        />
+        <StatRow
+          label="Similarity spread"
+          value={`${(normalizeSimilarity(meta.similarity_spread) * 100).toFixed(1)}%`}
+        />
+        <StatRow label="Chunks used" value={`${effectiveChunksUsed}/${chunksRetrieved}`} />
+        <StatRow label="Above threshold (cutoff)" value={`${chunksAboveThreshold}`} />
+        <StatRow label="History turns" value={`${normalizeCount(meta.chat_history_turns_included)}`} />
+        {tokensIn !== null && (
+          <StatRow
+            label="Tokens in/out"
+            value={`${tokensIn} / ${tokensOut ?? "N/A"}`}
+          />
+        )}
+      </div>
+    );
+  }
+
+  const PipelineDetailsToggle = ({ open, onToggle }: { open: boolean; onToggle: () => void }) => (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors"
+      aria-expanded={open}
+      aria-label="Toggle pipeline details"
+    >
+      <svg
+        className={`w-3 h-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        aria-hidden
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M19 9l-7 7-7-7"
+        />
+      </svg>
+      Pipeline details
+    </button>
+  );
 
   const MessageRow = ({
     msg,
@@ -284,49 +392,23 @@ export function ChatWindow({
         </div>
       )}
 
-      {msg.role === "assistant" && !msg.streaming && (
-        <div className="flex items-start">
+      {msg.role === "assistant" && !msg.streaming && (msg.content || (debugMode && msg.pipeline_meta)) && (
+        <div className="mt-1 ml-2 flex items-center gap-2">
           {msg.content && <CopyButton content={msg.content} />}
           {debugMode && msg.pipeline_meta && (
-            <details className="mt-2 ml-2 text-xs text-zinc-400 group">
-              <summary className="cursor-pointer list-none flex items-center gap-2 hover:text-zinc-200 transition-colors">
-                <svg
-                  className="w-3 h-3 shrink-0 transition-transform group-open:rotate-90"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  aria-hidden
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-                <span>
-                  {(msg.pipeline_meta.total_ms / 1000).toFixed(1)}s ·{" "}
-                  {(msg.pipeline_meta.avg_similarity * 100).toFixed(0)}% retrieval ·{" "}
-                  {msg.pipeline_meta.chunks_retrieved}{" "}
-                  {msg.pipeline_meta.chunks_retrieved === 1 ? "source" : "sources"} ·{" "}
-                  {getConfidence(msg.pipeline_meta.top_similarity)} confidence
-                </span>
-              </summary>
-              <div className="mt-2 ml-5 space-y-1">
-                <p>Embedding: {msg.pipeline_meta.embed_ms}ms</p>
-                <p>Retrieval: {msg.pipeline_meta.retrieval_ms}ms</p>
-                <p>Generation: {msg.pipeline_meta.llm_ms}ms</p>
-                <p>Top similarity: {(msg.pipeline_meta.top_similarity * 100).toFixed(1)}%</p>
-                <p>Average similarity: {(msg.pipeline_meta.avg_similarity * 100).toFixed(1)}%</p>
-                <p>Chunks above retrieval threshold: {msg.pipeline_meta.chunks_above_threshold}</p>
-                <p>Similarity spread: {(msg.pipeline_meta.similarity_spread * 100).toFixed(1)}%</p>
-                <p>History turns included: {msg.pipeline_meta.chat_history_turns_included}</p>
-                <div className="border-t border-zinc-700/50 pt-1 mt-1">
-                  <p>Total: {msg.pipeline_meta.total_ms}ms</p>
-                </div>
-              </div>
-            </details>
+            <PipelineDetailsToggle
+              open={expandedPipelineMetaIndices.has(getPipelineMetaKey(index))}
+              onToggle={() => togglePipelineMeta(index)}
+            />
           )}
+        </div>
+      )}
+      {msg.role === "assistant" && !msg.streaming && debugMode && msg.pipeline_meta && expandedPipelineMetaIndices.has(getPipelineMetaKey(index)) && (
+        <div className="mt-2 ml-2">
+          <PipelineDetailsPanel
+            meta={msg.pipeline_meta}
+            sourceCount={msg.sources?.length ?? 0}
+          />
         </div>
       )}
 

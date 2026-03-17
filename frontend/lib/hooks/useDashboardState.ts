@@ -22,6 +22,18 @@ const POLL_INITIAL_DELAY_MS = 3000;
 const POLL_MAX_DELAY_MS = 10000;
 const DEBUG_MODE_STORAGE_KEY = "quaero_debug_mode";
 
+const readStoredDebugMode = (): boolean => {
+  if (typeof window === "undefined") return true;
+  try {
+    const stored = window.localStorage.getItem(DEBUG_MODE_STORAGE_KEY);
+    // Portfolio default: debug mode is enabled unless user explicitly turned it off.
+    return stored === null ? true : stored === "true";
+  } catch {
+    // Keep debug mode enabled if localStorage is unavailable or inaccessible.
+    return true;
+  }
+};
+
 export type MobileTab = "pdf" | "chat";
 export type DashboardMode = "documents" | "workspaces";
 export type LayoutMode = "mobile" | "compact" | "desktop";
@@ -105,7 +117,7 @@ export function useDashboardState({
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("mobile");
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
-  const [debugMode, setDebugMode] = useState(false);
+  const [debugMode, setDebugMode] = useState(() => readStoredDebugMode());
   const [isDemoUser, setIsDemoUser] = useState(false);
   const [username, setUsername] = useState("");
   const documentsRef = useRef<Document[]>([]);
@@ -187,16 +199,6 @@ export function useDashboardState({
   useEffect(() => {
     documentsRef.current = documents;
   }, [documents]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      setDebugMode(window.localStorage.getItem(DEBUG_MODE_STORAGE_KEY) === "true");
-    } catch {
-      // Keep debug mode disabled if localStorage is unavailable or inaccessible.
-      setDebugMode(false);
-    }
-  }, []);
 
   useEffect(() => {
     if (!selectedDocument) return;

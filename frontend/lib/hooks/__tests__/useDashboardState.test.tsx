@@ -73,6 +73,7 @@ describe("useDashboardState", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     onSessionExpiredMock.mockReset();
     isLoggedInMock.mockReturnValue(true);
     getDashboardContextMock.mockResolvedValue({
@@ -110,6 +111,15 @@ describe("useDashboardState", () => {
 
     expect(hook.result.current.documents).toEqual([doc]);
     expect(hook.result.current.isDemoUser).toBe(false);
+  });
+
+  it("applies persisted debug mode preference on initial render", async () => {
+    localStorage.setItem("quaero_debug_mode", "false");
+
+    const { hook } = setupHookHarness();
+
+    // Assert immediately so initial paint reflects persisted preference.
+    expect(hook.result.current.debugMode).toBe(false);
   });
 
   it(
