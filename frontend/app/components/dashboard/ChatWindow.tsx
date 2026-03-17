@@ -699,31 +699,33 @@ export function ChatWindow({
       {/* Input Area */}
       <div className="shrink-0 px-3 py-3 border-t border-zinc-800 bg-zinc-900">
         <form onSubmit={handleSubmit} className="flex items-end gap-2">
-          <textarea
-            ref={composerRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleComposerKeyDown}
-            rows={1}
-            placeholder={
-              isWorkspaceMode
-                ? "Ask a question across this workspace..."
-                : "Ask a question about this document..."
-            }
-            className="ui-input flex-1 resize-none overflow-y-hidden min-h-[44px] max-h-36 leading-relaxed"
-            title="Enter to send, Shift+Enter for newline"
-          />
-          {!isWorkspaceMode && messages.length > 0 && (
-            <button
-              type="button"
-              onClick={handleExport}
-              title="Export conversation as Markdown"
-              aria-label="Export conversation"
-              className="ui-btn ui-btn-ghost ui-btn-sm shrink-0 self-stretch px-2"
-            >
-              <Download size={16} strokeWidth={2} aria-hidden />
-            </button>
-          )}
+          <div className="relative flex-1">
+            <textarea
+              ref={composerRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleComposerKeyDown}
+              rows={1}
+              placeholder={
+                isWorkspaceMode
+                  ? "Ask a question across this workspace..."
+                  : "Ask a question about this document..."
+              }
+              className={`ui-input w-full resize-none overflow-y-hidden min-h-11 max-h-36 leading-relaxed${!isWorkspaceMode && messages.length > 0 ? " pr-8" : ""}`}
+              title="Enter to send, Shift+Enter for newline"
+            />
+            {!isWorkspaceMode && messages.length > 0 && (
+              <button
+                type="button"
+                onClick={handleExport}
+                title="Export conversation as Markdown"
+                aria-label="Export conversation"
+                className="absolute bottom-2 right-2 p-0.5 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                <Download size={14} strokeWidth={2} aria-hidden />
+              </button>
+            )}
+          </div>
           {isStreaming && canStopStream ? (
             <button
               type="button"
