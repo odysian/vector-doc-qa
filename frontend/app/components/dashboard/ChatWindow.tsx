@@ -118,7 +118,8 @@ export function ChatWindow({
   const [input, setInput] = useState("");
   const [expandedSourceIndices, setExpandedSourceIndices] = useState<Set<number>>(new Set());
   const [expandedSourceCards, setExpandedSourceCards] = useState<Set<string>>(new Set());
-  const [expandedPipelineMetaIndices, setExpandedPipelineMetaIndices] = useState<Set<number>>(new Set());
+  const [expandedPipelineMetaIndices, setExpandedPipelineMetaIndices] = useState<Set<string>>(new Set());
+  const contextKey = document ? `document:${document.id}` : workspaceId ? `workspace:${workspaceId}` : "none";
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const hasLoadedHistoryRef = useRef(false);
@@ -164,14 +165,19 @@ export function ChatWindow({
     });
   };
 
+  const getPipelineMetaKey = useCallback((messageIndex: number): string => {
+    return `${contextKey}:${messageIndex}`;
+  }, [contextKey]);
+
   const togglePipelineMeta = useCallback((messageIndex: number) => {
+    const panelKey = getPipelineMetaKey(messageIndex);
     setExpandedPipelineMetaIndices((prev) => {
       const next = new Set(prev);
-      if (next.has(messageIndex)) next.delete(messageIndex);
-      else next.add(messageIndex);
+      if (next.has(panelKey)) next.delete(panelKey);
+      else next.add(panelKey);
       return next;
     });
-  }, []);
+  }, [getPipelineMetaKey]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const container = scrollRef.current;
@@ -391,13 +397,13 @@ export function ChatWindow({
           {msg.content && <CopyButton content={msg.content} />}
           {debugMode && msg.pipeline_meta && (
             <PipelineDetailsToggle
-              open={expandedPipelineMetaIndices.has(index)}
+              open={expandedPipelineMetaIndices.has(getPipelineMetaKey(index))}
               onToggle={() => togglePipelineMeta(index)}
             />
           )}
         </div>
       )}
-      {msg.role === "assistant" && !msg.streaming && debugMode && msg.pipeline_meta && expandedPipelineMetaIndices.has(index) && (
+      {msg.role === "assistant" && !msg.streaming && debugMode && msg.pipeline_meta && expandedPipelineMetaIndices.has(getPipelineMetaKey(index)) && (
         <div className="mt-2 ml-2">
           <PipelineDetailsPanel
             meta={msg.pipeline_meta}

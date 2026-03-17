@@ -755,6 +755,81 @@ describe("ChatWindow streaming lifecycle", () => {
     expect(screen.getByRole("button", { name: "Toggle pipeline details" })).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("resets expanded pipeline details when switching chat context", async () => {
+    const secondDocument: Document = {
+      ...documentFixture,
+      id: 8,
+      filename: "chapter-2.pdf",
+    };
+
+    getMessagesMock
+      .mockResolvedValueOnce({
+        messages: [
+          {
+            id: 31,
+            document_id: documentFixture.id,
+            user_id: documentFixture.user_id,
+            role: "assistant",
+            content: "First document answer.",
+            sources: [{ chunk_id: 1, content: "One", similarity: 0.7, chunk_index: 0 }],
+            pipeline_meta: {
+              embed_ms: 10,
+              retrieval_ms: 20,
+              llm_ms: 30,
+              total_ms: 60,
+              top_similarity: 0.7,
+              avg_similarity: 0.6,
+              chunks_retrieved: 1,
+              chunks_above_threshold: 1,
+              similarity_spread: 0.1,
+              chat_history_turns_included: 1,
+            },
+            created_at: "2026-03-02T12:04:00Z",
+          },
+        ],
+        total: 1,
+      })
+      .mockResolvedValueOnce({
+        messages: [
+          {
+            id: 32,
+            document_id: secondDocument.id,
+            user_id: secondDocument.user_id,
+            role: "assistant",
+            content: "Second document answer.",
+            sources: [{ chunk_id: 2, content: "Two", similarity: 0.65, chunk_index: 0 }],
+            pipeline_meta: {
+              embed_ms: 11,
+              retrieval_ms: 21,
+              llm_ms: 31,
+              total_ms: 63,
+              top_similarity: 0.65,
+              avg_similarity: 0.62,
+              chunks_retrieved: 1,
+              chunks_above_threshold: 1,
+              similarity_spread: 0.03,
+              chat_history_turns_included: 2,
+            },
+            created_at: "2026-03-02T12:05:00Z",
+          },
+        ],
+        total: 1,
+      });
+
+    const { rerender } = render(<ChatWindow document={documentFixture} debugMode onBack={vi.fn()} />);
+    await screen.findByText("First document answer.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle pipeline details" }));
+    expect(screen.getByText("Top/Avg similarity")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Toggle pipeline details" })).toHaveAttribute("aria-expanded", "true");
+
+    rerender(<ChatWindow document={secondDocument} debugMode onBack={vi.fn()} />);
+    await screen.findByText("Second document answer.");
+
+    expect(screen.queryByText("Top/Avg similarity")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Toggle pipeline details" })).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("renders inline boundary fallback and reload control when message rendering throws", async () => {
     const reloadSpy = vi.fn();
     vi.stubGlobal("location", {
