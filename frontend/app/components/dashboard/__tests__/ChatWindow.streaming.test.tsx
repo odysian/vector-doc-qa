@@ -670,8 +670,11 @@ describe("ChatWindow streaming lifecycle", () => {
 
     expect(screen.getByRole("button", { name: "Toggle pipeline details" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Toggle pipeline details" }));
+    expect(screen.getByText("Confidence")).toBeInTheDocument();
+    expect(screen.getByText("high")).toBeInTheDocument();
     expect(screen.getByText("Top similarity")).toBeInTheDocument();
     expect(screen.getByText("91.0%")).toBeInTheDocument();
+    expect(screen.getByText("1/1")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Toggle pipeline details" }));
     expect(screen.queryByText("Top similarity")).not.toBeInTheDocument();
 
@@ -687,6 +690,59 @@ describe("ChatWindow streaming lifecycle", () => {
     );
 
     expect(screen.getByText("91.0%")).toBeInTheDocument();
+  });
+
+  it("keeps pipeline details expanded across non-pipeline parent rerenders", async () => {
+    getMessagesMock.mockResolvedValueOnce({
+      messages: [
+        {
+          id: 21,
+          document_id: documentFixture.id,
+          user_id: documentFixture.user_id,
+          role: "assistant",
+          content: "Answer with metadata.",
+          sources: [
+            { chunk_id: 1, content: "One", similarity: 0.8, chunk_index: 0 },
+            { chunk_id: 2, content: "Two", similarity: 0.7, chunk_index: 1 },
+            { chunk_id: 3, content: "Three", similarity: 0.6, chunk_index: 2 },
+            { chunk_id: 4, content: "Four", similarity: 0.5, chunk_index: 3 },
+            { chunk_id: 5, content: "Five", similarity: 0.4, chunk_index: 4 },
+          ],
+          pipeline_meta: {
+            embed_ms: 10,
+            retrieval_ms: 20,
+            llm_ms: 30,
+            total_ms: 60,
+            top_similarity: 0.55,
+            avg_similarity: 0.48,
+            chunks_retrieved: 5,
+            chunks_above_threshold: 0,
+            similarity_spread: 0.15,
+            chat_history_turns_included: 1,
+          },
+          created_at: "2026-03-02T12:04:00Z",
+        },
+      ],
+      total: 1,
+    });
+
+    render(<ChatWindow document={documentFixture} onBack={vi.fn()} />);
+    await screen.findByText("Answer with metadata.");
+
+    const toggle = screen.getByRole("button", { name: "Toggle pipeline details" });
+    fireEvent.click(toggle);
+
+    expect(screen.getByText("Confidence")).toBeInTheDocument();
+    expect(screen.getByText("medium")).toBeInTheDocument();
+    expect(screen.getByText("5/5")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Toggle pipeline details" })).toHaveAttribute("aria-expanded", "true");
+
+    const composer = screen.getByPlaceholderText("Ask a question about this document...");
+    fireEvent.change(composer, { target: { value: "Trigger parent rerender" } });
+
+    expect(screen.getByText("Confidence")).toBeInTheDocument();
+    expect(screen.getByText("5/5")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Toggle pipeline details" })).toHaveAttribute("aria-expanded", "true");
   });
 
   it("renders inline boundary fallback and reload control when message rendering throws", async () => {

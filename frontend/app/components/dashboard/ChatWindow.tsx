@@ -67,6 +67,23 @@ const SUGGESTED_PROMPTS = [
   "What are the main points?",
   "Find key dates or numbers",
 ];
+const HIGH_CONFIDENCE_THRESHOLD = 0.5864;
+const MEDIUM_CONFIDENCE_THRESHOLD = 0.3699;
+
+const normalizeCount = (value: number | null | undefined): number => {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+};
+
+const normalizeSimilarity = (value: number | null | undefined): number => {
+  const raw = typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return Math.min(1, Math.max(0, raw));
+};
+
+const getConfidence = (topSimilarity: number): "high" | "medium" | "low" => {
+  if (topSimilarity >= HIGH_CONFIDENCE_THRESHOLD) return "high";
+  if (topSimilarity >= MEDIUM_CONFIDENCE_THRESHOLD) return "medium";
+  return "low";
+};
 
 // Only allow http/https/mailto links; unsafe protocols (javascript:, data:, etc.)
 // are rendered as plain spans so assistant content can never produce clickable injection payloads.
@@ -101,6 +118,7 @@ export function ChatWindow({
   const [input, setInput] = useState("");
   const [expandedSourceIndices, setExpandedSourceIndices] = useState<Set<number>>(new Set());
   const [expandedSourceCards, setExpandedSourceCards] = useState<Set<string>>(new Set());
+  const [expandedPipelineMetaIndices, setExpandedPipelineMetaIndices] = useState<Set<number>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const hasLoadedHistoryRef = useRef(false);
@@ -145,6 +163,15 @@ export function ChatWindow({
       return next;
     });
   };
+
+  const togglePipelineMeta = useCallback((messageIndex: number) => {
+    setExpandedPipelineMetaIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageIndex)) next.delete(messageIndex);
+      else next.add(messageIndex);
+      return next;
+    });
+  }, []);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const container = scrollRef.current;
@@ -231,14 +258,31 @@ export function ChatWindow({
     return `Pages ${pageStart}-${pageEnd}`;
   };
 
-  function PipelineDetailsPanel({ meta }: { meta: PipelineMeta }) {
-    const [open, setOpen] = useState(false);
+  function PipelineDetailsPanel({
+    meta,
+    sourceCount,
+    open,
+    onToggle,
+  }: {
+    meta: PipelineMeta;
+    sourceCount: number;
+    open: boolean;
+    onToggle: () => void;
+  }) {
+    const topSimilarity = normalizeSimilarity(meta.top_similarity);
+    const avgSimilarity = normalizeSimilarity(meta.avg_similarity);
+    const chunksRetrieved = normalizeCount(meta.chunks_retrieved);
+    const chunksAboveThreshold = normalizeCount(meta.chunks_above_threshold);
+    const effectiveChunksUsed = chunksAboveThreshold > 0
+      ? chunksAboveThreshold
+      : Math.min(chunksRetrieved, sourceCount);
+    const confidence = getConfidence(topSimilarity);
 
     return (
       <div className="mt-1 ml-2">
         <button
           type="button"
-          onClick={() => setOpen((previous) => !previous)}
+          onClick={onToggle}
           className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors"
           aria-expanded={open}
           aria-label="Toggle pipeline details"
@@ -262,25 +306,37 @@ export function ChatWindow({
         {open && (
           <div className="mt-2 rounded-md border border-zinc-700 bg-zinc-900 p-3 text-xs text-zinc-400 grid grid-cols-2 gap-x-4 gap-y-1">
             <span className="text-zinc-500">Embed</span>
-            <span>{meta.embed_ms} ms</span>
+            <span>{normalizeCount(meta.embed_ms)} ms</span>
             <span className="text-zinc-500">Retrieval</span>
-            <span>{meta.retrieval_ms} ms</span>
+            <span>{normalizeCount(meta.retrieval_ms)} ms</span>
             <span className="text-zinc-500">LLM</span>
-            <span>{meta.llm_ms} ms</span>
+            <span>{normalizeCount(meta.llm_ms)} ms</span>
             <span className="text-zinc-500">Total</span>
-            <span className="font-medium text-zinc-300">{meta.total_ms} ms</span>
+            <span className="font-medium text-zinc-300">{normalizeCount(meta.total_ms)} ms</span>
+            <span className="text-zinc-500">Confidence</span>
+            <span className="capitalize">{confidence}</span>
             <span className="text-zinc-500">Top similarity</span>
-            <span>{(meta.top_similarity * 100).toFixed(1)}%</span>
+            <span>{(topSimilarity * 100).toFixed(1)}%</span>
             <span className="text-zinc-500">Avg similarity</span>
-            <span>{(meta.avg_similarity * 100).toFixed(1)}%</span>
+            <span>{(avgSimilarity * 100).toFixed(1)}%</span>
             <span className="text-zinc-500">Chunks used</span>
-            <span>{meta.chunks_above_threshold}/{meta.chunks_retrieved}</span>
+            <span>{effectiveChunksUsed}/{chunksRetrieved}</span>
+            {debugMode && (
+              <>
+                <span className="text-zinc-500">Above threshold</span>
+                <span>{chunksAboveThreshold}</span>
+                <span className="text-zinc-500">Similarity spread</span>
+                <span>{(normalizeSimilarity(meta.similarity_spread) * 100).toFixed(1)}%</span>
+                <span className="text-zinc-500">History turns</span>
+                <span>{normalizeCount(meta.chat_history_turns_included)}</span>
+              </>
+            )}
             {meta.llm_input_tokens !== undefined && meta.llm_input_tokens !== null && (
               <>
                 <span className="text-zinc-500">Tokens in</span>
-                <span>{meta.llm_input_tokens}</span>
+                <span>{normalizeCount(meta.llm_input_tokens)}</span>
                 <span className="text-zinc-500">Tokens out</span>
-                <span>{meta.llm_output_tokens ?? 0}</span>
+                <span>{meta.llm_output_tokens !== null && meta.llm_output_tokens !== undefined ? normalizeCount(meta.llm_output_tokens) : "N/A"}</span>
               </>
             )}
           </div>
@@ -340,7 +396,12 @@ export function ChatWindow({
         </div>
       )}
       {msg.role === "assistant" && !msg.streaming && msg.pipeline_meta && (
-        <PipelineDetailsPanel meta={msg.pipeline_meta} />
+        <PipelineDetailsPanel
+          meta={msg.pipeline_meta}
+          sourceCount={msg.sources?.length ?? 0}
+          open={expandedPipelineMetaIndices.has(index)}
+          onToggle={() => togglePipelineMeta(index)}
+        />
       )}
 
       {msg.role === "assistant" && msg.retry_query && !msg.streaming && (
