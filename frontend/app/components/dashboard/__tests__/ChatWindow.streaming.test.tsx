@@ -191,7 +191,8 @@ describe("ChatWindow streaming lifecycle", () => {
     });
 
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
-    expect(container.querySelectorAll("div.rounded-2xl")).toHaveLength(2);
+    // Exactly one assistant row — no duplicate error bubbles.
+    expect(container.querySelectorAll('[data-testid="message-row-assistant"]')).toHaveLength(1);
   });
 
   it("scrolls to bottom once after history load, then auto-scrolls on new messages", async () => {
@@ -407,7 +408,8 @@ describe("ChatWindow streaming lifecycle", () => {
     fireEvent.submit(form as HTMLFormElement);
 
     await waitFor(() => expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1));
-    expect(container.querySelectorAll("div.rounded-2xl")).toHaveLength(2);
+    // Exactly one assistant placeholder — rapid double-submit must not produce duplicates.
+    expect(container.querySelectorAll('[data-testid="message-row-assistant"]')).toHaveLength(1);
 
     const streamCallbacks = queryDocumentStreamMock.mock.calls[0]?.[2] as StreamCallbacks | undefined;
     streamCallbacks?.onDone({ message_id: 303 });

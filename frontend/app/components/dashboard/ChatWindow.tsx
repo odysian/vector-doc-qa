@@ -220,43 +220,45 @@ export function ChatWindow({
     index: number;
   }) => (
     <div
+      data-testid={`message-row-${msg.role}`}
       className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
+      title={msg.role === "assistant" && msg.created_at ? formatDate(msg.created_at) : undefined}
     >
-      {/* Message Bubble */}
-      <div
-        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-sm ${
-          msg.role === "user"
-            ? "bg-lapis-600 text-white rounded-tr-none"
-            : "bg-zinc-800 text-zinc-100 rounded-tl-none border border-zinc-700"
-        }`}
-        title={msg.created_at ? formatDate(msg.created_at) : undefined}
-      >
-        {msg.role === "assistant" && msg.streaming && !msg.content ? (
-          <div className="flex items-center gap-2 text-zinc-400">
-            <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-            <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-            <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-          </div>
-        ) : msg.role === "assistant" ? (
-          <>
-            <div className="chat-prose text-body-sm leading-relaxed">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {msg.content}
-              </ReactMarkdown>
-            </div>
-            {msg.streaming && msg.content && (
-              <span className="streaming-cursor" aria-hidden />
-            )}
-          </>
-        ) : (
+      {/* Message Bubble — user keeps lapis bubble; assistant renders flat at full width */}
+      {msg.role === "user" ? (
+        <div
+          className="max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-sm bg-lapis-600 text-white rounded-tr-none"
+          title={msg.created_at ? formatDate(msg.created_at) : undefined}
+        >
           <p className="whitespace-pre-wrap text-body-sm leading-relaxed">
             {msg.content}
           </p>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="w-full py-1 text-zinc-100">
+          {msg.streaming && !msg.content ? (
+            <div className="flex items-center gap-2 text-zinc-400">
+              <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+              <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+              <div className="w-2 h-2 bg-lapis-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+            </div>
+          ) : (
+            <>
+              <div className="chat-prose text-body-sm leading-relaxed">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  {msg.content}
+                </ReactMarkdown>
+              </div>
+              {msg.streaming && msg.content && (
+                <span className="streaming-cursor" aria-hidden />
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {debugMode && msg.role === "assistant" && msg.pipeline_meta && (
-        <details className="mt-2 ml-2 max-w-[85%] text-xs text-zinc-400 group">
+        <details className="mt-2 ml-2 text-xs text-zinc-400 group">
           <summary className="cursor-pointer list-none flex items-center gap-2 hover:text-zinc-200 transition-colors">
             <svg
               className="w-3 h-3 shrink-0 transition-transform group-open:rotate-90"
@@ -309,7 +311,7 @@ export function ChatWindow({
 
       {/* Citations / Sources (collapsed by default, expand on click) */}
       {msg.sources && msg.sources.length > 0 && (
-        <div className="mt-2 ml-2 max-w-[85%] pt-2 border-t border-zinc-700/50">
+        <div className="mt-2 ml-2 pt-2 border-t border-zinc-700/50">
           <button
             type="button"
             onClick={() => toggleSources(index)}
