@@ -150,6 +150,44 @@ async def remove_workspace_document(
     return deleted_id is not None
 
 
+async def get_workspace_query_preflight(
+    *,
+    db: AsyncSession,
+    workspace_id: int,
+    user_id: int,
+) -> tuple[Workspace, int, bool] | None:
+    """
+    Single-query preflight for workspace RAG queries.
+
+    Returns (workspace, document_count, has_searchable_chunks) if the workspace
+    exists and is owned by user_id, or None if not found/unauthorized.
+    """
+    doc_count_subq = (
+        select(func.count(WorkspaceDocument.id))
+        .where(WorkspaceDocument.workspace_id == workspace_id)
+        .scalar_subquery()
+    )
+    chunk_exists_subq = (
+        select(literal(1))
+        .select_from(WorkspaceDocument)
+        .join(Chunk, Chunk.document_id == WorkspaceDocument.document_id)
+        .where(WorkspaceDocument.workspace_id == workspace_id)
+        .where(Chunk.embedding.isnot(None))
+        .limit(1)
+        .exists()
+    )
+    stmt = (
+        select(Workspace, doc_count_subq, chunk_exists_subq)
+        .where(Workspace.id == workspace_id)
+        .where(Workspace.user_id == user_id)
+    )
+    row = (await db.execute(stmt)).one_or_none()
+    if row is None:
+        return None
+    workspace, doc_count, has_chunks = row
+    return workspace, int(doc_count or 0), bool(has_chunks)
+
+
 async def workspace_has_searchable_chunks(
     *,
     db: AsyncSession,
