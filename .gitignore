@@ -65,14 +65,21 @@ override.tf.json
 *_override.tf.json
 infra/terraform/envs/prod.tfvars
 
+# Backend
+backend/.pytest_cache/
+backend/.coverage
+
 # Frontend
 frontend/node_modules/
 frontend/.next/
 frontend/out/
 frontend/build/
+frontend/coverage/
 notes/
 scratch.txt
 COMMANDS.md
+
+coverage/
 
 # Generated eval reports
 backend/reports/
@@ -96,3 +103,4 @@ plans/
 testfiles/
 gptdocs/
 docs/learning
+.codex/
