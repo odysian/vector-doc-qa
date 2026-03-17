@@ -4,7 +4,7 @@
  */
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -59,6 +59,7 @@ export default function DashboardPage() {
     desktopSidebarCollapsed,
     debugMode,
     isDemoUser,
+    username,
     toggleDebugMode,
     clearError,
     handleUpload,
@@ -82,6 +83,17 @@ export default function DashboardPage() {
     setMobileTab,
     setDesktopSidebarCollapsed,
   } = useDashboardState({ onSessionExpired: handleSessionExpired });
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (e.shiftKey && e.key === "D" && tag !== "INPUT" && tag !== "TEXTAREA") {
+        toggleDebugMode();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [toggleDebugMode]);
 
   const handleConfirmWorkspaceDelete = useCallback(async () => {
     if (!workspaceToDelete) return;
@@ -299,13 +311,23 @@ export default function DashboardPage() {
                 type="button"
                 onClick={toggleDebugMode}
                 aria-pressed={debugMode}
+                title="Debug mode (Shift+D)"
                 className={`ui-btn ui-btn-sm ${
                   debugMode ? "ui-btn-secondary" : "ui-btn-ghost"
                 }`}
               >
                 <Settings2 size={14} aria-hidden />
-                <span>{debugMode ? "Debug on" : "Debug off"}</span>
               </button>
+              {username && (
+                <div className="hidden sm:flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-full bg-lapis-500/20 border border-lapis-500/30 flex items-center justify-center shrink-0">
+                    <span className="text-xs font-medium text-lapis-300">
+                      {username[0].toUpperCase()}
+                    </span>
+                  </div>
+                  <span className="text-sm text-zinc-300">{username}</span>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={handleLogout}

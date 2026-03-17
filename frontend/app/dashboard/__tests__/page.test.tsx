@@ -471,10 +471,13 @@ describe("DashboardPage regression behavior", () => {
     render(<DashboardPage />);
 
     await screen.findByText("alpha.pdf");
-    expect(screen.getByRole("button", { name: "Debug off" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Debug off" }));
+    const debugBtn = screen.getByRole("button", { name: "Debug mode (Shift+D)" });
+    expect(debugBtn).toBeInTheDocument();
+    expect(debugBtn).toHaveAttribute("aria-pressed", "false");
 
-    expect(screen.getByRole("button", { name: "Debug on" })).toBeInTheDocument();
+    fireEvent.click(debugBtn);
+
+    expect(debugBtn).toHaveAttribute("aria-pressed", "true");
     expect(localStorage.getItem("quaero_debug_mode")).toBe("true");
   });
 

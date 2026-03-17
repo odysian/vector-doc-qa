@@ -56,6 +56,7 @@ export interface UseDashboardStateResult {
   desktopSidebarCollapsed: boolean;
   debugMode: boolean;
   isDemoUser: boolean;
+  username: string;
   hasActiveDocuments: boolean;
   toggleDebugMode: () => void;
   clearError: () => void;
@@ -106,6 +107,7 @@ export function useDashboardState({
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   const [debugMode, setDebugMode] = useState(false);
   const [isDemoUser, setIsDemoUser] = useState(false);
+  const [username, setUsername] = useState("");
   const documentsRef = useRef<Document[]>([]);
 
   const isSessionExpired = useCallback((err: unknown): boolean => {
@@ -163,6 +165,7 @@ export function useDashboardState({
         const dashboardContext = await documentService.getDashboardContext();
         if (cancelled) return;
         setIsDemoUser(dashboardContext.user.is_demo);
+        setUsername(dashboardContext.user.username);
         setDocuments(dashboardContext.documents);
       } catch (err) {
         if (!cancelled) {
@@ -631,6 +634,7 @@ export function useDashboardState({
     desktopSidebarCollapsed,
     debugMode,
     isDemoUser,
+    username,
     hasActiveDocuments,
     toggleDebugMode,
     clearError,
