@@ -12,7 +12,6 @@ from app.constants import (
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
-
 NON_STRICT_APP_ENVS = {"local", "development", "dev", "test"}
 FORBIDDEN_SECRET_KEY_VALUES = {
     "dev-secret-key-change-in-production",
@@ -53,6 +52,10 @@ class Settings(BaseSettings):
     storage_backend: str = "local"
     gcs_bucket_name: str = ""
     gcp_project_id: str = ""
+    # Deployment/authenticator env vars injected by GitHub Actions OIDC flows.
+    # Included here so arq startup does not fail on unknown env keys.
+    gcp_wif_provider: str = ""
+    gcp_deploy_sa_email: str = ""
 
     allowed_extensions: set[str] = ALLOWED_EXTENSIONS
 
@@ -89,9 +92,7 @@ class Settings(BaseSettings):
         Replaces the driver prefix and strips the ?options= query parameter
         because asyncpg uses connect_args for server settings instead.
         """
-        url = self.database_url.replace(
-            "postgresql://", "postgresql+asyncpg://", 1
-        )
+        url = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
         # Strip ?options= param — asyncpg handles search_path via connect_args
         if "?options=" in url:
             url = url[: url.index("?options=")]
@@ -142,7 +143,9 @@ class Settings(BaseSettings):
 
         parsed_db_url = urlparse(self.database_url)
         if not parsed_db_url.scheme.startswith("postgresql"):
-            errors.append("DATABASE_URL must use a PostgreSQL URL in strict environments")
+            errors.append(
+                "DATABASE_URL must use a PostgreSQL URL in strict environments"
+            )
 
         db_host = (parsed_db_url.hostname or "").strip().lower()
         if db_host in FORBIDDEN_DB_HOSTS:
