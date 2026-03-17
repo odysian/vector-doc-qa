@@ -338,7 +338,10 @@ describe("ChatWindow streaming lifecycle", () => {
     await waitFor(() => expect(queryDocumentStreamMock).toHaveBeenCalledTimes(2));
     expect(queryDocumentStreamMock.mock.calls[1]?.[1]).toBe(originalQuery);
     expect(await screen.findByText("Recovered after stop")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Stop response" })).not.toBeInTheDocument();
+    // Stop button disappears one drain tick after the last token renders — wait for it.
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Stop response" })).not.toBeInTheDocument()
+    );
     expect(screen.getByRole("button", { name: "Send message" })).toBeInTheDocument();
   });
 

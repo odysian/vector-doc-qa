@@ -50,6 +50,8 @@ const isAbortError = (err: unknown): boolean => {
 /**
  * Manages chat history and query execution, including stream cancellation and session-expiry handoff.
  */
+const DRAIN_INTERVAL_MS = 35;
+
 export function useChatState({
   document,
   workspaceId,
@@ -62,6 +64,13 @@ export function useChatState({
   // Ref guard avoids duplicate submissions during the same render cycle.
   const streamInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
+  // Token drain queue: tokens are buffered here and flushed one per 35ms tick.
+  const tokenQueueRef = useRef<string[]>([]);
+  const streamDoneRef = useRef(false);
+  const drainIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Tracks the active query so stopActiveStream can produce the correct retry label
+  // when the network stream has already finished but the drain is still running.
+  const currentQueryRef = useRef<string>("");
   const canStopStream = !!document && messages.some((message) => message.role === "assistant" && message.streaming);
   const isStreaming = requestInFlight || messages.some((message) => message.role === "assistant" && message.streaming);
   const contextKey = document ? `document:${document.id}` : workspaceId ? `workspace:${workspaceId}` : "none";
@@ -115,10 +124,29 @@ export function useChatState({
     }));
   }, [updateStreamingAssistant]);
 
+  // Stops the drain interval, discards buffered tokens, and resets stream-done flag.
+  // Must be called before markStreamStopped/appendStreamError on the abort/error paths
+  // so queued tokens don't render after the message is finalised.
+  const clearDrain = useCallback(() => {
+    if (drainIntervalRef.current !== null) {
+      clearInterval(drainIntervalRef.current);
+      drainIntervalRef.current = null;
+    }
+    tokenQueueRef.current = [];
+    streamDoneRef.current = false;
+  }, []);
+
   const stopActiveStream = useCallback(() => {
     if (!document) return;
-    activeStreamAbortRef.current?.abort();
-  }, [document]);
+    if (activeStreamAbortRef.current) {
+      // Network stream still live — abort it; the catch handler calls clearDrain + markStreamStopped.
+      activeStreamAbortRef.current.abort();
+    } else if (drainIntervalRef.current !== null) {
+      // Network stream done but drain still running — discard queue and finalise immediately.
+      clearDrain();
+      markStreamStopped(currentQueryRef.current);
+    }
+  }, [clearDrain, document, markStreamStopped]);
 
   const submitQuery = useCallback(async (query: string) => {
     const trimmed = query.trim();
@@ -128,6 +156,11 @@ export function useChatState({
     setRequestInFlight(true);
 
     if (document) {
+      // Reset drain state from any previous stream before starting a new one.
+      // Without this, a leftover streamDoneRef=true (e.g. from a zero-token response)
+      // would cause the drain interval to finalise the new stream prematurely.
+      clearDrain();
+      currentQueryRef.current = trimmed;
       const streamController = new AbortController();
       // Ensure only one live document stream at a time.
       activeStreamAbortRef.current?.abort();
@@ -138,6 +171,33 @@ export function useChatState({
         { role: "user", content: trimmed },
         { role: "assistant", content: "", streaming: true },
       ]);
+
+      // Start draining the token queue at a fixed interval so tokens render
+      // at a human-readable pace rather than all at once.
+      const startDrain = () => {
+        if (drainIntervalRef.current !== null) return;
+        drainIntervalRef.current = setInterval(() => {
+          if (!isMountedRef.current || streamController.signal.aborted) {
+            clearDrain();
+            return;
+          }
+          const token = tokenQueueRef.current.shift();
+          if (token !== undefined) {
+            updateStreamingAssistant((message) => ({
+              ...message,
+              content: `${message.content}${token}`,
+            }));
+          } else if (streamDoneRef.current) {
+            // Queue drained and SSE stream finished — finalise the message.
+            clearDrain();
+            updateStreamingAssistant((message) => ({ ...message, streaming: false }));
+            activeStreamAbortRef.current = null;
+            streamInFlightRef.current = false;
+            setRequestInFlight(false);
+          }
+          // else: queue temporarily empty but stream not done yet — keep ticking
+        }, DRAIN_INTERVAL_MS);
+      };
 
       const callbacks: QueryStreamCallbacks = {
         onSources: (sources) => {
@@ -150,10 +210,8 @@ export function useChatState({
         },
         onToken: (token) => {
           if (!isMountedRef.current || streamController.signal.aborted) return;
-          updateStreamingAssistant((message) => ({
-            ...message,
-            content: `${message.content}${token}`,
-          }));
+          tokenQueueRef.current.push(token);
+          startDrain();
         },
         onMeta: (pipelineMeta) => {
           if (!isMountedRef.current || streamController.signal.aborted) return;
@@ -164,16 +222,19 @@ export function useChatState({
         },
         onDone: () => {
           if (!isMountedRef.current || streamController.signal.aborted) return;
-          updateStreamingAssistant((message) => ({
-            ...message,
-            streaming: false,
-          }));
-          activeStreamAbortRef.current = null;
-          streamInFlightRef.current = false;
-          setRequestInFlight(false);
+          // Mark done so the drain interval finalises the message after draining the queue.
+          streamDoneRef.current = true;
+          // If no tokens were queued (empty response), finalise immediately.
+          if (tokenQueueRef.current.length === 0 && drainIntervalRef.current === null) {
+            updateStreamingAssistant((message) => ({ ...message, streaming: false }));
+            activeStreamAbortRef.current = null;
+            streamInFlightRef.current = false;
+            setRequestInFlight(false);
+          }
         },
         onError: (detail) => {
           if (!isMountedRef.current || streamController.signal.aborted) return;
+          clearDrain();
           appendStreamError(`Error: ${detail}`, trimmed);
           activeStreamAbortRef.current = null;
           streamInFlightRef.current = false;
@@ -187,6 +248,8 @@ export function useChatState({
         });
       } catch (err) {
         if (isAbortError(err)) {
+          // Discard queued tokens before finalising so nothing renders after stop.
+          clearDrain();
           if (isMountedRef.current) {
             markStreamStopped(trimmed);
           }
@@ -263,16 +326,17 @@ export function useChatState({
       streamInFlightRef.current = false;
       setRequestInFlight(false);
     }
-  }, [appendStreamError, document, handleSessionExpired, markStreamStopped, updateStreamingAssistant, workspaceId]);
+  }, [appendStreamError, clearDrain, document, handleSessionExpired, markStreamStopped, updateStreamingAssistant, workspaceId]);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
       activeStreamAbortRef.current?.abort();
+      clearDrain();
       streamInFlightRef.current = false;
     };
-  }, []);
+  }, [clearDrain]);
 
   useEffect(() => {
     const loadHistory = async () => {
@@ -284,6 +348,7 @@ export function useChatState({
 
       // Context switches invalidate active streams to prevent cross-context updates.
       activeStreamAbortRef.current?.abort();
+      clearDrain();
       streamInFlightRef.current = false;
       setRequestInFlight(false);
       setMessages([]);
@@ -314,7 +379,7 @@ export function useChatState({
     };
 
     void loadHistory();
-  }, [contextKey, document, handleSessionExpired, workspaceId]);
+  }, [clearDrain, contextKey, document, handleSessionExpired, workspaceId]);
 
   return {
     messages,
