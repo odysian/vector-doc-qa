@@ -42,7 +42,6 @@ AI-powered PDF question-answering using Retrieval Augmented Generation (RAG). Up
 **Infrastructure & CI/CD:**
 - Terraform-managed GCP infrastructure (VM, static IP, firewall, GCS bucket, IAM)
 - GitHub Actions: backend CI (ruff, mypy, pytest, bandit), frontend CI (tsc, ESLint, vitest, next build)
-- Blue-green backend deploys: zero-downtime container swap with NGINX upstream hot-reload
 - Manual-dispatch Terraform ops workflow for plan/apply/destroy with typed confirmation gate
 - Google Workload Identity Federation (OIDC) for keyless GitHub Actions → GCP auth
 
