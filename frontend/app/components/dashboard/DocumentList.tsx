@@ -126,7 +126,8 @@ export function DocumentList({
               >
                 {doc.filename}
               </h3>
-              <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
+              {/* Hidden on hover-capable devices until hover/focus; always visible on touch (pointer:coarse). */}
+              <div className="flex items-center gap-1 shrink-0 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150">
                 {showProcess && (
                   <button
                     type="button"
