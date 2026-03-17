@@ -277,6 +277,19 @@ export function ChatWindow({
       ? chunksAboveThreshold
       : Math.min(chunksRetrieved, sourceCount);
     const confidence = getConfidence(topSimilarity);
+    const tokensIn = meta.llm_input_tokens !== null && meta.llm_input_tokens !== undefined
+      ? normalizeCount(meta.llm_input_tokens)
+      : null;
+    const tokensOut = meta.llm_output_tokens !== null && meta.llm_output_tokens !== undefined
+      ? normalizeCount(meta.llm_output_tokens)
+      : null;
+
+    const StatRow = ({ label, value }: { label: string; value: string }) => (
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4">
+        <span className="text-zinc-500">{label}</span>
+        <span className="text-zinc-300">{value}</span>
+      </div>
+    );
 
     return (
       <div className="mt-1 ml-2">
@@ -304,40 +317,32 @@ export function ChatWindow({
           Pipeline details
         </button>
         {open && (
-          <div className="mt-2 rounded-md border border-zinc-700 bg-zinc-900 p-3 text-xs text-zinc-400 grid grid-cols-2 gap-x-4 gap-y-1">
-            <span className="text-zinc-500">Embed</span>
-            <span>{normalizeCount(meta.embed_ms)} ms</span>
-            <span className="text-zinc-500">Retrieval</span>
-            <span>{normalizeCount(meta.retrieval_ms)} ms</span>
-            <span className="text-zinc-500">LLM</span>
-            <span>{normalizeCount(meta.llm_ms)} ms</span>
-            <span className="text-zinc-500">Total</span>
-            <span className="font-medium text-zinc-300">{normalizeCount(meta.total_ms)} ms</span>
-            <span className="text-zinc-500">Confidence</span>
-            <span className="capitalize">{confidence}</span>
-            <span className="text-zinc-500">Top similarity</span>
-            <span>{(topSimilarity * 100).toFixed(1)}%</span>
-            <span className="text-zinc-500">Avg similarity</span>
-            <span>{(avgSimilarity * 100).toFixed(1)}%</span>
-            <span className="text-zinc-500">Chunks used</span>
-            <span>{effectiveChunksUsed}/{chunksRetrieved}</span>
+          <div className="mt-2 rounded-md border border-zinc-700 bg-zinc-900 p-3 text-xs text-zinc-400 space-y-1.5">
+            <StatRow label="Embed" value={`${normalizeCount(meta.embed_ms)} ms`} />
+            <StatRow label="Retrieval" value={`${normalizeCount(meta.retrieval_ms)} ms`} />
+            <StatRow label="LLM" value={`${normalizeCount(meta.llm_ms)} ms`} />
+            <StatRow label="Total" value={`${normalizeCount(meta.total_ms)} ms`} />
+            <StatRow label="Confidence" value={confidence} />
+            <StatRow
+              label="Top/Avg similarity"
+              value={`${(topSimilarity * 100).toFixed(1)}% / ${(avgSimilarity * 100).toFixed(1)}%`}
+            />
+            <StatRow
+              label="Similarity spread"
+              value={`${(normalizeSimilarity(meta.similarity_spread) * 100).toFixed(1)}%`}
+            />
+            <StatRow label="Chunks used" value={`${effectiveChunksUsed}/${chunksRetrieved}`} />
             {debugMode && (
               <>
-                <span className="text-zinc-500">Above threshold</span>
-                <span>{chunksAboveThreshold}</span>
-                <span className="text-zinc-500">Similarity spread</span>
-                <span>{(normalizeSimilarity(meta.similarity_spread) * 100).toFixed(1)}%</span>
-                <span className="text-zinc-500">History turns</span>
-                <span>{normalizeCount(meta.chat_history_turns_included)}</span>
+                <StatRow label="Above threshold (cutoff)" value={`${chunksAboveThreshold}`} />
+                <StatRow label="History turns" value={`${normalizeCount(meta.chat_history_turns_included)}`} />
               </>
             )}
-            {meta.llm_input_tokens !== undefined && meta.llm_input_tokens !== null && (
-              <>
-                <span className="text-zinc-500">Tokens in</span>
-                <span>{normalizeCount(meta.llm_input_tokens)}</span>
-                <span className="text-zinc-500">Tokens out</span>
-                <span>{meta.llm_output_tokens !== null && meta.llm_output_tokens !== undefined ? normalizeCount(meta.llm_output_tokens) : "N/A"}</span>
-              </>
+            {tokensIn !== null && (
+              <StatRow
+                label="Tokens in/out"
+                value={`${tokensIn} / ${tokensOut ?? "N/A"}`}
+              />
             )}
           </div>
         )}

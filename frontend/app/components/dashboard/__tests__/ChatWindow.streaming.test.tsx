@@ -672,11 +672,13 @@ describe("ChatWindow streaming lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "Toggle pipeline details" }));
     expect(screen.getByText("Confidence")).toBeInTheDocument();
     expect(screen.getByText("high")).toBeInTheDocument();
-    expect(screen.getByText("Top similarity")).toBeInTheDocument();
-    expect(screen.getByText("91.0%")).toBeInTheDocument();
+    expect(screen.getByText("Top/Avg similarity")).toBeInTheDocument();
+    expect(screen.getByText("91.0% / 89.0%")).toBeInTheDocument();
+    expect(screen.getByText("Similarity spread")).toBeInTheDocument();
+    expect(screen.getByText("0.0%")).toBeInTheDocument();
     expect(screen.getByText("1/1")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Toggle pipeline details" }));
-    expect(screen.queryByText("Top similarity")).not.toBeInTheDocument();
+    expect(screen.queryByText("Top/Avg similarity")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Sources (1)" }));
     expect(screen.queryByText("91.0%")).not.toBeInTheDocument();
