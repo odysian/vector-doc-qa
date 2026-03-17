@@ -112,7 +112,7 @@ export function DocumentList({
               }
             }}
             aria-disabled={!clickable}
-            className={`rounded-lg border transition-colors p-3 outline-none ${
+            className={`group rounded-lg border transition-colors p-3 outline-none ${
               clickable
                 ? "bg-zinc-800/50 border-zinc-700 hover:border-lapis-500/40 hover:bg-zinc-800 cursor-pointer focus-visible:ring-2 focus-visible:ring-lapis-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
                 : "bg-zinc-800/30 border-zinc-800 cursor-not-allowed opacity-80"
@@ -126,7 +126,8 @@ export function DocumentList({
               >
                 {doc.filename}
               </h3>
-              <div className="flex items-center gap-1 shrink-0">
+              {/* Hidden on hover-capable devices until hover/focus; always visible on touch (pointer:coarse). */}
+              <div className="flex items-center gap-1 shrink-0 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150">
                 {showProcess && (
                   <button
                     type="button"

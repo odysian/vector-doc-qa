@@ -8,7 +8,7 @@
 import { type ComponentPropsWithoutRef, KeyboardEvent, SyntheticEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowLeft, Send, Square } from "lucide-react";
+import { ArrowLeft, Check, Copy, Send, Square } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { Document } from "@/lib/api";
 import { useChatState } from "@/lib/hooks/useChatState";
@@ -33,6 +33,33 @@ interface ChatWindowProps {
   onBack: () => void;
   onCitationClick?: (citation: CitationTarget) => void;
   onSessionExpired?: () => void;
+}
+
+function CopyButton({ content }: { content: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    // Guard: clipboard API unavailable in some browsers/contexts.
+    if (!navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(content);
+      // Only show success after confirmed write.
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Write denied or failed — no false-success feedback.
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={() => { void handleCopy(); }}
+      title={copied ? "Copied!" : "Copy response"}
+      aria-label="Copy response"
+      className="ui-btn ui-btn-ghost ui-btn-sm mt-1 ml-2"
+    >
+      {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+    </button>
+  );
 }
 
 const SUGGESTED_PROMPTS = [
@@ -221,7 +248,7 @@ export function ChatWindow({
   }) => (
     <div
       data-testid={`message-row-${msg.role}`}
-      className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
+      className={`group flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
       title={msg.role === "assistant" && msg.created_at ? formatDate(msg.created_at) : undefined}
     >
       {/* Message Bubble — user keeps lapis bubble; assistant renders flat at full width */}
@@ -257,45 +284,50 @@ export function ChatWindow({
         </div>
       )}
 
-      {debugMode && msg.role === "assistant" && msg.pipeline_meta && (
-        <details className="mt-2 ml-2 text-xs text-zinc-400 group">
-          <summary className="cursor-pointer list-none flex items-center gap-2 hover:text-zinc-200 transition-colors">
-            <svg
-              className="w-3 h-3 shrink-0 transition-transform group-open:rotate-90"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-            <span>
-              {(msg.pipeline_meta.total_ms / 1000).toFixed(1)}s ·{" "}
-              {(msg.pipeline_meta.avg_similarity * 100).toFixed(0)}% retrieval ·{" "}
-              {msg.pipeline_meta.chunks_retrieved}{" "}
-              {msg.pipeline_meta.chunks_retrieved === 1 ? "source" : "sources"} ·{" "}
-              {getConfidence(msg.pipeline_meta.top_similarity)} confidence
-            </span>
-          </summary>
-          <div className="mt-2 ml-5 space-y-1">
-            <p>Embedding: {msg.pipeline_meta.embed_ms}ms</p>
-            <p>Retrieval: {msg.pipeline_meta.retrieval_ms}ms</p>
-            <p>Generation: {msg.pipeline_meta.llm_ms}ms</p>
-            <p>Top similarity: {(msg.pipeline_meta.top_similarity * 100).toFixed(1)}%</p>
-            <p>Average similarity: {(msg.pipeline_meta.avg_similarity * 100).toFixed(1)}%</p>
-            <p>Chunks above retrieval threshold: {msg.pipeline_meta.chunks_above_threshold}</p>
-            <p>Similarity spread: {(msg.pipeline_meta.similarity_spread * 100).toFixed(1)}%</p>
-            <p>History turns included: {msg.pipeline_meta.chat_history_turns_included}</p>
-            <div className="border-t border-zinc-700/50 pt-1 mt-1">
-              <p>Total: {msg.pipeline_meta.total_ms}ms</p>
-            </div>
-          </div>
-        </details>
+      {msg.role === "assistant" && !msg.streaming && (
+        <div className="flex items-start">
+          {msg.content && <CopyButton content={msg.content} />}
+          {debugMode && msg.pipeline_meta && (
+            <details className="mt-2 ml-2 text-xs text-zinc-400 group">
+              <summary className="cursor-pointer list-none flex items-center gap-2 hover:text-zinc-200 transition-colors">
+                <svg
+                  className="w-3 h-3 shrink-0 transition-transform group-open:rotate-90"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+                <span>
+                  {(msg.pipeline_meta.total_ms / 1000).toFixed(1)}s ·{" "}
+                  {(msg.pipeline_meta.avg_similarity * 100).toFixed(0)}% retrieval ·{" "}
+                  {msg.pipeline_meta.chunks_retrieved}{" "}
+                  {msg.pipeline_meta.chunks_retrieved === 1 ? "source" : "sources"} ·{" "}
+                  {getConfidence(msg.pipeline_meta.top_similarity)} confidence
+                </span>
+              </summary>
+              <div className="mt-2 ml-5 space-y-1">
+                <p>Embedding: {msg.pipeline_meta.embed_ms}ms</p>
+                <p>Retrieval: {msg.pipeline_meta.retrieval_ms}ms</p>
+                <p>Generation: {msg.pipeline_meta.llm_ms}ms</p>
+                <p>Top similarity: {(msg.pipeline_meta.top_similarity * 100).toFixed(1)}%</p>
+                <p>Average similarity: {(msg.pipeline_meta.avg_similarity * 100).toFixed(1)}%</p>
+                <p>Chunks above retrieval threshold: {msg.pipeline_meta.chunks_above_threshold}</p>
+                <p>Similarity spread: {(msg.pipeline_meta.similarity_spread * 100).toFixed(1)}%</p>
+                <p>History turns included: {msg.pipeline_meta.chat_history_turns_included}</p>
+                <div className="border-t border-zinc-700/50 pt-1 mt-1">
+                  <p>Total: {msg.pipeline_meta.total_ms}ms</p>
+                </div>
+              </div>
+            </details>
+          )}
+        </div>
       )}
 
       {msg.role === "assistant" && msg.retry_query && !msg.streaming && (

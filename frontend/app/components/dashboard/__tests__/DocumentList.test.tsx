@@ -70,4 +70,53 @@ describe("DocumentList", () => {
       expect(onProcessDocument).toHaveBeenCalledWith(failedDoc);
     });
   });
+
+  it("action wrapper uses group-focus-within for keyboard reveal and media-scoped opacity for touch safety", () => {
+    const { container } = render(
+      <DocumentList
+        documents={[makeDocument()]}
+        onDocumentClick={vi.fn()}
+        onProcessDocument={vi.fn().mockResolvedValue(undefined)}
+        onDeleteDocument={vi.fn()}
+      />
+    );
+
+    // Row must carry `group` so Tailwind group-* variants apply.
+    const row = container.querySelector('[role="button"]');
+    expect(row?.className).toContain("group");
+
+    // Find the action wrapper by locating the delete button's parent div.
+    const deleteBtn = screen.getByRole("button", { name: "Delete" });
+    const wrapper = deleteBtn.parentElement!;
+
+    // group-focus-within so row-level keyboard focus reveals actions (not just focus inside wrapper).
+    expect(wrapper.className).toContain("group-focus-within:opacity-100");
+
+    // opacity-0 is media-scoped only — touch devices (no hover) should see actions by default.
+    // Split on whitespace to check for a *standalone* opacity-0 class, not one nested inside a modifier.
+    expect(wrapper.className.split(/\s+/)).not.toContain("opacity-0");
+    expect(wrapper.className).toContain("[@media(hover:hover)]:opacity-0");
+    expect(wrapper.className).toContain("[@media(hover:hover)]:group-hover:opacity-100");
+  });
+
+  it("action buttons are present in the DOM for completed and failed rows even when visually hidden", () => {
+    render(
+      <DocumentList
+        documents={[
+          makeDocument({ id: 1, status: "completed", filename: "ready.pdf" }),
+          makeDocument({ id: 2, status: "failed", filename: "broken.pdf" }),
+        ]}
+        onDocumentClick={vi.fn()}
+        onProcessDocument={vi.fn().mockResolvedValue(undefined)}
+        onDeleteDocument={vi.fn()}
+      />
+    );
+
+    // Both delete buttons are in the DOM (opacity hides them, not display:none).
+    const deleteButtons = screen.getAllByRole("button", { name: "Delete" });
+    expect(deleteButtons).toHaveLength(2);
+
+    // The failed row's retry button is also present.
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
 });
