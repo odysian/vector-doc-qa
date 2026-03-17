@@ -58,6 +58,7 @@ describe("DashboardPage page-level ErrorBoundary", () => {
       desktopSidebarCollapsed: false,
       debugMode: false,
       isDemoUser: false,
+      username: "",
       toggleDebugMode: vi.fn(),
       clearError: vi.fn(),
       selectedDocument: documentFixture,
