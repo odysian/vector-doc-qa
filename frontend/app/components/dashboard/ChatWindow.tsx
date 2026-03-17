@@ -237,6 +237,7 @@ export function ChatWindow({
       hasLoadedHistoryRef.current = true;
       // Skip the next generic message-driven auto-scroll run so initial render doesn't jump twice.
       skipPostHistoryScrollRef.current = true;
+      composerRef.current?.focus();
     }
   }, [loadingHistory, scrollToBottom]);
 
