@@ -220,6 +220,7 @@ export function ChatWindow({
     index: number;
   }) => (
     <div
+      data-testid={`message-row-${msg.role}`}
       className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
       title={msg.role === "assistant" && msg.created_at ? formatDate(msg.created_at) : undefined}
     >
