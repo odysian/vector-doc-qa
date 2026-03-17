@@ -10,7 +10,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArrowLeft, Check, Copy, Send, Square } from "lucide-react";
 import { formatDate } from "@/lib/utils";
-import type { Document } from "@/lib/api";
+import type { Document, PipelineMeta } from "@/lib/api";
 import { useChatState } from "@/lib/hooks/useChatState";
 import { ErrorBoundary } from "./ErrorBoundary";
 
@@ -67,8 +67,6 @@ const SUGGESTED_PROMPTS = [
   "What are the main points?",
   "Find key dates or numbers",
 ];
-const HIGH_CONFIDENCE_THRESHOLD = 0.5864;
-const MEDIUM_CONFIDENCE_THRESHOLD = 0.3699;
 
 // Only allow http/https/mailto links; unsafe protocols (javascript:, data:, etc.)
 // are rendered as plain spans so assistant content can never produce clickable injection payloads.
@@ -233,11 +231,63 @@ export function ChatWindow({
     return `Pages ${pageStart}-${pageEnd}`;
   };
 
-  const getConfidence = (topSimilarity: number): "high" | "medium" | "low" => {
-    if (topSimilarity >= HIGH_CONFIDENCE_THRESHOLD) return "high";
-    if (topSimilarity >= MEDIUM_CONFIDENCE_THRESHOLD) return "medium";
-    return "low";
-  };
+  function PipelineDetailsPanel({ meta }: { meta: PipelineMeta }) {
+    const [open, setOpen] = useState(false);
+
+    return (
+      <div className="mt-1 ml-2">
+        <button
+          type="button"
+          onClick={() => setOpen((previous) => !previous)}
+          className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors"
+          aria-expanded={open}
+          aria-label="Toggle pipeline details"
+        >
+          <svg
+            className={`w-3 h-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+          Pipeline details
+        </button>
+        {open && (
+          <div className="mt-2 rounded-md border border-zinc-700 bg-zinc-900 p-3 text-xs text-zinc-400 grid grid-cols-2 gap-x-4 gap-y-1">
+            <span className="text-zinc-500">Embed</span>
+            <span>{meta.embed_ms} ms</span>
+            <span className="text-zinc-500">Retrieval</span>
+            <span>{meta.retrieval_ms} ms</span>
+            <span className="text-zinc-500">LLM</span>
+            <span>{meta.llm_ms} ms</span>
+            <span className="text-zinc-500">Total</span>
+            <span className="font-medium text-zinc-300">{meta.total_ms} ms</span>
+            <span className="text-zinc-500">Top similarity</span>
+            <span>{(meta.top_similarity * 100).toFixed(1)}%</span>
+            <span className="text-zinc-500">Avg similarity</span>
+            <span>{(meta.avg_similarity * 100).toFixed(1)}%</span>
+            <span className="text-zinc-500">Chunks used</span>
+            <span>{meta.chunks_above_threshold}/{meta.chunks_retrieved}</span>
+            {meta.llm_input_tokens !== undefined && meta.llm_input_tokens !== null && (
+              <>
+                <span className="text-zinc-500">Tokens in</span>
+                <span>{meta.llm_input_tokens}</span>
+                <span className="text-zinc-500">Tokens out</span>
+                <span>{meta.llm_output_tokens ?? 0}</span>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const MessageRow = ({
     msg,
@@ -287,47 +337,10 @@ export function ChatWindow({
       {msg.role === "assistant" && !msg.streaming && (
         <div className="flex items-start">
           {msg.content && <CopyButton content={msg.content} />}
-          {debugMode && msg.pipeline_meta && (
-            <details className="mt-2 ml-2 text-xs text-zinc-400 group">
-              <summary className="cursor-pointer list-none flex items-center gap-2 hover:text-zinc-200 transition-colors">
-                <svg
-                  className="w-3 h-3 shrink-0 transition-transform group-open:rotate-90"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  aria-hidden
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-                <span>
-                  {(msg.pipeline_meta.total_ms / 1000).toFixed(1)}s ·{" "}
-                  {(msg.pipeline_meta.avg_similarity * 100).toFixed(0)}% retrieval ·{" "}
-                  {msg.pipeline_meta.chunks_retrieved}{" "}
-                  {msg.pipeline_meta.chunks_retrieved === 1 ? "source" : "sources"} ·{" "}
-                  {getConfidence(msg.pipeline_meta.top_similarity)} confidence
-                </span>
-              </summary>
-              <div className="mt-2 ml-5 space-y-1">
-                <p>Embedding: {msg.pipeline_meta.embed_ms}ms</p>
-                <p>Retrieval: {msg.pipeline_meta.retrieval_ms}ms</p>
-                <p>Generation: {msg.pipeline_meta.llm_ms}ms</p>
-                <p>Top similarity: {(msg.pipeline_meta.top_similarity * 100).toFixed(1)}%</p>
-                <p>Average similarity: {(msg.pipeline_meta.avg_similarity * 100).toFixed(1)}%</p>
-                <p>Chunks above retrieval threshold: {msg.pipeline_meta.chunks_above_threshold}</p>
-                <p>Similarity spread: {(msg.pipeline_meta.similarity_spread * 100).toFixed(1)}%</p>
-                <p>History turns included: {msg.pipeline_meta.chat_history_turns_included}</p>
-                <div className="border-t border-zinc-700/50 pt-1 mt-1">
-                  <p>Total: {msg.pipeline_meta.total_ms}ms</p>
-                </div>
-              </div>
-            </details>
-          )}
         </div>
+      )}
+      {msg.role === "assistant" && !msg.streaming && msg.pipeline_meta && (
+        <PipelineDetailsPanel meta={msg.pipeline_meta} />
       )}
 
       {msg.role === "assistant" && msg.retry_query && !msg.streaming && (

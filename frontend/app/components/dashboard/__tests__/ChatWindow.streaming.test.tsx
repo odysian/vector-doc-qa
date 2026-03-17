@@ -624,7 +624,7 @@ describe("ChatWindow streaming lifecycle", () => {
     }
   });
 
-  it("shows pipeline metadata/similarity only when debug mode prop is enabled", async () => {
+  it("shows pipeline details for assistant messages and keeps source similarity debug-only", async () => {
     getMessagesMock.mockResolvedValueOnce({
       messages: [
         {
@@ -668,9 +668,15 @@ describe("ChatWindow streaming lifecycle", () => {
     );
     await screen.findByText("Debuggable answer.");
 
+    expect(screen.getByRole("button", { name: "Toggle pipeline details" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Toggle pipeline details" }));
+    expect(screen.getByText("Top similarity")).toBeInTheDocument();
+    expect(screen.getByText("91.0%")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Toggle pipeline details" }));
+    expect(screen.queryByText("Top similarity")).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "Sources (1)" }));
     expect(screen.queryByText("91.0%")).not.toBeInTheDocument();
-    expect(screen.queryByText(/confidence/)).not.toBeInTheDocument();
 
     rerender(
       <ChatWindow
@@ -680,7 +686,6 @@ describe("ChatWindow streaming lifecycle", () => {
       />
     );
 
-    expect(screen.getByText(/confidence/)).toBeInTheDocument();
     expect(screen.getByText("91.0%")).toBeInTheDocument();
   });
 
