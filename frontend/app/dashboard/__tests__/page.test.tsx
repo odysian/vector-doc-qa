@@ -539,8 +539,10 @@ describe("DashboardPage regression behavior", () => {
     render(<DashboardPage />);
     await screen.findByText("chris");
 
-    expect(screen.getByText("C")).toBeInTheDocument();
-    expect(screen.getByText("chris")).toBeInTheDocument();
+    const badge = screen.getByTestId("username-badge");
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent("C");
+    expect(badge).toHaveTextContent("chris");
   });
 
   it("does not render username block while username is empty", async () => {

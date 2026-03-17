@@ -320,7 +320,7 @@ export default function DashboardPage() {
                 <Settings2 size={14} aria-hidden />
               </button>
               {username && (
-                <div className="hidden sm:flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-2" data-testid="username-badge">
                   <div className="h-7 w-7 rounded-full bg-lapis-500/20 border border-lapis-500/30 flex items-center justify-center shrink-0">
                     <span className="text-xs font-medium text-lapis-300">
                       {username[0].toUpperCase()}
