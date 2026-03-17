@@ -29,17 +29,13 @@ resource "google_project_iam_member" "github_deploy_iap_tunnel" {
 }
 
 # Allow deploy SA to inject a temporary SSH key into the VM's instance metadata.
-# Scoped to the specific VM instance to minimize blast radius.
-resource "google_compute_instance_iam_member" "github_deploy_instance_admin" {
-  instance_name = var.vm_name
-  zone          = var.zone
-  role          = "roles/compute.instanceAdmin.v1"
-  member        = "serviceAccount:${google_service_account.github_deploy.email}"
-
-  # Ensure the IAM binding is (re)applied in relation to the VM resource lifecycle.
-  # Routine instance updates (including stop/start) have shown to reorder operations
-  # and can briefly remove/recreate this binding on first apply.
-  depends_on = [google_compute_instance.backend]
+# Project-scoped because instance-scoped compute.instanceAdmin.v1 does not satisfy
+# the setMetadata permission check that gcloud compute ssh performs — confirmed in
+# production: instance-scoped binding fails with permission denied, project-scoped works.
+resource "google_project_iam_member" "github_deploy_instance_admin" {
+  project = var.project_id
+  role    = "roles/compute.instanceAdmin.v1"
+  member  = "serviceAccount:${google_service_account.github_deploy.email}"
 }
 
 # gcloud compute ssh calls projects.get at the project level before key injection.

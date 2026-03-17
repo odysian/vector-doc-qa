@@ -74,7 +74,7 @@ server {
     server_name ${API_DOMAIN};
 
     location ^~ /.well-known/acme-challenge/ {
-        alias ${ACME_WEBROOT}/;
+        alias ${ACME_WEBROOT}/.well-known/acme-challenge/;
     }
 
     location ~ ^/api/documents/[0-9]+/query/stream$ {
@@ -110,7 +110,15 @@ include /opt/quaero/nginx/upstream.conf;
 server {
     listen 80;
     server_name ${API_DOMAIN};
-    return 301 https://\$host\$request_uri;
+
+    # Allow ACME HTTP-01 challenges through for cert renewal.
+    location ^~ /.well-known/acme-challenge/ {
+        alias ${ACME_WEBROOT}/.well-known/acme-challenge/;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
 }
 
 server {
