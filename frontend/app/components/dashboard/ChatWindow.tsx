@@ -8,10 +8,10 @@
 import { type ComponentPropsWithoutRef, KeyboardEvent, SyntheticEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowLeft, Check, Copy, Send, Square } from "lucide-react";
+import { ArrowLeft, Check, Copy, Download, Send, Square } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { Document, PipelineMeta } from "@/lib/api";
-import { useChatState } from "@/lib/hooks/useChatState";
+import { useChatState, type ChatMessage } from "@/lib/hooks/useChatState";
 import { ErrorBoundary } from "./ErrorBoundary";
 
 interface CitationTarget {
@@ -97,6 +97,39 @@ const markdownComponents = {
     );
   },
 };
+
+function exportConversation(filename: string, messages: ChatMessage[]): void {
+  const lines: string[] = [];
+  const docTitle = filename.replace(/\.pdf$/i, "");
+
+  lines.push(`# ${docTitle} — Conversation Export`);
+  lines.push(`\n_Exported ${new Date().toLocaleDateString()}_\n`);
+  lines.push("---\n");
+
+  for (const msg of messages) {
+    if (msg.role === "user") {
+      lines.push(`**User:** ${msg.content}\n`);
+    } else {
+      lines.push(`**Assistant:** ${msg.content}\n`);
+      if (msg.sources && msg.sources.length > 0) {
+        lines.push("**Sources:**");
+        for (const src of msg.sources) {
+          lines.push(`- Chunk ${src.chunk_index + 1}: "${src.content.slice(0, 80)}..."`);
+        }
+        lines.push("");
+      }
+    }
+    lines.push("---\n");
+  }
+
+  const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${docTitle.replace(/[^a-z0-9_-]/gi, "_")}-chat.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 /**
  * Renders the pop up window with query input and message history.
@@ -254,6 +287,11 @@ export function ChatWindow({
 
   const handleRetry = (query: string) => {
     void submitQuery(query);
+  };
+
+  const handleExport = () => {
+    if (!document || messages.length === 0) return;
+    exportConversation(document.filename, messages);
   };
 
   const getSourcePageLabel = (pageStart?: number | null, pageEnd?: number | null): string => {
@@ -659,7 +697,7 @@ export function ChatWindow({
     </ErrorBoundary>
 
       {/* Input Area */}
-      <div className="shrink-0 px-3 py-3 border-t border-zinc-800 bg-zinc-900">
+      <div className="shrink-0 px-3 py-3 border-t border-zinc-800 bg-zinc-900 relative">
         <form onSubmit={handleSubmit} className="flex items-end gap-2">
           <textarea
             ref={composerRef}
@@ -672,7 +710,7 @@ export function ChatWindow({
                 ? "Ask a question across this workspace..."
                 : "Ask a question about this document..."
             }
-            className="ui-input flex-1 resize-none overflow-y-hidden min-h-[44px] max-h-36 leading-relaxed"
+            className={`ui-input flex-1 resize-none overflow-y-hidden min-h-11 max-h-36 leading-relaxed${!isWorkspaceMode && messages.length > 0 ? " pr-10" : ""}`}
             title="Enter to send, Shift+Enter for newline"
           />
           {isStreaming && canStopStream ? (
@@ -697,6 +735,18 @@ export function ChatWindow({
             </button>
           )}
         </form>
+        {/* Positioned inside textarea's right padding; outside the form so it never affects flex layout */}
+        {!isWorkspaceMode && messages.length > 0 && (
+          <button
+            type="button"
+            onClick={handleExport}
+            title="Export conversation as Markdown"
+            aria-label="Export conversation"
+            className="absolute top-1/2 -translate-y-1/2 right-16 p-1.5 rounded text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+          >
+            <Download size={16} strokeWidth={2} aria-hidden />
+          </button>
+        )}
       </div>
     </div>
   );
