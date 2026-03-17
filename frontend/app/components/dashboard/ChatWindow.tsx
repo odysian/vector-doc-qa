@@ -8,10 +8,10 @@
 import { type ComponentPropsWithoutRef, KeyboardEvent, SyntheticEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowLeft, Check, Copy, Send, Square } from "lucide-react";
+import { ArrowLeft, Check, Copy, Download, Send, Square } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { Document, PipelineMeta } from "@/lib/api";
-import { useChatState } from "@/lib/hooks/useChatState";
+import { useChatState, type ChatMessage } from "@/lib/hooks/useChatState";
 import { ErrorBoundary } from "./ErrorBoundary";
 
 interface CitationTarget {
@@ -97,6 +97,39 @@ const markdownComponents = {
     );
   },
 };
+
+function exportConversation(filename: string, messages: ChatMessage[]): void {
+  const lines: string[] = [];
+  const docTitle = filename.replace(/\.pdf$/i, "");
+
+  lines.push(`# ${docTitle} — Conversation Export`);
+  lines.push(`\n_Exported ${new Date().toLocaleDateString()}_\n`);
+  lines.push("---\n");
+
+  for (const msg of messages) {
+    if (msg.role === "user") {
+      lines.push(`**User:** ${msg.content}\n`);
+    } else {
+      lines.push(`**Assistant:** ${msg.content}\n`);
+      if (msg.sources && msg.sources.length > 0) {
+        lines.push("**Sources:**");
+        for (const src of msg.sources) {
+          lines.push(`- Chunk ${src.chunk_index + 1}: "${src.content.slice(0, 80)}..."`);
+        }
+        lines.push("");
+      }
+    }
+    lines.push("---\n");
+  }
+
+  const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${docTitle.replace(/[^a-z0-9_-]/gi, "_")}-chat.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 /**
  * Renders the pop up window with query input and message history.
@@ -254,6 +287,11 @@ export function ChatWindow({
 
   const handleRetry = (query: string) => {
     void submitQuery(query);
+  };
+
+  const handleExport = () => {
+    if (!document || messages.length === 0) return;
+    exportConversation(document.filename, messages);
   };
 
   const getSourcePageLabel = (pageStart?: number | null, pageEnd?: number | null): string => {
@@ -571,12 +609,23 @@ export function ChatWindow({
           >
             <ArrowLeft size={18} strokeWidth={2} />
           </button>
-          <p className="min-w-0 truncate text-sm text-zinc-200">
+          <p className="min-w-0 flex-1 truncate text-sm text-zinc-200">
             <span className="font-medium text-lapis-400 italic">{resolvedContextTitle}</span>
             {resolvedContextDate && (
               <span className="text-meta"> · {formatDate(resolvedContextDate)}</span>
             )}
           </p>
+          {!isWorkspaceMode && messages.length > 0 && (
+            <button
+              type="button"
+              onClick={handleExport}
+              title="Export conversation as Markdown"
+              className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors shrink-0"
+              aria-label="Export conversation"
+            >
+              <Download className="w-4 h-4" aria-hidden />
+            </button>
+          )}
         </div>
       )}
 
