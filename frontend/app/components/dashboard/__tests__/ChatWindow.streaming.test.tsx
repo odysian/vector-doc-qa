@@ -191,7 +191,8 @@ describe("ChatWindow streaming lifecycle", () => {
     });
 
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
-    expect(container.querySelectorAll("div.rounded-2xl")).toHaveLength(2);
+    // Only user bubbles have rounded-2xl; assistant messages render flat at full width.
+    expect(container.querySelectorAll("div.rounded-2xl")).toHaveLength(1);
   });
 
   it("scrolls to bottom once after history load, then auto-scrolls on new messages", async () => {
@@ -407,7 +408,8 @@ describe("ChatWindow streaming lifecycle", () => {
     fireEvent.submit(form as HTMLFormElement);
 
     await waitFor(() => expect(queryDocumentStreamMock).toHaveBeenCalledTimes(1));
-    expect(container.querySelectorAll("div.rounded-2xl")).toHaveLength(2);
+    // Only user bubbles have rounded-2xl; assistant messages render flat at full width.
+    expect(container.querySelectorAll("div.rounded-2xl")).toHaveLength(1);
 
     const streamCallbacks = queryDocumentStreamMock.mock.calls[0]?.[2] as StreamCallbacks | undefined;
     streamCallbacks?.onDone({ message_id: 303 });
