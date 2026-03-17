@@ -162,16 +162,19 @@ async def get_workspace_query_preflight(
     Returns (workspace, document_count, has_searchable_chunks) if the workspace
     exists and is owned by user_id, or None if not found/unauthorized.
     """
+    # Correlate subqueries to the outer Workspace row so they are not evaluated
+    # for workspace IDs that fail the ownership check (avoids unnecessary table
+    # scans on every unauthorized or nonexistent workspace probe).
     doc_count_subq = (
         select(func.count(WorkspaceDocument.id))
-        .where(WorkspaceDocument.workspace_id == workspace_id)
+        .where(WorkspaceDocument.workspace_id == Workspace.id)
         .scalar_subquery()
     )
     chunk_exists_subq = (
         select(literal(1))
         .select_from(WorkspaceDocument)
         .join(Chunk, Chunk.document_id == WorkspaceDocument.document_id)
-        .where(WorkspaceDocument.workspace_id == workspace_id)
+        .where(WorkspaceDocument.workspace_id == Workspace.id)
         .where(Chunk.embedding.isnot(None))
         .limit(1)
         .exists()
