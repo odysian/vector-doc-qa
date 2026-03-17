@@ -90,6 +90,9 @@ logs/
 # Personal docs
 docs/DEEP_DIVE.md
 docs/INTERVIEW_BRIEF.md
+docs/OPS_REFERENCE.md
+docs/DEPLOY_POSTMORTEM.md
 plans/
 testfiles/
 gptdocs/
+docs/learning
