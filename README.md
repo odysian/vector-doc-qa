@@ -16,6 +16,13 @@ AI-powered PDF question-answering using Retrieval Augmented Generation (RAG). Up
 - Demo mode: try the app instantly without registering
 - Secure authentication with CSRF protection, httpOnly cookies, and refresh token rotation
 
+## Portfolio Highlights
+
+- Streaming RAG UX: streaming assistant replies with inline source citations and exportable markdown chat history.
+- Operational visibility: structured request-logging with correlation IDs, plus a health endpoint that checks both database and Redis dependencies.
+- Debug-oriented transparency: optional debug mode shows pipeline metadata for assistant responses.
+- Production deployments with IaC-backed GCP infrastructure, TLS bootstrap, and scripted rollout checks.
+
 ## Tech Stack
 
 **Backend:**
@@ -37,13 +44,16 @@ AI-powered PDF question-answering using Retrieval Augmented Generation (RAG). Up
 - Tailwind CSS v4 with a custom lapis color theme and shared UI primitives
 - Inline PDF viewer with page navigation, zoom, and citation highlighting
 - Responsive layout: split PDF + chat pane on desktop, tab-switch on mobile
+- Pipeline introspection tooling in debug mode and markdown transcript export
 - Deployed on Vercel
 
 **Infrastructure & CI/CD:**
 - Terraform-managed GCP infrastructure (VM, static IP, firewall, GCS bucket, IAM)
 - GitHub Actions: backend CI (ruff, mypy, pytest, bandit), frontend CI (tsc, ESLint, vitest, next build)
+- Backend deployment pipeline: GHCR image build + Terraform/IAP-delivered container rollout on GCE VM, with startup health verification
 - Manual-dispatch Terraform ops workflow for plan/apply/destroy with typed confirmation gate
 - Google Workload Identity Federation (OIDC) for keyless GitHub Actions → GCP auth
+- Standard deploy path requires backend tests
 
 **Database:**
 - Cloud SQL PostgreSQL with pgvector extension
@@ -81,7 +91,8 @@ Workspaces let you group multiple documents and ask questions across all of them
 - **Database:** Cloud SQL PostgreSQL with pgvector (shared instance, `quaero` schema isolation)
 - **File storage:** Google Cloud Storage bucket
 - **Queue:** Upstash Redis
-- **CI:** GitHub Actions — backend (ruff + mypy + pytest + bandit) and frontend (tsc + ESLint + vitest + next build) run on every PR; deploy is gated on passing backend tests
+- **CI:** GitHub Actions — backend (ruff + mypy + pytest + bandit) and frontend (tsc + ESLint + vitest + next build) run on every PR.
+- **Deploy:** backend deploys run from `main` after backend checks pass
 
 
 ## Contact

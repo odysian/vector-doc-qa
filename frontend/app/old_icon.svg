@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Bold Q: thick ring + diagonal tail -->
+  <circle cx="16" cy="14" r="10" fill="none" stroke="#547bf3" stroke-width="4"/>
+  <rect x="20" y="18" width="4" height="10" rx="2" fill="#547bf3" transform="rotate(-45 22 23)"/>
+</svg>

@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, CheckCircle, MessageCircle, Upload } from "lucide-react";
+import { Check, CheckCircle, Github, MessageCircle, Upload } from "lucide-react";
 import { authService } from "@/lib/services/authService";
 
 export default function Home() {
@@ -44,7 +44,7 @@ export default function Home() {
       <div className="absolute inset-0 quaero-gradient-overlay" aria-hidden />
 
       <main className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-6xl items-center py-6 sm:py-8">
-        <section className="grid w-full items-center gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:gap-10">
+        <section className="grid w-full items-center gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:gap-12">
           <div className="w-full max-w-xl mx-auto space-y-6 text-center lg:mx-0 lg:text-left">
             <h1 className="font-cormorant text-5xl font-bold italic text-lapis-400 sm:text-6xl lg:text-7xl pb-2">
               Quaero
@@ -116,21 +116,37 @@ export default function Home() {
                 </div>
               </li>
             </ol>
-            <p className="text-label-accent border-t border-zinc-800 pt-4">Why it works</p>
-            <ul className="space-y-2 text-sm">
-              <li className="flex items-center gap-2 text-zinc-300">
-                <Check className="h-3.5 w-3.5 shrink-0 text-lapis-400" />
-                Cited answers only
-              </li>
-              <li className="flex items-center gap-2 text-zinc-300">
-                <Check className="h-3.5 w-3.5 shrink-0 text-lapis-400" />
-                Your documents stay scoped
-              </li>
-              <li className="flex items-center gap-2 text-zinc-300">
-                <Check className="h-3.5 w-3.5 shrink-0 text-lapis-400" />
-                Fast retrieval + chat workflow
-              </li>
-            </ul>
+            <div className="grid grid-cols-2 gap-4 border-t border-zinc-800 pt-4">
+              <div>
+                <p className="text-label-accent mb-2">Why it works</p>
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-center gap-2 text-zinc-300">
+                    <Check className="h-3.5 w-3.5 shrink-0 text-lapis-400" />
+                    Cited answers only
+                  </li>
+                  <li className="flex items-center gap-2 text-zinc-300">
+                    <Check className="h-3.5 w-3.5 shrink-0 text-lapis-400" />
+                    Your documents stay scoped
+                  </li>
+                  <li className="flex items-center gap-2 text-zinc-300">
+                    <Check className="h-3.5 w-3.5 shrink-0 text-lapis-400" />
+                    Fast retrieval + chat workflow
+                  </li>
+                </ul>
+              </div>
+              <div className="flex flex-col gap-2">
+                <p className="text-label-accent mb-2">Open Source</p>
+                <a
+                  href="https://github.com/odysian/vector-doc-qa"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-lapis-300 transition-colors hover:border-zinc-600 hover:text-lapis-200 w-fit"
+                >
+                  <Github className="h-3.5 w-3.5" />
+                  View on GitHub
+                </a>
+              </div>
+            </div>
           </div>
         </section>
       </main>
