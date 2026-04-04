@@ -70,7 +70,7 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
     arq_queue_name: str = "quaero:queue"
-    arq_poll_delay_seconds: float = 10.0
+    arq_poll_delay_seconds: float = 60.0
     arq_job_timeout_seconds: int = 900
     arq_max_jobs: int = 1
     arq_stale_processing_minutes: int = 15
