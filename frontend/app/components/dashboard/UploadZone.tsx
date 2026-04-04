@@ -97,6 +97,12 @@ export function UploadZone({ onUpload, disabled, disabledReason }: UploadZonePro
               ? "Uploading..."
               : "Upload PDF or drag a file here"}
           </p>
+          {!disabled && (
+            <p className="text-meta mb-1 px-0.5">
+              This project currently runs on a reduced background-processing
+              cadence. New uploads may take up to a minute to begin processing.
+            </p>
+          )}
           <p className="text-helper">
             {disabled ? disabledReason || "Create an account to upload your own documents." : "Max 10MB"}
           </p>

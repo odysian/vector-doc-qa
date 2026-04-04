@@ -87,6 +87,7 @@ SECRET_KEY=<strong-random-secret>
 OPENAI_API_KEY=<...>
 ANTHROPIC_API_KEY=<...>
 REDIS_URL=<upstash-redis-url>
+ARQ_POLL_DELAY_SECONDS=60
 FRONTEND_URL=https://quaero.odysian.dev
 PORT=8000
 ```

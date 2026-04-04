@@ -301,6 +301,11 @@ describe("DashboardPage regression behavior", () => {
     expect(
       await screen.findByRole("heading", { name: "No documents yet" })
     ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(
+        /reduced background-processing cadence[\s\S]*minute to begin processing/,
+      ).length,
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("renders API error text when document load fails", async () => {
